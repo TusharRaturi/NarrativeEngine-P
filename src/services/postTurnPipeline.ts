@@ -109,22 +109,34 @@ async function runArchiveTrack(
         const bkProvider = state.getFreshProvider();
         if (bkProvider) {
             const sceneId = appendedSceneId;
+            const inventoryItems = state.getFreshContext().inventoryItems || [];
+            const profileData = state.getFreshContext().characterProfileData || { name: '', race: '', class: '', level: 1, hp: { current: 20, max: 20 }, stats: {}, skills: [], abilities: [], traits: [], notes: '' };
 
             backgroundQueue.push('Profile-Scan', async () => {
-                const newProfile = await scanCharacterProfile(bkProvider, state.getMessages(), state.getFreshContext().characterProfile);
+                const newProfile = await scanCharacterProfile(bkProvider, state.getMessages(), profileData);
                 callbacks.updateContext({
-                    characterProfile: newProfile,
+                    characterProfile: JSON.stringify(newProfile), // legacy sync
+                    characterProfileData: newProfile,
                     characterProfileLastScene: sceneId,
                 });
+                const s = useAppStore.getState();
+                if (s.activeCampaignId === activeCampaignId && 'setCharacterProfileData' in s) {
+                    (s as any).setCharacterProfileData(newProfile);
+                }
                 console.log(`[Auto Bookkeeping] Profile updated at scene #${sceneId}`);
             }).catch(err => console.warn('[Auto Bookkeeping] Profile scan failed:', err));
 
             backgroundQueue.push('Inventory-Scan', async () => {
-                const newInventory = await scanInventory(bkProvider, state.getMessages(), state.getFreshContext().inventory);
+                const newItems = await scanInventory(bkProvider, state.getMessages(), inventoryItems);
                 callbacks.updateContext({
-                    inventory: newInventory,
+                    inventory: newItems.map(it => `- ${it.qty > 1 ? `${it.qty}x ` : ''}${it.name}`).join('\n'), // legacy sync
+                    inventoryItems: newItems,
                     inventoryLastScene: sceneId,
                 });
+                const s = useAppStore.getState();
+                if (s.activeCampaignId === activeCampaignId && 'setInventoryItems' in s) {
+                    (s as any).setInventoryItems(newItems);
+                }
                 console.log(`[Auto Bookkeeping] Inventory updated at scene #${sceneId}`);
             }).catch(err => console.warn('[Auto Bookkeeping] Inventory scan failed:', err));
         }

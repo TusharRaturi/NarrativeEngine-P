@@ -1,6 +1,6 @@
 import { useAppStore } from '../../store/useAppStore';
 import { OverworldCanvas } from './OverworldCanvas';
-import { Loader2, Map, X, RotateCcw } from 'lucide-react';
+import { Loader2, Map, X, RotateCcw, MapPin } from 'lucide-react';
 
 function hasValidCells(map: { cells?: unknown[]; width?: number; height?: number } | null): boolean {
     return !!(map && map.cells && map.cells.length > 0 && map.width && map.height);
@@ -23,6 +23,8 @@ export function MapPanel() {
     const loadMap = useAppStore(s => s.loadMap);
     const setOverworldMap = useAppStore(s => s.setOverworldMap);
     const playerPosition = useAppStore(s => s.playerPosition);
+    const isPinMode = useAppStore(s => s.isPinMode);
+    const togglePinMode = useAppStore(s => s.togglePinMode);
 
     const validMap = hasValidCells(overworldMap);
 
@@ -89,6 +91,20 @@ export function MapPanel() {
                                     <span className="text-text-dim/60 text-[9px] font-mono">
                                         ({playerPosition.x}, {playerPosition.y}) &middot; {overworldMap.width}x{overworldMap.height}
                                     </span>
+                                )}
+                                {overworldMap && (
+                                    <button
+                                        onClick={togglePinMode}
+                                        className={`transition-colors text-[9px] uppercase tracking-widest font-bold flex items-center gap-1 px-2 py-0.5 border ${
+                                            isPinMode
+                                                ? 'border-terminal/60 text-terminal bg-terminal/10'
+                                                : 'border-transparent text-text-dim/40 hover:text-text-dim'
+                                        }`}
+                                        title={isPinMode ? 'Click map to place pin (Esc to cancel)' : 'Add map pin'}
+                                    >
+                                        <MapPin size={10} />
+                                        {isPinMode ? 'Placing…' : 'Pin'}
+                                    </button>
                                 )}
                                 <button
                                     onClick={handleReset}

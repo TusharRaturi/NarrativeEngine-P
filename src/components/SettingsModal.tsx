@@ -386,6 +386,25 @@ export function SettingsModal() {
                             </button>
                         </div>
 
+                        {/* Deep Archive Search */}
+                        <div className="flex items-center justify-between bg-void p-3 border border-border rounded">
+                            <div>
+                                <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">
+                                    Deep Archive Search
+                                </label>
+                                <p className="text-[9px] text-text-dim max-w-[240px] leading-tight">
+                                    Enables AI-driven full-archive scan. Adds a "Deep Search" button to the toolbar.
+                                    Requires a utility AI endpoint. Adds ~1-2 min per turn when used.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => updateSettings({ deepContextSearch: !settings.deepContextSearch })}
+                                className={`relative w-10 h-5 rounded-full transition-colors focus:outline-none ${settings.deepContextSearch ? 'bg-amber-500' : 'bg-border'}`}
+                            >
+                                <div className={`absolute top-[2px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.deepContextSearch ? 'translate-x-[22px]' : 'translate-x-[2px]'}`} />
+                            </button>
+                        </div>
+
                         {/* Theme */}
                         <div className="flex items-center justify-between bg-void p-3 border border-border rounded">
                             <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold">

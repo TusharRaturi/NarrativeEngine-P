@@ -16,6 +16,9 @@ import { dedupeNPCLedger } from '../store/slices/campaignSlice';
 export const DEFAULT_CONTEXT = {
     loreRaw: '', rulesRaw: '', canonState: '', headerIndex: '',
     starter: '', continuePrompt: '', inventory: '', characterProfile: '',
+    inventoryItems: [],
+    characterProfileData: { name: '', race: '', class: '', level: 1, hp: { current: 20, max: 20 }, stats: {}, skills: [], abilities: [], traits: [], notes: '' },
+    smartBookkeepingActive: true,
     surpriseDC: 95, encounterDC: 198, worldEventDC: 498,
     canonStateActive: false, headerIndexActive: false, starterActive: false,
     continuePromptActive: false, inventoryActive: false, characterProfileActive: false,

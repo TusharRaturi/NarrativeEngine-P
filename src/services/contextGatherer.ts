@@ -5,6 +5,7 @@ import { retrieveRelevantLore } from './loreRetriever';
 import { recallArchiveScenes, retrieveArchiveMemory, fetchArchiveScenes } from './archiveMemory';
 import { rankChapters, recallWithChapterFunnel } from './archiveChapterEngine';
 import { recommendContext } from './contextRecommender';
+import { deepArchiveScan } from './deepArchiveSearch';
 
 export type GatheredContext = {
     sceneNumber: string | undefined;
@@ -14,12 +15,17 @@ export type GatheredContext = {
     relevantLore: LoreChunk[] | undefined;
     semanticArchiveIds: string[] | undefined;
     semanticLoreIds: string[] | undefined;
+    inventoryCategories: string[] | undefined;
+    profileFields: string[] | undefined;
+    deepContextSummary?: string;
 };
 
 type GatherDeps = {
     chapters: ArchiveChapter[];
     pinnedChapterIds: string[];
     clearPinnedChapters: () => void;
+    deepSearchThisTurn: boolean;
+    setLoadingStatus?: (status: string | null) => void;
 };
 
 export async function gatherContext(
@@ -34,6 +40,8 @@ export async function gatherContext(
     let sceneNumber: string | undefined;
     let archiveRecall: ArchiveScene[] | undefined;
     let recommendedNPCNames: string[] | undefined;
+    let inventoryCategories: string[] | undefined;
+    let profileFields: string[] | undefined;
     let semanticArchiveIds: string[] | undefined;
     let semanticLoreIds: string[] | undefined;
 
@@ -92,7 +100,7 @@ export async function gatherContext(
                 const result = await recallArchiveScenes(
                     activeCampaignId, archiveIndex, input, messages, 3000,
                     npcLedger, (state as any).semanticFacts,
-                    undefined, undefined, semanticArchiveIds
+                    undefined, semanticArchiveIds
                 );
                 archiveRecall = result;
                 return;
@@ -138,7 +146,7 @@ export async function gatherContext(
                 archiveRecall = await recallArchiveScenes(
                     activeCampaignId, archiveIndex, input, messages, 3000,
                     npcLedger, (state as any).semanticFacts,
-                    undefined, undefined, semanticArchiveIds
+                    undefined, semanticArchiveIds
                 );
             }
         })()
@@ -155,10 +163,14 @@ export async function gatherContext(
         messages,
         finalInput,
         signal,
-        pinnedChaptersForRecommender
+        pinnedChaptersForRecommender,
+        context.inventoryItems,
+        context.characterProfileData
     ).then(result => {
         recommendedNPCNames = result.relevantNPCNames;
-        console.log(`[ContextGatherer] Recommender returned: ${recommendedNPCNames.length} NPCs, ${result.relevantLoreIds.length} lore`);
+        inventoryCategories = result.inventoryCategories;
+        profileFields = result.profileFields;
+        console.log(`[ContextGatherer] Recommender returned: ${recommendedNPCNames?.length || 0} NPCs, ${result.relevantLoreIds.length} lore, ${inventoryCategories?.length || 0} inv cats, ${profileFields?.length || 0} profile fields`);
     }).catch(err => {
         console.warn('[ContextGatherer] UtilityAI recommender failed:', err);
     }) : Promise.resolve();
@@ -204,7 +216,8 @@ export async function gatherContext(
 
             if (scoredIds.length > 0) {
                 try {
-                    const pinnedScenes = await fetchArchiveScenes(activeCampaignId, scoredIds, 1500);
+                    const pinnedBudget = Math.floor((state.settings.contextLimit || 8192) * 0.35);
+                    const pinnedScenes = await fetchArchiveScenes(activeCampaignId, scoredIds, pinnedBudget);
                     archiveRecall = [...(archiveRecall ?? []), ...pinnedScenes];
                     console.log(`[Pin] Injected ${pinnedScenes.length} scored scenes from ${pinnedRanges.length} pinned chapter(s)`);
                 } catch (err) {
@@ -215,5 +228,31 @@ export async function gatherContext(
         deps.clearPinnedChapters();
     }
 
-    return { sceneNumber, archiveRecall, recommendedNPCNames, timelineEvents, relevantLore, semanticArchiveIds, semanticLoreIds };
+    // ─── Deep Archive Search (one-shot) ──────────────────────────────────
+    let deepContextSummary: string | undefined;
+
+    if (deps.deepSearchThisTurn && activeCampaignId && utilityEndpoint?.endpoint) {
+        try {
+            const sealedChapters = deps.chapters.filter(c => c.sealedAt !== undefined);
+            if (sealedChapters.length > 0) {
+                const deepBudget = Math.floor((state.settings.contextLimit || 8192) * 0.45);
+                deepContextSummary = await deepArchiveScan(
+                    utilityEndpoint,
+                    archiveIndex,
+                    sealedChapters,
+                    activeCampaignId,
+                    messages,
+                    finalInput,
+                    deepBudget,
+                    (msg) => deps.setLoadingStatus?.(msg),
+                    signal,
+                );
+                console.log(`[DeepArchiveSearch] Brief generated: ~${Math.ceil((deepContextSummary || '').length / 4)} tokens`);
+            }
+        } catch (err) {
+            console.warn('[DeepArchiveSearch] Failed, standard recall used:', err);
+        }
+    }
+
+    return { sceneNumber, archiveRecall, recommendedNPCNames, timelineEvents, relevantLore, semanticArchiveIds, semanticLoreIds, inventoryCategories, profileFields, deepContextSummary };
 }

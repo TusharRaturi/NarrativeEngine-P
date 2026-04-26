@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Application, Graphics, Container, Assets, Sprite, Texture, DisplacementFilter, Rectangle } from 'pixi.js';
+import { Application, Graphics, Container, Assets, Sprite, Texture, DisplacementFilter, Rectangle, Text } from 'pixi.js';
 import * as filters from 'pixi-filters';
 
 // Tile Coordinates for PicoVillage (16x16 units)
@@ -98,11 +98,24 @@ export function OverworldCanvas() {
     const texturesRef = useRef<Record<string, Texture>>({});
     const propsRef = useRef<Record<string, Texture>>({});
     const displacementRef = useRef<Sprite | null>(null);
+    const pinContainerRef = useRef<Container | null>(null);
+    const isPinModeRef = useRef(false);
     const [pixiReady, setPixiReady] = useState(false);
+    const [pinLabelDraft, setPinLabelDraft] = useState('');
 
     const overworldMap = useAppStore(s => s.overworldMap);
     const playerPosition = useAppStore(s => s.playerPosition);
     const setPlayerPosition = useAppStore(s => s.setPlayerPosition);
+    const isPinMode = useAppStore(s => s.isPinMode);
+    const pendingPin = useAppStore(s => s.pendingPin);
+    const setPendingPin = useAppStore(s => s.setPendingPin);
+    const addPin = useAppStore(s => s.addPin);
+    const deletePin = useAppStore(s => s.deletePin);
+    const pins = useAppStore(s => s.overworldMap?.pins ?? []);
+    const activeCampaignId = useAppStore(s => s.activeCampaignId);
+
+    useEffect(() => { isPinModeRef.current = isPinMode; }, [isPinMode]);
+    useEffect(() => { if (pendingPin === null) setPinLabelDraft(''); }, [pendingPin]);
 
     useEffect(() => {
         if (!containerRef.current) return;
@@ -164,8 +177,30 @@ export function OverworldCanvas() {
                 const gridCol = Math.floor(localX / cs);
                 const gridRow = Math.floor(localY / cs);
 
-                if (gridCol >= 0 && gridCol < w && gridRow >= 0 && gridRow < h) {
+                if (gridCol < 0 || gridCol >= w || gridRow < 0 || gridRow >= h) return;
+
+                if (isPinModeRef.current) {
+                    setPendingPin({ x: gridCol, y: gridRow });
+                } else {
                     setPlayerPosition({ x: gridCol, y: gridRow });
+                }
+            });
+
+            app.canvas.addEventListener('contextmenu', (e: MouseEvent) => {
+                e.preventDefault();
+                if (isPinModeRef.current) return;
+                const rect = app.canvas.getBoundingClientRect();
+                const localX = (e.clientX - rect.left - world.x) / world.scale.x;
+                const localY = (e.clientY - rect.top - world.y) / world.scale.y;
+                const cs = cellSizeRef.current;
+                const gridCol = Math.floor(localX / cs);
+                const gridRow = Math.floor(localY / cs);
+                const store = useAppStore.getState();
+                const currentPins = store.overworldMap?.pins ?? [];
+                const hit = currentPins.find(p => Math.abs(p.x - gridCol) <= 1 && Math.abs(p.y - gridRow) <= 1);
+                if (hit) {
+                    const cid = store.activeCampaignId;
+                    if (cid) store.deletePin(cid, hit.id);
                 }
             });
 
@@ -519,7 +554,119 @@ export function OverworldCanvas() {
         player.stroke({ color: '#ffffff', width: 2 });
     }, [playerPosition]);
 
+    useEffect(() => {
+        if (!pixiReady || !worldRef.current) return;
+        const world = worldRef.current;
+        const cs = cellSizeRef.current;
+
+        if (pinContainerRef.current) {
+            world.removeChild(pinContainerRef.current);
+            pinContainerRef.current.destroy({ children: true });
+        }
+
+        const pinContainer = new Container();
+        pinContainer.zIndex = 9;
+        world.addChild(pinContainer);
+        pinContainerRef.current = pinContainer;
+
+        for (const pin of pins) {
+            const px = pin.x * cs + cs / 2;
+            const py = pin.y * cs + cs / 2;
+            const radius = Math.max(3, cs * 0.35);
+
+            const g = new Graphics();
+            g.circle(px, py, radius);
+            g.fill({ color: pin.color ?? '#e05c5c', alpha: 0.9 });
+            g.stroke({ color: '#ffffff', width: 1.5 });
+            pinContainer.addChild(g);
+
+            const label = new Text({
+                text: pin.label,
+                style: {
+                    fontFamily: 'monospace',
+                    fontSize: Math.max(8, cs * 1.1),
+                    fill: '#ffffff',
+                    stroke: { color: '#000000', width: 3 },
+                    align: 'center',
+                },
+            });
+            label.anchor.set(0.5, 1.0);
+            label.position.set(px, py - radius - 2);
+            pinContainer.addChild(label);
+        }
+
+        world.sortChildren();
+    }, [pins, pixiReady]);
+
     return (
-        <div ref={containerRef} className="w-full h-full" />
+        <div className="w-full h-full relative">
+            <div
+                ref={containerRef}
+                className="w-full h-full"
+                style={{ cursor: isPinMode ? 'crosshair' : 'default' }}
+            />
+
+            {pendingPin !== null && (() => {
+                const world = worldRef.current;
+                const cs = cellSizeRef.current;
+                let ox = 0, oy = 0;
+                if (world && cs > 0) {
+                    ox = pendingPin.x * cs * world.scale.x + world.x;
+                    oy = pendingPin.y * cs * world.scale.y + world.y;
+                }
+                return (
+                    <div
+                        className="absolute z-50 bg-surface border border-terminal/50 px-3 py-2 shadow-lg"
+                        style={{ left: ox + 8, top: oy + 8 }}
+                    >
+                        <p className="text-[9px] uppercase tracking-widest text-text-dim mb-1">Pin Label</p>
+                        <input
+                            autoFocus
+                            maxLength={40}
+                            value={pinLabelDraft}
+                            onChange={e => setPinLabelDraft(e.target.value)}
+                            onKeyDown={e => {
+                                if (e.key === 'Enter' && pinLabelDraft.trim()) {
+                                    addPin(activeCampaignId!, {
+                                        id: crypto.randomUUID(),
+                                        x: pendingPin.x,
+                                        y: pendingPin.y,
+                                        label: pinLabelDraft.trim(),
+                                        color: '#e05c5c',
+                                        createdAt: Date.now(),
+                                    });
+                                    setPinLabelDraft('');
+                                } else if (e.key === 'Escape') {
+                                    setPendingPin(null);
+                                }
+                            }}
+                            className="bg-void border border-border text-terminal text-[11px] font-mono px-2 py-1 outline-none w-36"
+                            placeholder="Enter name…"
+                        />
+                        <div className="flex gap-2 mt-1">
+                            <button
+                                onClick={() => {
+                                    if (!pinLabelDraft.trim()) return;
+                                    addPin(activeCampaignId!, {
+                                        id: crypto.randomUUID(),
+                                        x: pendingPin.x,
+                                        y: pendingPin.y,
+                                        label: pinLabelDraft.trim(),
+                                        color: '#e05c5c',
+                                        createdAt: Date.now(),
+                                    });
+                                    setPinLabelDraft('');
+                                }}
+                                className="text-[9px] uppercase tracking-widest text-terminal hover:text-terminal/70"
+                            >Place</button>
+                            <button
+                                onClick={() => setPendingPin(null)}
+                                className="text-[9px] uppercase tracking-widest text-text-dim hover:text-danger"
+                            >Cancel</button>
+                        </div>
+                    </div>
+                );
+            })()}
+        </div>
     );
 }
