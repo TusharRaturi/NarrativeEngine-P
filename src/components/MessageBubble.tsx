@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Edit2, RotateCcw, Trash2, Loader2 } from 'lucide-react';
+import { Edit2, RotateCcw, Trash2, Loader2, Zap } from 'lucide-react';
 import type { ChatMessage, DebugSection } from '../types';
 import { DebugPayloadView } from './DebugPayloadView';
 
@@ -13,6 +13,7 @@ interface MessageBubbleProps {
     onStartEdit: (message: ChatMessage) => void;
     onRegenerate: (id: string) => void;
     onDelete: (id: string) => void;
+    onTagDivergence?: (messageId: string) => void;
 }
 
 export function MessageBubble({
@@ -24,6 +25,7 @@ export function MessageBubble({
     onStartEdit,
     onRegenerate,
     onDelete,
+    onTagDivergence,
 }: MessageBubbleProps) {
     let markdownContent: string = typeof msg.displayContent === 'string'
         ? msg.displayContent
@@ -71,9 +73,17 @@ export function MessageBubble({
                     <button title="Delete" onClick={() => onDelete(msg.id)} className="text-text-dim hover:text-red-400 p-1 bg-void-lighter rounded">
                         <Trash2 size={10} />
                     </button>
+                    {msg.role === 'assistant' && onTagDivergence && (
+                        <button title="Tag divergence" onClick={() => onTagDivergence(msg.id)} className="text-text-dim hover:text-amber-400 p-1 bg-void-lighter rounded">
+                            <Zap size={10} />
+                        </button>
+                    )}
                 </div>
 
                 <div className="flex items-center gap-2 mb-1">
+                    {msg.divergenceIds && msg.divergenceIds.length > 0 && (
+                        <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0" title={`${msg.divergenceIds.length} divergence entries`} />
+                    )}
                     <span
                         className={`text-[10px] uppercase tracking-widest ${msg.role === 'user'
                             ? 'text-terminal'

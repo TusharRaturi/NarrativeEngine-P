@@ -207,5 +207,6 @@ export function generateWorld(
         seed,
         worldType,
         generatedAt: Date.now(),
+        pins: [],
     };
 }

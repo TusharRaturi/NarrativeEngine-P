@@ -11,6 +11,7 @@ import { generateNPCProfile, updateExistingNPCs } from './chatEngine';
 import { scanCharacterProfile } from './characterProfileParser';
 import { scanInventory } from './inventoryParser';
 import { toast } from '../components/Toast';
+import { extractDivergences, mergeEntries, EMPTY_REGISTER } from './divergenceRegister';
 
 export async function runPostTurnPipeline(
     state: TurnState,
@@ -24,6 +25,7 @@ export async function runPostTurnPipeline(
     const results = await Promise.allSettled([
         runArchiveTrack(state, callbacks, displayInput, lastAssistantContent, allMsgs, activeCampaignId),
         runNPCTrack(state, callbacks, lastAssistantContent, allMsgs, npcLedger, activeCampaignId),
+        runDivergenceTrack(state, callbacks, displayInput, lastAssistantContent, activeCampaignId),
     ]);
 
     for (const r of results) {
@@ -200,5 +202,44 @@ async function runNPCTrack(
                 () => updateExistingNPCs(updateProvider, allMsgs, existingNpcsToUpdate, guardedUpdateNPC)
             ).catch(err => console.warn('[NPC Update] Background update failed:', err));
         }
+    }
+}
+
+async function runDivergenceTrack(
+    state: TurnState,
+    callbacks: TurnCallbacks,
+    displayInput: string,
+    lastAssistantContent: string,
+    activeCampaignId: string
+): Promise<void> {
+    if (state.settings.autoExtractDivergences === false) return;
+    if (!callbacks.setDivergenceRegister) return;
+
+    const divProvider = state.getFreshProvider();
+    if (!divProvider) return;
+
+    const currentRegister = state.divergenceRegister || EMPTY_REGISTER;
+    const sceneText = `[User]: ${displayInput.slice(0, 600)}\n[GM]: ${lastAssistantContent.slice(0, 1200)}`;
+    const archiveIndex = state.archiveIndex;
+    const sceneId = archiveIndex.length > 0
+        ? String(parseInt(archiveIndex[archiveIndex.length - 1].sceneId, 10) || 0).padStart(3, '0')
+        : '000';
+
+    const { entries } = await extractDivergences(divProvider, sceneText, sceneId, currentRegister);
+    if (entries.length > 0) {
+        const merged = mergeEntries(currentRegister, entries, sceneId);
+        callbacks.setDivergenceRegister(merged);
+
+        const lastMsg = state.getMessages().slice().reverse().find(m => m.role === 'assistant');
+        if (lastMsg && callbacks.updateMessageDivergence) {
+            callbacks.updateMessageDivergence(lastMsg.id, entries.map(e => e.id));
+        }
+
+        try {
+            const { saveDivergenceRegister } = await import('../store/campaignStore');
+            await saveDivergenceRegister(activeCampaignId, merged);
+        } catch {}
+
+        console.log(`[DivergenceRegister] Scene #${sceneId}: ${entries.length} entries extracted`);
     }
 }

@@ -13,6 +13,7 @@ import { createBackupsRouter } from './server/routes/backups.js';
 import { createAssetsRouter } from './server/routes/assets.js';
 import { createOverworldRouter } from './server/routes/overworld.js';
 import { createTransferRouter } from './server/routes/transfer.js';
+import { createDivergenceRouter } from './server/routes/divergence.js';
 import { initDb } from './server/lib/vectorStore.js';
 import { warmup as warmupEmbedder } from './server/lib/embedder.js';
 
@@ -41,7 +42,7 @@ if (!vault.isUnlocked()) {
 
 // ─── Middleware ───
 app.use(cors());
-app.use(express.json({ limit: '200mb' }));
+app.use(express.json({ limit: '500mb' }));
 app.use('/assets/portraits', express.static(PUBLIC_ASSETS_DIR));
 
 // ─── Vector Search Init ───
@@ -64,6 +65,7 @@ app.use(createBackupsRouter());
 app.use(createAssetsRouter());
 app.use(createOverworldRouter());
 app.use(createTransferRouter());
+app.use(createDivergenceRouter());
 
 // ─── Central Error Handler ───
 app.use((err, _req, res, _next) => {

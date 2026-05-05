@@ -323,7 +323,8 @@ export async function recallWithChapterFunnel(
     semanticFacts?: { subject: string; predicate: string; object: string; importance: number }[],
     utilityProvider?: EndpointConfig | ProviderConfig,
     campaignId?: string,
-    tokenBudget = 3000
+    tokenBudget = 3000,
+    excludeSceneIds?: Set<string>
 ): Promise<ArchiveScene[]> {
     // ─── Phase 1: Chapter-level 3D scoring ───
     const ranked = rankChapters(chapters, userMessage, recentMessages, npcLedger, semanticFacts);
@@ -351,7 +352,8 @@ export async function recallWithChapterFunnel(
     // ─── Phase 4: Scene-level 3D scoring within ranges ───
     const matchedIds = retrieveArchiveMemory(
         index, userMessage, recentMessages, npcLedger,
-        undefined, semanticFacts, sceneRanges
+        undefined, semanticFacts, sceneRanges,
+        undefined, undefined, undefined, excludeSceneIds
     );
 
     if (matchedIds.length === 0) return [];

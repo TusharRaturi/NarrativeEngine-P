@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Application, Graphics, Container, Assets, Sprite, Texture, DisplacementFilter, Rectangle, Text } from 'pixi.js';
+import { Application, Graphics, Container, Assets, Sprite, Texture, Rectangle, Text } from 'pixi.js';
 import * as filters from 'pixi-filters';
 
 // Tile Coordinates for PicoVillage (16x16 units)
@@ -110,7 +110,6 @@ export function OverworldCanvas() {
     const pendingPin = useAppStore(s => s.pendingPin);
     const setPendingPin = useAppStore(s => s.setPendingPin);
     const addPin = useAppStore(s => s.addPin);
-    const deletePin = useAppStore(s => s.deletePin);
     const pins = useAppStore(s => s.overworldMap?.pins ?? []);
     const activeCampaignId = useAppStore(s => s.activeCampaignId);
 
@@ -221,7 +220,7 @@ export function OverworldCanvas() {
             try {
                 // Load PicoVillage sheets
                 const outdoorBase = await Assets.load({ src: PICO_TILES.OUTDOOR, data: { scaleMode: 'nearest' } });
-                const waterBase = await Assets.load({ src: PICO_TILES.WATER, data: { scaleMode: 'nearest' } });
+                await Assets.load({ src: PICO_TILES.WATER, data: { scaleMode: 'nearest' } });
                 const rockBase = await Assets.load({ src: PICO_TILES.ROCKS, data: { scaleMode: 'nearest' } });
                 
                 // Load Expansion Packs

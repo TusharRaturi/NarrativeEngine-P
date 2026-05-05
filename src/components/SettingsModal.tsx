@@ -405,6 +405,50 @@ export function SettingsModal() {
                             </button>
                         </div>
 
+                        {/* Divergence Register */}
+                        <div className="bg-void p-3 border border-border rounded space-y-3">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">
+                                        Auto-Extract Divergences
+                                    </label>
+                                    <p className="text-[9px] text-text-dim max-w-[240px] leading-tight">
+                                        Automatically extract campaign facts (canon changes, NPC states, obligations) from each turn.
+                                        Importance gate: 7+ (use ⚡ for lower).
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => updateSettings({ autoExtractDivergences: !settings.autoExtractDivergences })}
+                                    className={`relative w-10 h-5 rounded-full transition-colors focus:outline-none ${settings.autoExtractDivergences ? 'bg-amber-500' : 'bg-border'}`}
+                                >
+                                    <div className={`absolute top-[2px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.autoExtractDivergences ? 'translate-x-[22px]' : 'translate-x-[2px]'}`} />
+                                </button>
+                            </div>
+                            <div>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[10px] text-text-dim uppercase tracking-wider">
+                                        Divergence Token Budget
+                                    </label>
+                                    <span className="text-amber-500 font-bold font-mono bg-amber-500/10 px-2 py-0.5 rounded text-[10px]">
+                                        {settings.divergenceTokenBudget ?? 2000}
+                                    </span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={500}
+                                    max={4000}
+                                    step={250}
+                                    value={settings.divergenceTokenBudget ?? 2000}
+                                    onChange={(e) => updateSettings({ divergenceTokenBudget: parseInt(e.target.value) })}
+                                    className="w-full h-1.5 bg-border rounded-lg appearance-none cursor-pointer accent-amber-500"
+                                />
+                                <div className="flex justify-between text-[8px] text-text-dim mt-0.5">
+                                    <span>500</span>
+                                    <span>4000</span>
+                                </div>
+                            </div>
+                        </div>
+
                         {/* Theme */}
                         <div className="flex items-center justify-between bg-void p-3 border border-border rounded">
                             <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold">

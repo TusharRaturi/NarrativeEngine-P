@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { ArchiveIndexEntry, ChatMessage, CondenserState, GameContext } from '../../types';
+import type { ArchiveIndexEntry, ChatMessage, CondenserState, GameContext, DivergenceRegister, DivergenceEntry } from '../../types';
 import { debouncedSaveCampaignState } from './campaignSlice';
 
 // ── Slice type ─────────────────────────────────────────────────────────
@@ -22,6 +22,12 @@ export type ChatSlice = {
     setCondensing: (v: boolean) => void;
     resetCondenser: () => void;
     setCondenser: (state: CondenserState) => void;
+
+    divergenceRegister: DivergenceRegister;
+    setDivergenceRegister: (register: DivergenceRegister) => void;
+    editDivergenceEntry: (id: string, patch: Partial<DivergenceEntry>) => void;
+    updateMessageDivergence: (messageId: string, divergenceIds: string[]) => void;
+    resetDivergenceRegister: () => void;
 };
 
 // ── Cross-slice dependencies ───────────────────────────────────────────
@@ -60,6 +66,34 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
             debouncedSaveCampaignState();
             return { condenser: state };
         }),
+
+    divergenceRegister: { entries: [], lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 1 },
+    setDivergenceRegister: (register) =>
+        set((_s) => {
+            debouncedSaveCampaignState();
+            return { divergenceRegister: register };
+        }),
+    editDivergenceEntry: (id, patch) =>
+        set((s) => {
+            const entries = s.divergenceRegister.entries.map(e => {
+                if (e.id !== id) return e;
+                const updated = { ...e, ...patch };
+                const fieldsChanged = patch.category !== undefined || patch.subject !== undefined || patch.divergence !== undefined || patch.sceneRef !== undefined;
+                if (fieldsChanged && updated.parseError) updated.parseError = false;
+                return updated;
+            });
+            debouncedSaveCampaignState();
+            return { divergenceRegister: { ...s.divergenceRegister, entries, lastUpdatedAt: Date.now() } };
+        }),
+    updateMessageDivergence: (messageId, divergenceIds) =>
+        set((s) => {
+            const msgs = s.messages.map(m =>
+                m.id === messageId ? { ...m, divergenceIds } : m
+            );
+            return { messages: msgs };
+        }),
+    resetDivergenceRegister: () =>
+        set({ divergenceRegister: { entries: [], lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 1 } } as Partial<ChatDeps>),
 
     // Chat defaults
     messages: [],
@@ -109,8 +143,9 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
     setStreaming: (v) => set({ isStreaming: v } as Partial<ChatDeps>),
     clearChat: () => set((_s) => {
         const newCondenser = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
+        const newDivReg = { entries: [], lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 1 };
         debouncedSaveCampaignState();
-        return { messages: [], condenser: newCondenser, context: { ..._s.context, notebook: [] } } as Partial<ChatDeps>;
+        return { messages: [], condenser: newCondenser, divergenceRegister: newDivReg, context: { ..._s.context, notebook: [] } } as Partial<ChatDeps>;
     }),
     clearArchive: () => set({ archiveIndex: [] } as Partial<ChatDeps>),
 });

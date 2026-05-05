@@ -10,10 +10,13 @@ import { rollbackArchiveFrom, openArchive as openArchiveFn, clearArchive as clea
 import { MessageBubble } from './MessageBubble';
 import { CondensedPanel } from './CondensedPanel';
 import { GenerationProgress } from './GenerationProgress';
+import { DivergenceEntryModal } from './DivergenceEntryModal';
+import { DivergenceReviewModal } from './DivergenceReviewModal';
 import { useCondenser } from './hooks/useCondenser';
 import { useChapterSealing } from './hooks/useChapterSealing';
 import { useMessageEditor } from './hooks/useMessageEditor';
-import type { PipelinePhase, StreamingStats } from '../types';
+import { mergeEntries, EMPTY_REGISTER } from '../services/divergenceRegister';
+import type { DivergenceEntry, DivergenceRegister, EndpointConfig } from '../types';
 
 
 export function ChatArea() {
@@ -36,6 +39,8 @@ export function ChatArea() {
         setArchiveIndex, clearArchive, updateLastAssistant, updateContext,
         setCondensed, setCondensing, deleteMessage, deleteMessagesFrom,
         resetCondenser, setTimeline, setChapters,
+        setDivergenceRegister, updateMessageDivergence,
+        pipelinePhase, streamingStats, setPipelinePhase, setStreamingStats,
     } = useAppStore(
         useShallow(s => ({
             setArchiveIndex: s.setArchiveIndex,
@@ -49,20 +54,29 @@ export function ChatArea() {
             resetCondenser: s.resetCondenser,
             setTimeline: s.setTimeline,
             setChapters: s.setChapters,
+            setDivergenceRegister: s.setDivergenceRegister,
+            updateMessageDivergence: s.updateMessageDivergence,
+            pipelinePhase: s.pipelinePhase,
+            streamingStats: s.streamingStats,
+            setPipelinePhase: s.setPipelinePhase,
+            setStreamingStats: s.setStreamingStats,
         }))
     );
+
+    const divergenceRegister = useAppStore(s => s.divergenceRegister);
 
     const [input, setInput] = useState('');
     const [isStreaming, setStreaming] = useState(false);
     const [, setIsCheckingNotes] = useState(false);
     const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
-    const [pipelinePhase, setPipelinePhase] = useState<PipelinePhase>('idle');
-    const [streamingStats, setStreamingStats] = useState<StreamingStats | null>(null);
     const [visibleCount, setVisibleCount] = useState(10);
     const [loadStep, setLoadStep] = useState(10);
     const [showCondensed, setShowCondensed] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const [deepSearchArmed, setDeepSearchArmed] = useState(false);
+    const [divergenceModalOpen, setDivergenceModalOpen] = useState(false);
+    const [divergenceReviewMessages, setDivergenceReviewMessages] = useState<ChatMessage[] | null>(null);
+    const [divergenceTargetMsgId, setDivergenceTargetMsgId] = useState<string | null>(null);
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -93,7 +107,7 @@ export function ChatArea() {
             setStreamingStats({ tokens, elapsed, speed });
         }, 500);
         return () => clearInterval(interval);
-    }, [pipelinePhase]);
+    }, [pipelinePhase, setStreamingStats]);
 
     const resetTextareaHeight = () => {
         if (inputRef.current) {
@@ -169,6 +183,7 @@ export function ChatArea() {
             getFreshContext: () => useAppStore.getState().context,
             sampling: storeSnapshot.getActivePreset()?.sampling,
             deepSearchThisTurn: deepSearch,
+            divergenceRegister: storeSnapshot.divergenceRegister,
         }, {
             onCheckingNotes: setIsCheckingNotes,
             addMessage: storeSnapshot.addMessage,
@@ -184,7 +199,9 @@ export function ChatArea() {
             setStreaming: setStreaming,
             setLoadingStatus: setLoadingStatus,
             setPipelinePhase: setPipelinePhase,
-            setLastPayloadTrace: storeSnapshot.setLastPayloadTrace
+            setLastPayloadTrace: storeSnapshot.setLastPayloadTrace,
+            setDivergenceRegister: storeSnapshot.setDivergenceRegister,
+            updateMessageDivergence: storeSnapshot.updateMessageDivergence,
         }, abortControllerRef.current);
 
         if (activeCampaignId) {
@@ -277,6 +294,88 @@ export function ChatArea() {
         clearArchiveFn(archiveDeps);
     };
 
+    const handleTagDivergence = (messageId: string) => {
+        const targetIndex = messages.findIndex(m => m.id === messageId);
+        if (targetIndex !== -1) {
+            const windowStart = Math.max(0, targetIndex - 10);
+            setDivergenceReviewMessages(messages.slice(windowStart, targetIndex + 1));
+        }
+    };
+
+    const handleAcceptReviewDivergences = (entries: DivergenceEntry[]) => {
+        if (entries.length === 0) {
+            setDivergenceReviewMessages(null);
+            return;
+        }
+        const currentReg = divergenceRegister || EMPTY_REGISTER;
+        const merged = mergeEntries(currentReg, entries, entries[0].sceneRef);
+        setDivergenceRegister(merged);
+        if (activeCampaignId) {
+            import('../store/campaignStore').then(({ saveDivergenceRegister }) =>
+                saveDivergenceRegister(activeCampaignId, merged)
+            ).catch(() => {});
+        }
+        toast.success(`Merged ${entries.length} new divergence(s)`);
+        setDivergenceReviewMessages(null);
+    };
+
+    const handleAddManualDivergence = (entry: DivergenceEntry) => {
+        const currentReg = useAppStore.getState().divergenceRegister || EMPTY_REGISTER;
+        const merged = mergeEntries(currentReg, [entry], 'manual');
+        setDivergenceRegister(merged);
+        if (divergenceTargetMsgId) {
+            const existingIds = messages.find(m => m.id === divergenceTargetMsgId)?.divergenceIds ?? [];
+            updateMessageDivergence(divergenceTargetMsgId, [...existingIds, entry.id]);
+        }
+        if (activeCampaignId) {
+            import('../store/campaignStore').then(({ saveDivergenceRegister }) =>
+                saveDivergenceRegister(activeCampaignId, merged)
+            ).catch(() => {});
+        }
+        toast.success(`Divergence added: ${entry.subject}`);
+    };
+
+    const handleResolveDivergence = (id: string) => {
+        const currentReg = useAppStore.getState().divergenceRegister || EMPTY_REGISTER;
+        const updated: DivergenceRegister = {
+            ...currentReg,
+            entries: currentReg.entries.map(e => e.id === id ? { ...e, resolved: true } : e),
+            lastUpdatedAt: Date.now(),
+        };
+        setDivergenceRegister(updated);
+        if (activeCampaignId) {
+            import('../store/campaignStore').then(({ saveDivergenceRegister }) =>
+                saveDivergenceRegister(activeCampaignId, updated)
+            ).catch(() => {});
+        }
+    };
+
+    const handleDeleteDivergence = (id: string) => {
+        const currentReg = useAppStore.getState().divergenceRegister || EMPTY_REGISTER;
+        const updated: DivergenceRegister = {
+            ...currentReg,
+            entries: currentReg.entries.filter(e => e.id !== id),
+            lastUpdatedAt: Date.now(),
+        };
+        setDivergenceRegister(updated);
+        if (activeCampaignId) {
+            import('../store/campaignStore').then(({ saveDivergenceRegister }) =>
+                saveDivergenceRegister(activeCampaignId, updated)
+            ).catch(() => {});
+        }
+    };
+
+    const handleEditDivergence = (id: string, patch: Partial<DivergenceEntry>) => {
+        const { editDivergenceEntry } = useAppStore.getState();
+        editDivergenceEntry(id, patch);
+        if (activeCampaignId) {
+            const updated = useAppStore.getState().divergenceRegister;
+            import('../store/campaignStore').then(({ saveDivergenceRegister }) =>
+                saveDivergenceRegister(activeCampaignId, updated)
+            ).catch(() => {});
+        }
+    };
+
     return (
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
             {context.sceneNoteActive && (
@@ -336,6 +435,7 @@ export function ChatArea() {
                         onStartEdit={startEditing}
                         onRegenerate={handleRegenerate}
                         onDelete={(id) => deleteMessage(id)}
+                        onTagDivergence={handleTagDivergence}
                     />
                 ))}
 
@@ -413,7 +513,7 @@ export function ChatArea() {
                     <Trash2 size={13} />
                     Clear Archive
                 </button>
-                {condenser.condensedSummary && (
+                {(condenser.condensedSummary || (divergenceRegister?.entries?.length ?? 0) > 0) && (
                     <button
                         onClick={() => setShowCondensed(prev => !prev)}
                         className="flex items-center gap-1.5 bg-void border border-amber-500/30 hover:border-amber-500 text-amber-500 text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-amber-500/5"
@@ -426,7 +526,7 @@ export function ChatArea() {
                 )}
             </div>
 
-            {showCondensed && condenser.condensedSummary && (
+            {showCondensed && (condenser.condensedSummary || (divergenceRegister?.entries?.length ?? 0) > 0) && (
                 <CondensedPanel
                     condensedSummary={condenser.condensedSummary}
                     condensedUpToIndex={condenser.condensedUpToIndex}
@@ -437,6 +537,32 @@ export function ChatArea() {
                         setCondensed(draft, currentMessages.length - 1);
                     }}
                     onReset={() => { resetCondenser(); setShowCondensed(false); }}
+                    divergenceRegister={divergenceRegister}
+                    onResolveDivergence={handleResolveDivergence}
+                    onDeleteDivergence={handleDeleteDivergence}
+                    onEditDivergence={handleEditDivergence}
+                    onAddManual={() => setDivergenceModalOpen(true)}
+                    provider={useAppStore.getState().getActiveUtilityEndpoint?.()}
+                    contextLimit={settings.contextLimit}
+                />
+            )}
+
+            {divergenceModalOpen && (
+                <DivergenceEntryModal
+                    onAdd={handleAddManualDivergence}
+                    onClose={() => { setDivergenceModalOpen(false); setDivergenceTargetMsgId(null); }}
+                    provider={useAppStore.getState().getActiveUtilityEndpoint?.()}
+                />
+            )}
+
+            {divergenceReviewMessages && useAppStore.getState().getActiveUtilityEndpoint?.() && (
+                <DivergenceReviewModal
+                    messages={divergenceReviewMessages}
+                    archiveIndex={archiveIndex}
+                    currentRegister={divergenceRegister || EMPTY_REGISTER}
+                    provider={useAppStore.getState().getActiveUtilityEndpoint?.() as EndpointConfig}
+                    onAccept={handleAcceptReviewDivergences}
+                    onClose={() => setDivergenceReviewMessages(null)}
                 />
             )}
 

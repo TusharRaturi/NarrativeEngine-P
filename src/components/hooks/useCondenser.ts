@@ -1,8 +1,10 @@
-import { useRef, useEffect } from 'react';
+import { useRef, useEffect, useState } from 'react';
 import { condenseHistory, shouldCondense } from '../../services/condenser';
 import { runSaveFilePipeline } from '../../services/saveFileEngine';
 import { api } from '../../services/apiClient';
 import { toast } from '../Toast';
+import { extractFromMessageBatch, buildSceneMap, mergeEntries } from '../../services/divergenceRegister';
+import { useAppStore } from '../../store/useAppStore';
 import type { ChatMessage, CondenserState, EndpointConfig, ProviderConfig, GameContext, NPCEntry, AppSettings, ArchiveIndexEntry } from '../../types';
 
 interface UseCondenserDeps {
@@ -25,6 +27,7 @@ interface UseCondenserDeps {
 
 export function useCondenser(deps: UseCondenserDeps) {
     const condenseAbortRef = useRef<AbortController | null>(null);
+    const [condensePhase, setCondensePhase] = useState<'save' | 'extract' | 'compress' | null>(null);
 
     useEffect(() => {
         if (deps.isStreaming || deps.condenser.isCondensing || !deps.activeCampaignId) return;
@@ -41,12 +44,14 @@ export function useCondenser(deps: UseCondenserDeps) {
                 condenseAbortRef.current = null;
             }
             deps.setCondensing(false);
+            setCondensePhase(null);
             deps.setLoadingStatus(null);
             toast.info('Condense cancelled');
             return;
         }
         condenseAbortRef.current = new AbortController();
         deps.setCondensing(true);
+        setCondensePhase('save');
         try {
             const provider = deps.getActiveSummarizerEndpoint?.()
                 ?? deps.getActiveStoryEndpoint();
@@ -67,6 +72,49 @@ export function useCondenser(deps: UseCondenserDeps) {
             const freshCtx = deps.getFreshContext();
             const npcLedger = deps.getNpcLedger();
             const campaignId = deps.activeCampaignId || '';
+
+            // --- BATCH DIVERGENCE EXTRACTION ---
+            setCondensePhase('extract');
+            deps.setLoadingStatus('Scanning for divergences...');
+            try {
+                if (campaignId) {
+                    const freshIndex = await api.archive.getIndex(campaignId);
+                    const { sceneIdsByMessageId } = buildSceneMap(freshIndex, uncondensed);
+                    
+                    const { divergenceRegister, setDivergenceRegister } = useAppStore.getState();
+                    const divergenceBudget = Math.floor(deps.settings.contextLimit * 0.45);
+                    
+                    const extractResult = await extractFromMessageBatch(
+                        provider as EndpointConfig,
+                        uncondensed,
+                        sceneIdsByMessageId,
+                        divergenceRegister,
+                        deps.settings.contextLimit,
+                        condenseAbortRef.current?.signal,
+                        divergenceBudget
+                    );
+                    
+                    if (extractResult.newEntries.length > 0) {
+                        const merged = mergeEntries(divergenceRegister, extractResult.newEntries, freshIndex[freshIndex.length - 1]?.sceneId || '000');
+                        setDivergenceRegister(merged);
+                        
+                        const { saveDivergenceRegister } = await import('../../store/campaignStore');
+                        await saveDivergenceRegister(campaignId, merged);
+                        
+                        if (extractResult.parseFailures > 0) {
+                            toast.warning(`Extracted ${extractResult.newEntries.length} divergences (${extractResult.parseFailures} parse errors)`);
+                        } else {
+                            toast.success(`Extracted ${extractResult.newEntries.length} divergences`);
+                        }
+                    }
+                }
+            } catch (extErr) {
+                if (extErr instanceof Error && extErr.name === 'AbortError') throw extErr;
+                console.error('[Condenser] Divergence extraction failed (non-fatal):', extErr);
+            }
+
+            // --- COMPRESS HISTORY ---
+            setCondensePhase('compress');
 
             let runningUpToIndex = deps.condenser.condensedUpToIndex;
             let runningSummary = deps.condenser.condensedSummary;
@@ -114,10 +162,11 @@ export function useCondenser(deps: UseCondenserDeps) {
             toast.error('Condenser failed — history was not compressed');
         } finally {
             deps.setCondensing(false);
+            setCondensePhase(null);
             deps.setLoadingStatus(null);
             condenseAbortRef.current = null;
         }
     };
 
-    return { triggerCondense, condenseAbortRef };
+    return { triggerCondense, condenseAbortRef, condensePhase };
 }

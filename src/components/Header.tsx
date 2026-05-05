@@ -20,12 +20,18 @@ export function Header() {
         context,
         messages,
         condenser,
+        divergenceRegister,
     } = useAppStore();
 
     const handleExit = async () => {
-        // Save current state before exiting
         if (activeCampaignId) {
             await saveCampaignState(activeCampaignId, { context, messages, condenser });
+            if (divergenceRegister && divergenceRegister.entries.length > 0) {
+                try {
+                    const { saveDivergenceRegister } = await import('../store/campaignStore');
+                    await saveDivergenceRegister(activeCampaignId, divergenceRegister);
+                } catch {}
+            }
         }
         setActiveCampaign(null);
     };

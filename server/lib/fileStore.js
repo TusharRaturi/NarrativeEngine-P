@@ -68,6 +68,10 @@ export function overworldPath(id) {
     return path.join(CAMPAIGNS_DIR, `${id}.overworld.json`);
 }
 
+export function divergencePath(id) {
+    return path.join(CAMPAIGNS_DIR, `${id}.divergence.json`);
+}
+
 export function getNextSceneNumber(id) {
     const fp = archivePath(id);
     if (!fs.existsSync(fp)) return 1;
@@ -99,7 +103,7 @@ const CAMPAIGN_FILE_SUFFIXES = [
     '.json', '.state.json', '.lore.json', '.npcs.json',
     '.archive.md', '.archive.index.json', '.archive.chapters.json',
     '.timeline.json', '.entities.json', '.facts.json',
-    '.overworld.json',
+    '.overworld.json', '.divergence.json',
 ];
 
 export function campaignFileNames(id) {

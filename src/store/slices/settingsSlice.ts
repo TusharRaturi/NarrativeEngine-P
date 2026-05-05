@@ -83,6 +83,8 @@ export const defaultSettings: AppSettings = {
     theme: 'light',
     showReasoning: true,
     deepContextSearch: false,
+    autoExtractDivergences: true,
+    divergenceTokenBudget: 2000,
 };
 
 export function applyTheme(theme: 'light' | 'dark') {
@@ -103,6 +105,8 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
             theme: (raw.theme as 'light' | 'dark') ?? 'light',
             showReasoning: (raw.showReasoning as boolean) ?? true,
             deepContextSearch: (raw.deepContextSearch as boolean) ?? false,
+            autoExtractDivergences: (raw.autoExtractDivergences as boolean) ?? true,
+            divergenceTokenBudget: (raw.divergenceTokenBudget as number) ?? 2000,
         };
     }
 
@@ -146,6 +150,8 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         theme: (raw.theme as 'light' | 'dark') ?? 'light',
         showReasoning: (raw.showReasoning as boolean) ?? true,
         deepContextSearch: (raw.deepContextSearch as boolean) ?? false,
+        autoExtractDivergences: (raw.autoExtractDivergences as boolean) ?? true,
+        divergenceTokenBudget: (raw.divergenceTokenBudget as number) ?? 2000,
     };
 }
 

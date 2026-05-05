@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { PayloadTrace } from '../../types';
+import type { PayloadTrace, PipelinePhase, StreamingStats } from '../../types';
 
 // ── Slice type ─────────────────────────────────────────────────────────
 
@@ -9,11 +9,15 @@ export type UISlice = {
     npcLedgerOpen: boolean;
     backupModalOpen: boolean;
     lastPayloadTrace?: PayloadTrace[];
+    pipelinePhase: PipelinePhase;
+    streamingStats: StreamingStats | null;
     toggleSettings: () => void;
     toggleDrawer: () => void;
     toggleNPCLedger: () => void;
     toggleBackupModal: () => void;
     setLastPayloadTrace: (trace?: PayloadTrace[]) => void;
+    setPipelinePhase: (phase: PipelinePhase) => void;
+    setStreamingStats: (stats: StreamingStats | null) => void;
 };
 
 // ── Slice creator ──────────────────────────────────────────────────────
@@ -23,9 +27,13 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     drawerOpen: true,
     npcLedgerOpen: false,
     backupModalOpen: false,
+    pipelinePhase: 'idle',
+    streamingStats: null,
     toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen })),
     toggleDrawer: () => set((s) => ({ drawerOpen: !s.drawerOpen })),
     toggleNPCLedger: () => set((s) => ({ npcLedgerOpen: !s.npcLedgerOpen })),
     toggleBackupModal: () => set((s) => ({ backupModalOpen: !s.backupModalOpen })),
     setLastPayloadTrace: (trace) => set({ lastPayloadTrace: trace }),
+    setPipelinePhase: (phase) => set({ pipelinePhase: phase }),
+    setStreamingStats: (stats) => set({ streamingStats: stats }),
 });

@@ -2,13 +2,15 @@ import { useAppStore } from './useAppStore';
 import {
     loadCampaignState, getLoreChunks, getNPCLedger,
     loadArchiveIndex, loadTimeline, loadChapters, loadEntities,
+    loadDivergenceRegister,
 } from './campaignStore';
 import { DEFAULT_CONTEXT, DEFAULT_CONDENSER } from '../services/campaignInit';
 import { migrateLegacyContext } from '../types';
 import type { GameContext } from '../types';
+import { backfillParseErrors } from '../services/divergenceRegister';
 
 export async function hydrateCampaign(campaignId: string) {
-    const [state, chunks, npcs, archiveIndex, timeline, chapters, entities] = await Promise.all([
+    const [state, chunks, npcs, archiveIndex, timeline, chapters, entities, divReg] = await Promise.all([
         loadCampaignState(campaignId),
         getLoreChunks(campaignId),
         getNPCLedger(campaignId),
@@ -16,6 +18,7 @@ export async function hydrateCampaign(campaignId: string) {
         loadTimeline(campaignId),
         loadChapters(campaignId),
         loadEntities(campaignId),
+        loadDivergenceRegister(campaignId),
     ]);
 
     const rawContext: GameContext = { ...DEFAULT_CONTEXT, ...(state?.context ?? {}) } as GameContext;
@@ -31,6 +34,7 @@ export async function hydrateCampaign(campaignId: string) {
         timeline: timeline ?? [],
         chapters: chapters ?? [],
         entities: entities ?? [],
+        divergenceRegister: backfillParseErrors(divReg ?? { entries: [], lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 1 }),
         activeCampaignId: campaignId,
         inventoryItems: migratedContext.inventoryItems,
         characterProfileData: migratedContext.characterProfileData,

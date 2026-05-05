@@ -9,8 +9,8 @@ import { getEventsByChapter } from '../../services/timelineResolver';
 import { CHAPTER_SCENE_SOFT_CAP } from '../../types';
 
 function SummaryText({ text }: { text: string }) {
-    const safe = typeof text === 'string' ? text : Array.isArray(text) ? text.join('\n') : String(text ?? '');
-    const lines = safe.split('\n').map(l => l.trim()).filter(Boolean);
+    const safe = typeof text === 'string' ? text : Array.isArray(text) ? (text as string[]).join('\n') : String(text ?? '');
+    const lines = safe.split('\n').map((l: string) => l.trim()).filter(Boolean);
     const isBullet = (l: string) => l.startsWith('- ') || l.startsWith('• ');
     if (lines.some(isBullet)) {
         return (

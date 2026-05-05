@@ -6,15 +6,17 @@ import { DEFAULT_RULES } from '../services/defaultRules';
 import {
     minifyBookkeepingStub,
 } from '../services/contextMinifier';
+import { countRegisterTokens } from '../services/divergenceRegister';
 
 export function TokenGauge() {
-    const { context, settings, condenser, inventoryItems, characterProfileData } = useAppStore(
+    const { context, settings, condenser, inventoryItems, characterProfileData, divergenceRegister } = useAppStore(
         useShallow(s => ({
             context: s.context,
             settings: s.settings,
             condenser: s.condenser,
             inventoryItems: s.inventoryItems ?? s.context.inventoryItems ?? [],
             characterProfileData: s.characterProfileData ?? s.context.characterProfileData ?? null,
+            divergenceRegister: s.divergenceRegister,
         }))
     );
     const messages = useAppStore(s => s.messages);
@@ -48,6 +50,13 @@ export function TokenGauge() {
 
     const systemTokens = useMemo(() => countTokens(systemText), [systemText]);
 
+    const registerTokens = useMemo(() => {
+        if (!divergenceRegister || divergenceRegister.entries.length === 0) return 0;
+        return countRegisterTokens(divergenceRegister);
+    }, [divergenceRegister]);
+
+    const adjustedSystemTokens = systemTokens + registerTokens;
+
     const historyText = useMemo(() => {
         const activeMessages = (condenser.condensedUpToIndex !== undefined && condenser.condensedUpToIndex >= 0)
             ? messages.slice(condenser.condensedUpToIndex + 1)
@@ -58,9 +67,9 @@ export function TokenGauge() {
     const historyTokens = useMemo(() => countTokens(historyText), [historyText]);
 
     const total = settings.contextLimit;
-    const remaining = Math.max(0, total - systemTokens - historyTokens);
+    const remaining = Math.max(0, total - adjustedSystemTokens - historyTokens);
 
-    const pctSystem = Math.min((systemTokens / total) * 100, 100);
+    const pctSystem = Math.min((adjustedSystemTokens / total) * 100, 100);
     const pctHistory = Math.min((historyTokens / total) * 100, 100 - pctSystem);
     const pctFree = 100 - pctSystem - pctHistory;
 
@@ -86,7 +95,7 @@ export function TokenGauge() {
             </div>
 
             <div className="flex gap-3 text-[10px] shrink-0">
-                <span className="text-ember">SYS:{systemTokens}</span>
+                <span className="text-ember">SYS:{adjustedSystemTokens}{registerTokens > 0 ? <span className="text-amber-400">(+{registerTokens})</span> : ''}</span>
                 <span className="text-ice">HIS:{historyTokens}</span>
                 <span className="text-text-dim">FREE:{remaining}</span>
             </div>

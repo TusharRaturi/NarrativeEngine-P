@@ -1,10 +1,11 @@
-import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, PayloadTrace, TimelineEvent, DebugSection, InventoryItemCategory } from '../types';
+import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, PayloadTrace, TimelineEvent, DebugSection, InventoryItemCategory, DivergenceRegister } from '../types';
 import type { OpenAIMessage } from './llmService';
 import { countTokens } from './tokenizer';
 import { buildBehaviorDirective, buildDriftAlert, buildKnowledgeBoundary } from './npcBehaviorDirective';
 import { minifyLoreChunk, minifyNPC, minifyBookkeepingStub, minifySelectedInventory, minifySelectedProfile } from './contextMinifier';
 import { resolveTimeline, formatResolvedForContext } from './timelineResolver';
 import { DEFAULT_RULES } from './defaultRules';
+import { renderRegisterForPayload } from './divergenceRegister';
 
 
 /**
@@ -13,7 +14,7 @@ import { DEFAULT_RULES } from './defaultRules';
  */
 export function extractJson(text: string): string {
     // 1. Remove reasoning blocks if present
-    let clean = text.replace(/<think>[\s\S]*?<\/think>/gi, '');
+    let clean = text.replace(/<think[\s\S]*?<\/think\s*>/gi, '');
 
     // 2. Try to find content between triple backticks first
     const markdownMatch = clean.match(/```(?:json)?\s*([\s\S]*?)```/i);
@@ -58,7 +59,8 @@ export function buildPayload(
     timelineEvents?: TimelineEvent[],
     inventoryCategories?: (InventoryItemCategory | 'equipped')[],
     profileFields?: string[],
-    deepContextSummary?: string
+    deepContextSummary?: string,
+    divergenceRegister?: DivergenceRegister
 ): { messages: OpenAIMessage[]; trace?: PayloadTrace[]; debugSections?: DebugSection[] } {
     const trace: PayloadTrace[] = [];
     const debugSections: DebugSection[] = [];
@@ -238,6 +240,14 @@ export function buildPayload(
                 return line;
             }).join('\n')}\n[END NPC CONTEXT]`;
             worldBlocks.push({ source: 'Active NPCs', content: npcText, tokens: countTokens(npcText), reason: `NPCs detected in context (${activeNPCs.length}, minified)` });
+        }
+    }
+
+    // Divergence Register
+    if (divergenceRegister && divergenceRegister.entries.length > 0) {
+        const regText = renderRegisterForPayload(divergenceRegister);
+        if (regText) {
+            worldBlocks.push({ source: 'Divergence Register', content: regText, tokens: countTokens(regText), reason: `Campaign facts (${divergenceRegister.entries.length} entries)` });
         }
     }
 

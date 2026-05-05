@@ -1,4 +1,4 @@
-import type { ArchiveChapter, Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, SemanticFact, EntityEntry, BackupMeta, TimelineEvent } from '../types';
+import type { ArchiveChapter, Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, SemanticFact, EntityEntry, BackupMeta, TimelineEvent, DivergenceRegister } from '../types';
 
 import { API_BASE as API } from '../lib/apiBase';
 
@@ -239,5 +239,19 @@ export async function updateChapter(campaignId: string, chapterId: string, patch
         body: JSON.stringify(patch),
     });
     if (!res.ok) return undefined;
+    return res.json();
+}
+
+export async function saveDivergenceRegister(campaignId: string, register: DivergenceRegister): Promise<void> {
+    await fetch(`${API}/campaigns/${campaignId}/divergence`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(register),
+    });
+}
+
+export async function loadDivergenceRegister(campaignId: string): Promise<DivergenceRegister> {
+    const res = await fetch(`${API}/campaigns/${campaignId}/divergence`);
+    if (!res.ok) return { entries: [], lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 1 };
     return res.json();
 }

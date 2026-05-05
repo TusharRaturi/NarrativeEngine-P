@@ -6,6 +6,7 @@ import { recallArchiveScenes, retrieveArchiveMemory, fetchArchiveScenes } from '
 import { rankChapters, recallWithChapterFunnel } from './archiveChapterEngine';
 import { recommendContext } from './contextRecommender';
 import { deepArchiveScan } from './deepArchiveSearch';
+import { getDivergenceSceneIds, EMPTY_REGISTER, buildSceneMap } from './divergenceRegister';
 
 export type GatheredContext = {
     sceneNumber: string | undefined;
@@ -35,6 +36,14 @@ export async function gatherContext(
     signal?: AbortSignal
 ): Promise<GatheredContext> {
     const { input, messages, loreChunks, npcLedger, archiveIndex, activeCampaignId, context } = state;
+
+    const candidateMessages = (state.condenser?.condensedSummary && state.condenser?.condensedUpToIndex !== undefined && state.condenser.condensedUpToIndex >= 0)
+        ? messages.slice(state.condenser.condensedUpToIndex + 1)
+        : messages;
+    const sceneMap = archiveIndex.length > 0 ? buildSceneMap(archiveIndex, candidateMessages) : null;
+    const excludeSceneIds = sceneMap
+        ? new Set(Object.values(sceneMap.sceneIdsByMessageId))
+        : undefined;
 
     // Prepare mutable state for parallel promises
     let sceneNumber: string | undefined;
@@ -100,7 +109,9 @@ export async function gatherContext(
                 const result = await recallArchiveScenes(
                     activeCampaignId, archiveIndex, input, messages, 3000,
                     npcLedger, (state as any).semanticFacts,
-                    undefined, semanticArchiveIds
+                    undefined, semanticArchiveIds,
+                    getDivergenceSceneIds(state.divergenceRegister || EMPTY_REGISTER),
+                    excludeSceneIds
                 );
                 archiveRecall = result;
                 return;
@@ -116,7 +127,7 @@ export async function gatherContext(
             const funnelPromise = recallWithChapterFunnel(
                 chapters, archiveIndex, input, messages,
                 npcLedger, (state as any).semanticFacts, utilityConfig,
-                activeCampaignId, 3000
+                activeCampaignId, 3000, excludeSceneIds
             );
 
             const timeoutPromise = new Promise<ArchiveScene[]>((resolve) => {
@@ -131,7 +142,9 @@ export async function gatherContext(
                     const matchedIds = retrieveArchiveMemory(
                         archiveIndex, input, messages, npcLedger,
                         undefined, (state as any).semanticFacts, fallbackRanges,
-                        undefined, semanticArchiveIds
+                        undefined, semanticArchiveIds,
+                        getDivergenceSceneIds(state.divergenceRegister || EMPTY_REGISTER),
+                        excludeSceneIds
                     );
                     fetchArchiveScenes(activeCampaignId!, matchedIds, 3000)
                         .then(resolve)
@@ -146,7 +159,9 @@ export async function gatherContext(
                 archiveRecall = await recallArchiveScenes(
                     activeCampaignId, archiveIndex, input, messages, 3000,
                     npcLedger, (state as any).semanticFacts,
-                    undefined, semanticArchiveIds
+                    undefined, semanticArchiveIds,
+                    getDivergenceSceneIds(state.divergenceRegister || EMPTY_REGISTER),
+                    excludeSceneIds
                 );
             }
         })()
@@ -211,7 +226,9 @@ export async function gatherContext(
             const scoredIds = retrieveArchiveMemory(
                 archiveIndex, input, messages, npcLedger,
                 undefined, (state as any).semanticFacts,
-                pinnedRanges, undefined, semanticArchiveIds
+                pinnedRanges, undefined, semanticArchiveIds,
+                getDivergenceSceneIds(state.divergenceRegister || EMPTY_REGISTER),
+                excludeSceneIds
             ).filter(id => !alreadyCoveredIds.has(id));
 
             if (scoredIds.length > 0) {

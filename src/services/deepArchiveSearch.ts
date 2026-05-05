@@ -7,7 +7,7 @@ const TIMEOUT_SCENE_SCAN_MS = 210_000;
 const TIMEOUT_SUMMARIZE_MS = 180_000;
 
 function extractJson(text: string): string {
-    let clean = text.replace(/<tool_call>[\s\S]*?<\/think>/gi, '');
+    let clean = text.replace(/<think[\s\S]*?<\/think\s*>/gi, '');
     const mdMatch = clean.match(/```(?:json)?\s*([\s\S]*?)```/i);
     if (mdMatch) clean = mdMatch[1];
     const firstObj = clean.indexOf('{');
@@ -85,7 +85,7 @@ function buildSceneOverview(
         const parts = [`[${entry.sceneId}] imp:${entry.importance ?? 5}`];
         if (entry.npcsMentioned.length > 0) parts.push(`npcs:${entry.npcsMentioned.join(',')}`);
         if (entry.keywords.length > 0) parts.push(`kw:${entry.keywords.slice(0, 8).join(',')}`);
-        if (!compact && entry.userSnippet) parts.push(`"${entry.userSnippet.slice(0, 120)}"`);
+        if (entry.userSnippet) parts.push(`"${entry.userSnippet.slice(0, compact ? 60 : 120)}"`);
         return parts.join(' ');
     }).join('\n');
 }

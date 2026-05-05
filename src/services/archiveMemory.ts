@@ -17,7 +17,8 @@ function scoreEntry(
     contextText: string,
     contextActivations: Record<string, number>,
     totalScenes: number,
-    npcPerspective?: string
+    npcPerspective?: string,
+    divergenceSceneIds?: Set<string>
 ): number {
     // D1: Recency bonus (always positive, logarithmic — never zero)
     const sceneNum = parseInt(entry.sceneId, 10) || 0;
@@ -75,6 +76,11 @@ function scoreEntry(
         } else if (witnesses.length > 0) {
             score *= 0.3;
         }
+    }
+
+    // D4: Divergence boost — scenes that contain divergence entries are critical for consistency
+    if (divergenceSceneIds && divergenceSceneIds.has(entry.sceneId)) {
+        score += 5.0;
     }
 
     return score;
@@ -196,7 +202,9 @@ export function retrieveArchiveMemory(
     semanticFacts?: { subject: string; predicate: string; object: string; importance: number }[],
     sceneRanges?: [string, string][],
     npcPerspective?: string,
-    semanticCandidateIds?: string[]
+    semanticCandidateIds?: string[],
+    divergenceSceneIds?: Set<string>,
+    excludeSceneIds?: Set<string>
 ): string[] {
     if (!index || index.length === 0) {
         console.log('[Archive Retrieval] Index is empty — no recall.');
@@ -229,10 +237,18 @@ export function retrieveArchiveMemory(
         scopedIndex = scopedIndex.filter(entry => candidateSet.has(entry.sceneId));
     }
 
+    if (excludeSceneIds && excludeSceneIds.size > 0) {
+        const before = scopedIndex.length;
+        scopedIndex = scopedIndex.filter(entry => !excludeSceneIds.has(entry.sceneId));
+        if (before !== scopedIndex.length) {
+            console.log(`[Archive Retrieval] Excluded ${before - scopedIndex.length} scene(s) already in fitted history.`);
+        }
+    }
+
     const totalScenes = scopedIndex.length;
     const scored = scopedIndex.map(entry => ({
         sceneId: entry.sceneId,
-        score: scoreEntry(entry, contextText, contextActivations, totalScenes, npcPerspective),
+        score: scoreEntry(entry, contextText, contextActivations, totalScenes, npcPerspective, divergenceSceneIds),
     }));
 
     const sorted = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score);
@@ -316,9 +332,11 @@ export async function recallArchiveScenes(
     npcLedger?: NPCEntry[],
     semanticFacts?: { subject: string; predicate: string; object: string; importance: number }[],
     npcPerspective?: string,
-    semanticCandidateIds?: string[]
+    semanticCandidateIds?: string[],
+    divergenceSceneIds?: Set<string>,
+    excludeSceneIds?: Set<string>
 ): Promise<ArchiveScene[]> {
-    const matchedIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, npcPerspective, semanticCandidateIds);
+    const matchedIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, npcPerspective, semanticCandidateIds, divergenceSceneIds, excludeSceneIds);
     if (matchedIds.length === 0) return [];
     return fetchArchiveScenes(campaignId, matchedIds, tokenBudget);
 }
