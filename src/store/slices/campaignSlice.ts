@@ -269,6 +269,8 @@ export type CampaignSlice = {
     removeNPC: (id: string) => void;
     archiveNPC: (id: string, turn: number, reason: string) => void;
     restoreNPC: (id: string) => void;
+    onStageNpcIds: string[];
+    setOnStageNpcIds: (ids: string[]) => void;
     semanticFacts: SemanticFact[];
     setSemanticFacts: (facts: SemanticFact[]) => void;
     timeline: TimelineEvent[];
@@ -428,6 +430,8 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
         debouncedSaveNPCLedger(s.activeCampaignId, newLedger);
         return { npcLedger: newLedger };
     }),
+    onStageNpcIds: [],
+    setOnStageNpcIds: (ids) => set({ onStageNpcIds: ids } as Partial<CampaignDeps>),
     semanticFacts: [],
     setSemanticFacts: (facts) => set({ semanticFacts: facts } as Partial<CampaignDeps>),
     timeline: [],

@@ -1,4 +1,4 @@
-import type { ChatMessage } from '../types';
+import type { ChatMessage, NPCEntry } from '../types';
 import type { TurnState, TurnCallbacks } from './turnOrchestrator';
 import { useAppStore } from '../store/useAppStore';
 import { api } from './apiClient';
@@ -15,6 +15,32 @@ import { toast } from '../components/Toast';
 import { mergeSealEntries, EMPTY_REGISTER } from './divergenceRegister';
 import { saveDivergenceRegister } from '../store/campaignStore';
 
+const PRESENT_HEADER_RE = /👥\s*\[Present\]\s*(.+)/i;
+
+function parsePresentHeader(content: string): string[] | null {
+    const match = content.match(PRESENT_HEADER_RE);
+    if (!match) return null;
+    return match[1].split(/[,;]/).map(n => n.trim()).filter(Boolean);
+}
+
+function resolveNPCIds(
+    names: string[],
+    npcLedger: NPCEntry[]
+): string[] {
+    const nameToId = new Map<string, string>();
+    for (const npc of npcLedger) {
+        const nameLower = npc.name.toLowerCase();
+        nameToId.set(nameLower, npc.id);
+        if (npc.aliases) {
+            npc.aliases.split(',').map(a => a.trim().toLowerCase()).filter(Boolean)
+                .forEach(a => nameToId.set(a, npc.id));
+        }
+    }
+    return names
+        .map(n => nameToId.get(n.toLowerCase()))
+        .filter((id): id is string => !!id);
+}
+
 export async function runPostTurnPipeline(
     state: TurnState,
     callbacks: TurnCallbacks,
@@ -29,6 +55,15 @@ export async function runPostTurnPipeline(
         runNPCTrack(state, callbacks, lastAssistantContent, allMsgs, npcLedger, activeCampaignId),
         runPressureTrack(state, callbacks, displayInput, npcLedger, activeCampaignId),
     ]);
+
+    // ── On-Stage NPC Tracking ──
+    const presentNames = parsePresentHeader(lastAssistantContent);
+    if (presentNames && presentNames.length > 0) {
+        const resolved = resolveNPCIds(presentNames, npcLedger);
+        callbacks.setOnStageNpcIds?.(resolved);
+    } else {
+        callbacks.setOnStageNpcIds?.([]);
+    }
 
     for (const r of results) {
         if (r.status === 'rejected') {

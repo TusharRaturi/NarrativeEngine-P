@@ -204,6 +204,7 @@ export function ChatArea() {
             setPipelinePhase: setPipelinePhase,
             setLastPayloadTrace: storeSnapshot.setLastPayloadTrace,
             setDivergenceRegister: storeSnapshot.setDivergenceRegister,
+            setOnStageNpcIds: storeSnapshot.setOnStageNpcIds,
         }, abortControllerRef.current);
 
         if (activeCampaignId) {

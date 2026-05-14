@@ -25,6 +25,7 @@ export type TurnCallbacks = {
     setLoadingStatus?: (status: string | null) => void;
     setPipelinePhase?: (phase: PipelinePhase) => void;
     setDivergenceRegister?: (register: DivergenceRegister) => void;
+    setOnStageNpcIds?: (ids: string[]) => void;
 };
 
 export type TurnState = {
