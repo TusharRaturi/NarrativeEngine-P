@@ -67,7 +67,8 @@ export function ChatArea() {
     const [loadStep, setLoadStep] = useState(10);
     const [showCondensed, setShowCondensed] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
-    const [deepSearchArmed, setDeepSearchArmed] = useState(false);
+    const deepArmed = useAppStore(s => s.deepArmed);
+    const setDeepArmed = useAppStore(s => s.setDeepArmed);
     const bottomRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
@@ -149,7 +150,8 @@ export function ChatArea() {
         const textToUse = overrideText || input.trim();
         if (!textToUse || isStreaming) return;
 
-        if (deepSearchArmed && !deepSearch) setDeepSearchArmed(false);
+        const useDeepSearch = deepSearch || deepArmed;
+        if (deepArmed) setDeepArmed(false);
 
         if (!overrideText) {
             setInput('');
@@ -185,7 +187,7 @@ export function ChatArea() {
             autoBookkeepingInterval: storeSnapshot.autoBookkeepingInterval,
             getFreshContext: () => useAppStore.getState().context,
             sampling: storeSnapshot.getActivePreset()?.sampling,
-            deepSearchThisTurn: deepSearch,
+            deepSearchThisTurn: useDeepSearch,
             divergenceRegister: storeSnapshot.divergenceRegister,
         }, {
             onCheckingNotes: setIsCheckingNotes,
@@ -252,7 +254,7 @@ export function ChatArea() {
 
     const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
         setInput(e.target.value);
-        if (deepSearchArmed) setDeepSearchArmed(false);
+        if (deepArmed) setDeepArmed(false);
         if (inputRef.current) {
             inputRef.current.style.height = '40px';
             const newHeight = Math.min(inputRef.current.scrollHeight, 240);
@@ -392,21 +394,14 @@ export function ChatArea() {
                 </button>
                 {settings.deepContextSearch && (
                     <button
-                        onClick={() => {
-                            if (deepSearchArmed) {
-                                setDeepSearchArmed(false);
-                                handleSend(undefined, true);
-                            } else {
-                                setDeepSearchArmed(true);
-                            }
-                        }}
-                        disabled={isStreaming || !input.trim() || !activeCampaignId}
-                        className={`flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all disabled:opacity-30 disabled:cursor-not-allowed ${deepSearchArmed ? 'border-amber-500 text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'border-amber-500/30 hover:border-amber-500 text-amber-500 hover:bg-amber-500/5'}`}
-                        title={deepSearchArmed ? 'Click again to send with Deep Archive Search' : 'Arm Deep Archive Search (click to arm, click again to send)'}
+                        onClick={() => setDeepArmed(!deepArmed)}
+                        disabled={isStreaming || !activeCampaignId}
+                        className={`flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all disabled:opacity-30 disabled:cursor-not-allowed ${deepArmed ? 'border-amber-500 text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'border-amber-500/30 hover:border-amber-500 text-amber-500 hover:bg-amber-500/5'}`}
+                        title={deepArmed ? 'Deep Search armed — type to send normally, or Esc to disarm' : 'Arm Deep Archive Search (sends on next Enter)'}
                     >
                         <Search size={13} />
-                        <span className="hidden xs:inline">{deepSearchArmed ? 'DEEP SEARCH — CLICK TO FIRE' : 'Deep Search'}</span>
-                        <span className="inline xs:hidden">{deepSearchArmed ? 'FIRE' : 'Deep'}</span>
+                        <span className="hidden xs:inline">{deepArmed ? 'DEEP SEARCH ARMED' : 'Deep Search'}</span>
+                        <span className="inline xs:hidden">{deepArmed ? 'ARMED' : 'Deep'}</span>
                     </button>
                 )}
                 <button
@@ -490,6 +485,11 @@ export function ChatArea() {
                             </select>
                             <svg className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-text-dim pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
                         </div>
+                        {deepArmed && (
+                            <div className="shrink-0 mb-[4px] px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-widest bg-amber-500/15 text-amber-400 border border-amber-500/40 rounded animate-pulse">
+                                Deep
+                            </div>
+                        )}
                         <textarea
                             ref={inputRef}
                             value={input}

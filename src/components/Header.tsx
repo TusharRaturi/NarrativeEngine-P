@@ -1,4 +1,4 @@
-import { Settings, PanelLeftOpen, PanelLeftClose, Trash2, LogOut, Users, Archive, Save } from 'lucide-react';
+import { Settings, PanelLeftOpen, PanelLeftClose, Trash2, LogOut, Users, Archive, Save, ScanSearch } from 'lucide-react';
 import { createBackup } from '../store/campaignStore';
 import { flushAllPendingSaves } from '../store/slices/campaignSlice';
 import { toast } from './Toast';
@@ -22,6 +22,10 @@ export function Header() {
         condenser,
         divergenceRegister,
     } = useAppStore();
+
+    const deepArmed = useAppStore(s => s.deepArmed);
+    const toggleDeepArmed = useAppStore(s => s.toggleDeepArmed);
+    const settings = useAppStore(s => s.settings);
 
     const handleExit = async () => {
         if (activeCampaignId) {
@@ -110,6 +114,17 @@ export function Header() {
             >
                 <Users size={18} />
             </button>
+
+            {settings.deepContextSearch && (
+                <button
+                    onClick={toggleDeepArmed}
+                    className={`p-1 transition-colors ${deepArmed ? 'text-amber-400 animate-pulse' : 'text-text-dim hover:text-amber-400'}`}
+                    title={deepArmed ? 'Deep Search armed — send to activate' : 'Arm Deep Archive Search'}
+                    aria-label="Toggle Deep Archive Search"
+                >
+                    <ScanSearch size={18} />
+                </button>
+            )}
 
             <button
                 onClick={toggleSettings}

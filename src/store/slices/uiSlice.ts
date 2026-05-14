@@ -31,6 +31,9 @@ export type UISlice = {
     divergenceEntryOpen: boolean;
     openDivergenceEntry: () => void;
     closeDivergenceEntry: () => void;
+    deepArmed: boolean;
+    setDeepArmed: (v: boolean) => void;
+    toggleDeepArmed: () => void;
 };
 
 // ── Slice creator ──────────────────────────────────────────────────────
@@ -62,4 +65,7 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     divergenceEntryOpen: false,
     openDivergenceEntry: () => set({ divergenceEntryOpen: true }),
     closeDivergenceEntry: () => set({ divergenceEntryOpen: false }),
+    deepArmed: false,
+    setDeepArmed: (v) => set({ deepArmed: v }),
+    toggleDeepArmed: () => set((s) => ({ deepArmed: !s.deepArmed })),
 });
