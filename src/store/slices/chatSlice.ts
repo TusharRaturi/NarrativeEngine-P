@@ -1,6 +1,5 @@
 import type { StateCreator } from 'zustand';
 import type { ArchiveIndexEntry, ChatMessage, CondenserState, GameContext, DivergenceRegister, DivergenceEntry, DivergenceCategory } from '../../types';
-import { safeSceneNum } from '../../utils/helpers';
 import { debouncedSaveCampaignState } from './campaignSlice';
 
 const MAX_PRUNED_LOG = 100;
@@ -22,8 +21,7 @@ export type ChatSlice = {
     clearArchive: () => void;
 
     condenser: CondenserState;
-    setCondensed: (summary: string, upToIndex: number) => void;
-    setCondensing: (v: boolean) => void;
+    setCondensed: (upToIndex: number) => void;
     resetCondenser: () => void;
     setCondenser: (state: CondenserState) => void;
 
@@ -57,22 +55,17 @@ type ChatDeps = ChatSlice & {
 export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) => ({
     // Condenser defaults
     condenser: {
-        condensedSummary: '',
         condensedUpToIndex: -1,
-        isCondensing: false,
     },
-    setCondensed: (summary, upToIndex) =>
+    setCondensed: (upToIndex) =>
         set((s) => {
-            const safeSummary = summary || s.condenser.condensedSummary;
-            const newCondenser = { ...s.condenser, condensedSummary: safeSummary, condensedUpToIndex: upToIndex };
+            const newCondenser = { ...s.condenser, condensedUpToIndex: upToIndex };
             debouncedSaveCampaignState();
             return { condenser: newCondenser };
         }),
-    setCondensing: (v) =>
-        set((s) => ({ condenser: { ...s.condenser, isCondensing: v } })),
     resetCondenser: () =>
         set(() => {
-            const newCondenser = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
+            const newCondenser = { condensedUpToIndex: -1 };
             debouncedSaveCampaignState();
             return { condenser: newCondenser };
         }),
@@ -247,7 +240,7 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
         }),
     setStreaming: (v) => set({ isStreaming: v } as Partial<ChatDeps>),
     clearChat: () => set((_s) => {
-        const newCondenser = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
+        const newCondenser = { condensedUpToIndex: -1 };
         const newDivReg = { entries: [], chapterToggles: {}, categoryToggles: {}, lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 2 };
         debouncedSaveCampaignState();
         return { messages: [], condenser: newCondenser, divergenceRegister: newDivReg, context: { ..._s.context, notebook: [] } } as Partial<ChatDeps>;

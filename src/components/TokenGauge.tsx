@@ -44,9 +44,8 @@ export function TokenGauge() {
             parts.push(`[PLAYER INVENTORY]\n${legacyInventory}`);
         }
 
-        if (condenser.condensedSummary) parts.push(condenser.condensedSummary);
         return parts.join('\n\n');
-    }, [context, condenser.condensedSummary, characterProfileData, inventoryItems, legacyProfile, legacyInventory]);
+    }, [context, characterProfileData, inventoryItems, legacyProfile, legacyInventory]);
 
     const systemTokens = useMemo(() => countTokens(systemText), [systemText]);
 

@@ -74,7 +74,7 @@ export async function gatherContext(
 ): Promise<GatheredContext> {
     const { input, messages, loreChunks, npcLedger, archiveIndex, activeCampaignId, context } = state;
 
-    const candidateMessages = (state.condenser?.condensedSummary && state.condenser?.condensedUpToIndex !== undefined && state.condenser.condensedUpToIndex >= 0)
+    const candidateMessages = (state.condenser?.condensedUpToIndex !== undefined && state.condenser.condensedUpToIndex >= 0)
         ? messages.slice(state.condenser.condensedUpToIndex + 1)
         : messages;
     const sceneMap = archiveIndex.length > 0 ? buildSceneMap(archiveIndex, candidateMessages) : null;

@@ -30,7 +30,7 @@ export const DEFAULT_CONTEXT = {
     notebookActive: true,
 };
 
-export const DEFAULT_CONDENSER = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
+export const DEFAULT_CONDENSER = { condensedUpToIndex: -1 };
 
 export async function initializeCampaignState(params: {
     campaignId: string;
@@ -80,7 +80,7 @@ export async function initializeCampaignState(params: {
         }
         await saveCampaignState(campaignId, {
             context: { ...DEFAULT_CONTEXT, ...ctx }, messages: existingState?.messages ?? [],
-            condenser: { ...(existingState?.condenser ?? DEFAULT_CONDENSER), isCondensing: false },
+            condenser: { ...(existingState?.condenser ?? DEFAULT_CONDENSER) },
         });
     }
 }

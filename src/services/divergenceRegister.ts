@@ -1,4 +1,4 @@
-import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveChapter, ArchiveIndexEntry, ChatMessage, EndpointConfig, ProviderConfig } from '../types';
+import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, EndpointConfig, ProviderConfig } from '../types';
 import { uid } from '../utils/uid';
 import { countTokens } from './tokenizer';
 import { toast } from '../components/Toast';
@@ -108,7 +108,9 @@ export function mergeSealEntries(
 
 export function renderRegisterForPayload(
     register: DivergenceRegister,
-    chapters?: import('../types').ArchiveChapter[]
+    chapters?: import('../types').ArchiveChapter[],
+    onStageNpcIds?: string[],
+    npcLedger?: NPCEntry[]
 ): string {
     if (register.entries.length === 0) return '';
 
@@ -120,8 +122,8 @@ export function renderRegisterForPayload(
     }
 
     const activeEntries = register.entries.filter(e => {
-        if (e.pinned) return true;
         if (e.enabled === false) return false;
+        if (e.pinned) return true;
         const chapterOn = register.chapterToggles[e.chapterId] !== false;
         if (!chapterOn) return false;
         const catToggles = register.categoryToggles[e.chapterId];
@@ -131,44 +133,101 @@ export function renderRegisterForPayload(
 
     if (activeEntries.length === 0) return '';
 
+    const onStageSet = new Set(onStageNpcIds ?? []);
+    const offStageSet = new Set<string>();
+    if (npcLedger && onStageSet.size > 0) {
+        for (const n of npcLedger) {
+            if (!n.archived && !onStageSet.has(n.id)) {
+                offStageSet.add(n.id);
+            }
+        }
+    }
+
     const byChapter = new Map<string, DivergenceEntry[]>();
     for (const e of activeEntries) {
         if (!byChapter.has(e.chapterId)) byChapter.set(e.chapterId, []);
         byChapter.get(e.chapterId)!.push(e);
     }
 
-    const sections: string[] = [];
-
-    for (const [chapterId, chapterEntries] of byChapter) {
-        const title = chapterTitleMap.get(chapterId) ?? `Chapter ${chapterId}`;
+    const renderEntries = (entries: DivergenceEntry[]): string => {
         const byCategory = new Map<DivergenceCategory, DivergenceEntry[]>();
-        for (const e of chapterEntries) {
+        for (const e of entries) {
             if (!byCategory.has(e.category)) byCategory.set(e.category, []);
             byCategory.get(e.category)!.push(e);
         }
 
         const catSections: string[] = [];
-        for (const [cat, entries] of byCategory) {
+        for (const [cat, catEntries] of byCategory) {
             const label = CATEGORY_LABELS[cat] ?? cat.toUpperCase();
-            const lines = entries.map(e => {
+            const lines = catEntries.map(e => {
                 const pin = e.pinned ? ' ★' : '';
                 const manual = e.source === 'manual' ? ' ⚡' : '';
                 return `• ${e.text}${pin}${manual}`;
             });
             catSections.push(`${label}:\n${lines.join('\n')}`);
         }
+        return catSections.join('\n\n');
+    };
 
-        sections.push(`${title}:\n${catSections.join('\n\n')}`);
+    if (onStageSet.size === 0 || offStageSet.size === 0) {
+        const sections: string[] = [];
+        for (const [chapterId, chapterEntries] of byChapter) {
+            const title = chapterTitleMap.get(chapterId) ?? `Chapter ${chapterId}`;
+            sections.push(`${title}:\n${renderEntries(chapterEntries)}`);
+        }
+        const pinnedCount = register.entries.filter(e => e.pinned).length;
+        const banner = `${activeEntries.length} active facts across ${byChapter.size} chapters${pinnedCount > 0 ? ` · ${pinnedCount} pinned` : ''}`;
+        return `[ESTABLISHED FACTS]\n[${banner}]\nThese facts are TRUE in this campaign.\n\n${sections.join('\n\n')}\n[END ESTABLISHED FACTS]`;
     }
 
+    const onStageEntries = activeEntries;
+    const offStageEntries = activeEntries.filter(e => {
+        if (e.knownBy === undefined) return true;
+        return e.knownBy.some(id => offStageSet.has(id));
+    });
+
+    const sections: string[] = [];
+    for (const [chapterId, chapterEntries] of byChapter) {
+        const title = chapterTitleMap.get(chapterId) ?? `Chapter ${chapterId}`;
+        sections.push(`${title}:\n${renderEntries(chapterEntries)}`);
+    }
     const pinnedCount = register.entries.filter(e => e.pinned).length;
     const banner = `${activeEntries.length} active facts across ${byChapter.size} chapters${pinnedCount > 0 ? ` · ${pinnedCount} pinned` : ''}`;
 
-    return `[ESTABLISHED FACTS]\n[${banner}]\nThese facts are TRUE in this campaign.\n\n${sections.join('\n\n')}\n[END ESTABLISHED FACTS]`;
+    if (offStageEntries.length === activeEntries.length) {
+        return `[ESTABLISHED FACTS]\n[${banner}]\nThese facts are TRUE in this campaign.\n\n${sections.join('\n\n')}\n[END ESTABLISHED FACTS]`;
+    }
+
+    const onStageSections: string[] = [];
+    const onStageByChapter = new Map<string, DivergenceEntry[]>();
+    for (const e of onStageEntries) {
+        if (!onStageByChapter.has(e.chapterId)) onStageByChapter.set(e.chapterId, []);
+        onStageByChapter.get(e.chapterId)!.push(e);
+    }
+    for (const [chapterId, chapterEntries] of onStageByChapter) {
+        const title = chapterTitleMap.get(chapterId) ?? `Chapter ${chapterId}`;
+        onStageSections.push(`${title}:\n${renderEntries(chapterEntries)}`);
+    }
+
+    const offStageSections: string[] = [];
+    const offStageByChapter = new Map<string, DivergenceEntry[]>();
+    for (const e of offStageEntries) {
+        if (!offStageByChapter.has(e.chapterId)) offStageByChapter.set(e.chapterId, []);
+        offStageByChapter.get(e.chapterId)!.push(e);
+    }
+    for (const [chapterId, chapterEntries] of offStageByChapter) {
+        const title = chapterTitleMap.get(chapterId) ?? `Chapter ${chapterId}`;
+        offStageSections.push(`${title}:\n${renderEntries(chapterEntries)}`);
+    }
+
+    const onStageBanner = `${onStageEntries.length} facts (on-stage view · all)`;
+    const offStageBanner = `${offStageEntries.length} facts (off-stage view · bounded)`;
+
+    return `[ESTABLISHED FACTS — ON-STAGE]\n[${onStageBanner}]\n${onStageSections.join('\n\n')}\n[END ON-STAGE FACTS]\n\n[ESTABLISHED FACTS — OFF-STAGE]\n[${offStageBanner}]\n${offStageSections.join('\n\n')}\n[END OFF-STAGE FACTS]`;
 }
 
-export function countRegisterTokens(register: DivergenceRegister, chapters?: import('../types').ArchiveChapter[]): number {
-    return countTokens(renderRegisterForPayload(register, chapters));
+export function countRegisterTokens(register: DivergenceRegister): number {
+    return countTokens(renderRegisterForPayload(register));
 }
 
 export function getDivergenceSceneIds(register: DivergenceRegister): Set<string> {

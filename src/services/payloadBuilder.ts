@@ -157,7 +157,6 @@ export function buildPayload(
     context: GameContext,
     history: ChatMessage[],
     userMessage: string,
-    condensedSummary?: string,
     condensedUpToIndex?: number,
     relevantLore?: LoreChunk[],
     npcLedger?: NPCEntry[],
@@ -184,13 +183,11 @@ export function buildPayload(
     const budgetMap = deepContextSummary
         ? {
             stable: Math.floor(limit * 0.15),
-            summary: Math.floor(limit * 0.10),
             world: Math.floor(limit * 0.60),
             volatile: Math.floor(limit * 0.10),
         }
         : {
             stable: Math.floor(limit * 0.25),
-            summary: Math.floor(limit * 0.10),
             world: Math.floor(limit * 0.40),
             volatile: Math.floor(limit * 0.10),
         };
@@ -230,14 +227,6 @@ export function buildPayload(
     addTrace({ source: 'Stable Preamble', classification: 'stable_truth', tokens: stableTokens, reason: 'Rules & Core state', included: true, position: 'system_static' });
     addSection({ label: 'Stable Preamble', role: 'system', tokens: stableTokens, content: stableContent, classification: 'stable_truth' });
 
-    let summaryContent = '';
-    if (condensedSummary) {
-        summaryContent = `[CONDENSED SESSION HISTORY]\n${condensedSummary}\n[END CONDENSED HISTORY]`;
-    }
-    const summaryTokens = countTokens(summaryContent);
-    addTrace({ source: 'Condensed Summary', classification: 'summary', tokens: summaryTokens, reason: 'Compressed session history', included: !!summaryContent, position: 'system_summary' });
-    addSection({ label: 'Condensed Summary', role: 'system', tokens: summaryTokens, content: summaryContent, classification: 'summary' });
-
     // --- 3. Gather trimmable World Context (Medium Priority) ---
     const worldBlocks: { source: string; content: string; tokens: number; reason: string }[] = [];
 
@@ -251,10 +240,6 @@ export function buildPayload(
 
         let filteredRecall = archiveRecall.filter(scene => {
             if (activeAssistantContents.some(asst => scene.content.includes(asst))) return false;
-            if (condensedSummary && scene.content.length > 100) {
-                const slug = scene.content.slice(0, 100).toLowerCase();
-                if (condensedSummary.toLowerCase().includes(slug)) return false;
-            }
             return true;
         });
 
@@ -411,7 +396,7 @@ export function buildPayload(
 
     // Divergence Register
     if (divergenceRegister && divergenceRegister.entries.length > 0) {
-        const regText = renderRegisterForPayload(divergenceRegister, chapters);
+        const regText = renderRegisterForPayload(divergenceRegister, chapters, onStageNpcIds, npcLedger);
         if (regText) {
             worldBlocks.push({ source: 'Established Facts', content: regText, tokens: countTokens(regText), reason: `Campaign facts (${divergenceRegister.entries.length} entries)` });
         }
@@ -490,10 +475,10 @@ ${profBlock}`);
 
     // --- 6. Fit History ---
     const userTokens = countTokens(userMessage);
-    const reservedTotal = stableTokens + summaryTokens + currentWorldTokens + volatileTokens + userTokens;
+    const reservedTotal = stableTokens + currentWorldTokens + volatileTokens + userTokens;
     const historyBudget = Math.max(0, limit - reservedTotal - 200); // Small safety margin of 200 tokens
 
-    const candidateMessages = (condensedSummary && condensedUpToIndex !== undefined && condensedUpToIndex >= 0)
+    const candidateMessages = (condensedUpToIndex !== undefined && condensedUpToIndex >= 0)
         ? history.slice(condensedUpToIndex + 1)
         : history;
 
@@ -582,7 +567,6 @@ ${profBlock}`);
     // --- 8. Final Assembly ---
     const messages: OpenAIMessage[] = [];
     if (stableContent) messages.push({ role: 'system', content: stableContent });
-    if (summaryContent) messages.push({ role: 'system', content: summaryContent });
     if (worldContent || volatileContent) {
         messages.push({ role: 'system', content: [worldContent, volatileContent].filter(Boolean).join('\n\n') });
     }

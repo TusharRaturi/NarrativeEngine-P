@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Send, Save, Loader2, Zap, Scroll, Edit2, X, Square, FileText, ChevronDown, ChevronUp, Trash2, Search } from 'lucide-react';
+import { Send, Save, Loader2, Zap, Scroll, Edit2, X, Square, Trash2, Search } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { runTurn } from '../services/turnOrchestrator';
 import { set } from 'idb-keyval';
@@ -8,7 +8,6 @@ import { toast } from './Toast';
 import { debouncedSaveCampaignState } from '../store/slices/campaignSlice';
 import { rollbackArchiveFrom, openArchive as openArchiveFn, clearArchive as clearArchiveFn } from '../services/archiveManager';
 import { MessageBubble } from './MessageBubble';
-import { CondensedPanel } from './CondensedPanel';
 import { GenerationProgress } from './GenerationProgress';
 import { useCondenser } from './hooks/useCondenser';
 import { useChapterSealing } from './hooks/useChapterSealing';
@@ -34,7 +33,7 @@ export function ChatArea() {
 
     const {
         setArchiveIndex, clearArchive, updateLastAssistant, updateContext,
-        setCondensed, setCondensing, deleteMessage, deleteMessagesFrom,
+        setCondensed, deleteMessage, deleteMessagesFrom,
         resetCondenser, setTimeline, setChapters,
         pipelinePhase, streamingStats, setPipelinePhase, setStreamingStats,
     } = useAppStore(
@@ -44,7 +43,6 @@ export function ChatArea() {
             updateLastAssistant: s.updateLastAssistant,
             updateContext: s.updateContext,
             setCondensed: s.setCondensed,
-            setCondensing: s.setCondensing,
             deleteMessage: s.deleteMessage,
             deleteMessagesFrom: s.deleteMessagesFrom,
             resetCondenser: s.resetCondenser,
@@ -65,7 +63,6 @@ export function ChatArea() {
     const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
     const [visibleCount, setVisibleCount] = useState(10);
     const [loadStep, setLoadStep] = useState(10);
-    const [showCondensed, setShowCondensed] = useState(false);
     const [isSaving, setIsSaving] = useState(false);
     const deepArmed = useAppStore(s => s.deepArmed);
     const setDeepArmed = useAppStore(s => s.setDeepArmed);
@@ -101,40 +98,16 @@ export function ChatArea() {
         return () => clearInterval(interval);
     }, [pipelinePhase, setStreamingStats]);
 
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && condenser.isCondensing && condenseAbortRef.current) {
-                condenseAbortRef.current.abort();
-                condenseAbortRef.current = null;
-                toast.info('Condensation cancelled');
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [condenser.isCondensing]);
-
     const resetTextareaHeight = () => {
         if (inputRef.current) {
             inputRef.current.style.height = '40px';
         }
     };
 
-    const { triggerCondense, condenseAbortRef } = useCondenser({
-        activeCampaignId,
-        isStreaming,
+    const { triggerCondense } = useCondenser({
         messages,
         condenser,
-        settings,
-        setCondensing,
         setCondensed,
-        setArchiveIndex,
-        setTimeline,
-        updateContext,
-        setLoadingStatus,
-        getActiveSummarizerEndpoint: () => useAppStore.getState().getActiveSummarizerEndpoint?.(),
-        getActiveStoryEndpoint: () => useAppStore.getState().getActiveStoryEndpoint(),
-        getFreshContext: () => useAppStore.getState().context,
-        getNpcLedger: () => useAppStore.getState().npcLedger,
     });
 
     const { handleSealChapter, checkAndSealChapter } = useChapterSealing({
@@ -205,7 +178,6 @@ export function ChatArea() {
             updateNPC: storeSnapshot.updateNPC,
             addNPC: storeSnapshot.addNPC,
             setCondensed: setCondensed,
-            setCondensing: setCondensing,
             setStreaming: setStreaming,
             setLoadingStatus: setLoadingStatus,
             setPipelinePhase: setPipelinePhase,
@@ -390,12 +362,12 @@ export function ChatArea() {
                 </button>
                 <button
                     onClick={triggerCondense}
-                    disabled={isStreaming || (!condenser.isCondensing && messages.length < 6) || condenser.isCondensing}
+                    disabled={isStreaming || messages.length < 6}
                     className="flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
-                    title={condenser.isCondensing ? 'Condensation in progress (press Esc to cancel)' : 'Condense history'}
+                    title="Condense history"
                 >
-                    {condenser.isCondensing ? <Loader2 size={13} className="animate-spin" /> : <Zap size={13} />}
-                    {condenser.isCondensing ? 'Condensing...' : 'Condense'}
+                    <Zap size={13} />
+                    Condense
                 </button>
                 {settings.deepContextSearch && (
                     <button
@@ -434,32 +406,7 @@ export function ChatArea() {
                     <Trash2 size={13} />
                     Clear Archive
                 </button>
-                {(condenser.condensedSummary) && (
-                    <button
-                        onClick={() => setShowCondensed(prev => !prev)}
-                        className="flex items-center gap-1.5 bg-void border border-amber-500/30 hover:border-amber-500 text-amber-500 text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-amber-500/5"
-                        title="View / Edit condensed summary"
-                    >
-                        <FileText size={13} />
-                        Memory
-                        {showCondensed ? <ChevronUp size={11} /> : <ChevronDown size={11} />}
-                    </button>
-                )}
             </div>
-
-            {showCondensed && condenser.condensedSummary && (
-                <CondensedPanel
-                    condensedSummary={condenser.condensedSummary}
-                    condensedUpToIndex={condenser.condensedUpToIndex}
-                    messageCount={messages.length}
-                    onSave={(draft) => setCondensed(draft, condenser.condensedUpToIndex)}
-                    onRetcon={(draft) => {
-                        const currentMessages = useAppStore.getState().messages;
-                        setCondensed(draft, currentMessages.length - 1);
-                    }}
-                    onReset={() => { resetCondenser(); setShowCondensed(false); }}
-                />
-            )}
 
             <div className="flex-shrink-0 bg-void border-t border-border">
                 {editingMessageId && (

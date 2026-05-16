@@ -48,7 +48,7 @@ const makeState = (overrides: Partial<TurnState> = {}): TurnState => ({
     settings: {} as any,
     context: baseContext(),
     messages: [],
-    condenser: { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false },
+    condenser: { condensedUpToIndex: -1 },
     loreChunks: [],
     npcLedger: [],
     archiveIndex: [],

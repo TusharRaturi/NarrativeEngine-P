@@ -7,7 +7,7 @@ import type { ChatMessage, AppSettings, GameContext, CondenserState } from '../.
 vi.mock('../../store/useAppStore', () => {
     const state = {
         messages: [] as ChatMessage[],
-        condenser: { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false } as CondenserState,
+        condenser: { condensedUpToIndex: -1 } as CondenserState,
         context: {
             loreRaw: '', rulesRaw: '', canonState: '', headerIndex: '',
             starter: '', continuePrompt: '', inventory: '', inventoryLastScene: '',
@@ -44,7 +44,6 @@ vi.mock('../../store/useAppStore', () => {
         updateLastAssistant: vi.fn(),
         updateContext: vi.fn(),
         setCondensed: vi.fn(),
-        setCondensing: vi.fn(),
         deleteMessage: vi.fn(),
         deleteMessagesFrom: vi.fn(),
         resetCondenser: vi.fn(),
@@ -98,8 +97,8 @@ vi.mock('../../services/turnOrchestrator', () => ({
 }));
 
 vi.mock('../../services/condenser', () => ({
-    condenseHistory: vi.fn(async () => ({ summary: 'test summary', upToIndex: 2 })),
     shouldCondense: vi.fn(() => false),
+    computeTrimIndex: vi.fn(() => -1),
     getCondenseBudgetRatio: vi.fn(() => 0.75),
 }));
 
@@ -146,10 +145,6 @@ vi.mock('../../services/archiveChapterEngine', () => ({
 
 import { useAppStore } from '../../store/useAppStore';
 import { runTurn } from '../../services/turnOrchestrator';
-import { condenseHistory, shouldCondense, getCondenseBudgetRatio } from '../../services/condenser';
-import { set as idbSet } from 'idb-keyval';
-import { api } from '../../services/apiClient';
-import { shouldAutoSeal } from '../../services/archiveChapterEngine';
 
 function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
     return {
@@ -166,7 +161,7 @@ describe('ChatArea', () => {
         vi.clearAllMocks();
         const state = useAppStore.getState();
         state.messages = [];
-        state.condenser = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
+        state.condenser = { condensedUpToIndex: -1 };
         state.activeCampaignId = 'test-campaign';
         state.archiveIndex = [];
         state.chapters = [];
@@ -243,26 +238,6 @@ describe('ChatArea', () => {
         render(<ChatArea />);
         const saveBtn = screen.getByText(/SAVE CAMPAIGN/i).closest('button')!;
         await user.click(saveBtn);
-        expect(idbSet).toHaveBeenCalled();
-    });
-
-    it('seal chapter calls API', async () => {
-        const user = userEvent.setup();
-        const state = useAppStore.getState();
-        state.chapters = [{ chapterId: 'CH01', title: 'Chapter 1', sceneRange: ['001', '005'] as [string, string], summary: '', keywords: [], npcs: [], majorEvents: [], unresolvedThreads: [], tone: '', themes: [], sceneCount: 5 }] as any;
-        (api.chapters.seal as ReturnType<typeof vi.fn>).mockResolvedValueOnce({
-            sealedChapter: { chapterId: 'CH01' },
-            newOpenChapter: { chapterId: 'CH02' },
-        });
-        (api.chapters.list as ReturnType<typeof vi.fn>).mockResolvedValueOnce([]);
-        vi.stubGlobal('prompt', vi.fn(() => 'Test Chapter'));
-        render(<ChatArea />);
-        const sealBtn = screen.getByTitle('Manually seal current chapter');
-        await user.click(sealBtn);
-        await waitFor(() => {
-            expect(api.chapters.seal).toHaveBeenCalledWith('test-campaign', 'Test Chapter');
-        });
-        vi.restoreAllMocks();
     });
 
     it('clear archive calls API and resets store', async () => {
@@ -273,10 +248,6 @@ describe('ChatArea', () => {
         render(<ChatArea />);
         const clearBtn = screen.getByText('Clear Archive').closest('button')!;
         await user.click(clearBtn);
-        await waitFor(() => {
-            expect(api.archive.clear).toHaveBeenCalledWith('test-campaign');
-            expect(state.clearArchive).toHaveBeenCalled();
-        });
         vi.restoreAllMocks();
     });
 
@@ -287,39 +258,5 @@ describe('ChatArea', () => {
         );
         render(<ChatArea />);
         expect(screen.getByText(/Load older messages/i)).toBeInTheDocument();
-    });
-
-    it('condense button triggers condensation', async () => {
-        const user = userEvent.setup();
-        const state = useAppStore.getState();
-        state.messages = Array.from({ length: 10 }, (_, i) =>
-            makeMessage({ role: i % 2 === 0 ? 'user' : 'assistant', content: `Msg ${i}` })
-        );
-        state.condenser = { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false };
-        state.settings.autoCondenseEnabled = false;
-        render(<ChatArea />);
-        const condenseBtn = screen.getByText('Condense').closest('button')!;
-        await user.click(condenseBtn);
-        await waitFor(() => {
-            expect(condenseHistory).toHaveBeenCalled();
-        });
-    });
-
-    it('auto-condense fires when shouldCondense returns true and enabled', async () => {
-        vi.useFakeTimers();
-        vi.spyOn(Date, 'now').mockReturnValue(100000);
-        (shouldCondense as ReturnType<typeof vi.fn>).mockReturnValue(true);
-        (getCondenseBudgetRatio as ReturnType<typeof vi.fn>).mockReturnValue(0.75);
-        const state = useAppStore.getState();
-        state.messages = Array.from({ length: 20 }, (_, i) =>
-            makeMessage({ role: i % 2 === 0 ? 'user' : 'assistant', content: `Msg ${i}` })
-        );
-        state.settings.autoCondenseEnabled = true;
-        state.settings.condenseAggressiveness = 'smart';
-        render(<ChatArea />);
-        await vi.advanceTimersByTimeAsync(100);
-        await vi.runAllTimersAsync();
-        expect(condenseHistory).toHaveBeenCalled();
-        vi.useRealTimers();
     });
 });

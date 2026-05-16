@@ -1,3 +1,5 @@
+import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from './condenser';
+import { useAppStore } from '../store/useAppStore';
 import type { AppSettings, GameContext, ChatMessage, NPCEntry, LoreChunk, CondenserState, ArchiveIndexEntry, TimelineEvent, EndpointConfig, ProviderConfig, ArchiveChapter, SamplingConfig, PipelinePhase, DivergenceRegister, ThinkingEffort } from '../types';
 import { uid } from '../utils/uid';
 import { buildPayload, sendMessage } from './chatEngine';
@@ -18,8 +20,7 @@ export type TurnCallbacks = {
     setTimeline?: (events: TimelineEvent[]) => void;
     updateNPC: (id: string, patch: Partial<NPCEntry>) => void;
     addNPC: (npc: NPCEntry) => void;
-    setCondensed: (summary: string, upToIndex: number) => void;
-    setCondensing: (v: boolean) => void;
+    setCondensed: (upToIndex: number) => void;
     setStreaming: (v: boolean) => void;
     setLastPayloadTrace?: (trace: any) => void;
     setLoadingStatus?: (status: string | null) => void;
@@ -111,7 +112,6 @@ export async function runTurn(
         context,
         messages,
         finalInput,
-        condenser.condensedSummary || undefined,
         condenser.condensedUpToIndex,
         relevantLore,
         npcLedger,
@@ -362,6 +362,19 @@ export async function runTurn(
                 if (combinedContent && activeCampaignId) {
                     await runPostTurnPipeline(state, callbacks, combinedContent, allMsgs);
                 }
+
+                const allMsgs2 = state.getMessages();
+                const liveStore = useAppStore.getState();
+                const liveSettings = liveStore.settings;
+                const liveCondenser = liveStore.condenser;
+                if (liveSettings.autoCondenseEnabled && shouldCondense(allMsgs2, liveSettings.contextLimit,
+                    liveCondenser.condensedUpToIndex, getCondenseBudgetRatio(liveSettings.condenseAggressiveness ?? 'smart'))) {
+                    const newIndex = computeTrimIndex(allMsgs2, liveCondenser.condensedUpToIndex);
+                    if (newIndex !== liveCondenser.condensedUpToIndex) {
+                        callbacks.setCondensed(newIndex);
+                    }
+                }
+
                 callbacks.setPipelinePhase?.('idle');
             },
             (err) => {

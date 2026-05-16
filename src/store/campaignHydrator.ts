@@ -63,7 +63,7 @@ export async function hydrateCampaign(campaignId: string) {
     useAppStore.setState({
         context: migratedContext,
         messages: state?.messages ?? [],
-        condenser: { ...(state?.condenser ?? DEFAULT_CONDENSER), isCondensing: false },
+        condenser: { ...(state?.condenser ?? DEFAULT_CONDENSER) },
         loreChunks: chunks,
         npcLedger: npcs,
         archiveIndex: archiveIndex ?? [],

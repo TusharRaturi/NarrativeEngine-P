@@ -517,23 +517,18 @@ export function SettingsModal() {
                                     <label className="text-[10px] text-text-dim uppercase tracking-wider">
                                         Divergence Token Budget
                                     </label>
-                                    <span className="text-amber-500 font-bold font-mono bg-amber-500/10 px-2 py-0.5 rounded text-[10px]">
-                                        {settings.divergenceTokenBudget ?? 2000}
-                                    </span>
                                 </div>
                                 <input
-                                    type="range"
+                                    type="number"
                                     min={500}
-                                    max={4000}
                                     step={250}
                                     value={settings.divergenceTokenBudget ?? 2000}
-                                    onChange={(e) => updateSettings({ divergenceTokenBudget: parseInt(e.target.value) })}
-                                    className="w-full h-1.5 bg-border rounded-lg appearance-none cursor-pointer accent-amber-500"
+                                    onChange={(e) => {
+                                        const v = parseInt(e.target.value);
+                                        if (!isNaN(v) && v > 0) updateSettings({ divergenceTokenBudget: v });
+                                    }}
+                                    className="w-full h-7 bg-surface border border-border rounded px-2 text-xs text-text font-mono focus:outline-none focus:border-amber-500"
                                 />
-                                <div className="flex justify-between text-[8px] text-text-dim mt-0.5">
-                                    <span>500</span>
-                                    <span>4000</span>
-                                </div>
                             </div>
                             <div>
                                 <div className="flex items-center justify-between mb-1">

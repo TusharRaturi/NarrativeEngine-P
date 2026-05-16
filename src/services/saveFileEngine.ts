@@ -446,10 +446,10 @@ The "summary" value must be this JSON shape:
 The "divergences" value must be an object with one key per category slot. Each value is an array of fact objects, or [] if empty. Example:
 {
     "locations": [
-        { "text": "Eastern gate destroyed by siege", "sceneRef": "014", "npcIds": [], "unrecognizedNpcNames": [] }
+        { "text": "Eastern gate destroyed by siege", "sceneRef": "014", "npcIds": [], "knownBy": [], "unrecognizedNpcNames": [] }
     ],
     "npc_events": [
-        { "text": "Grak allied with the player", "sceneRef": "018", "npcIds": ["npc_42"], "unrecognizedNpcNames": [] }
+        { "text": "Grak allied with the player", "sceneRef": "018", "npcIds": ["npc_42"], "knownBy": ["npc_42"], "unrecognizedNpcNames": [] }
     ],
     "promises_debts": [],
     "world_state": [],
@@ -470,6 +470,7 @@ DIVERGENCE EXTRACTION RULES:
 - Each fact is ONE SHORT SENTENCE, max 15 words. No compound sentences, no explanations.
 - sceneRef must be one of: ${sceneIds.join(', ')}
 - npcIds: list the NPC ledger IDs mentioned. If a name appears that is NOT in the ledger, put it in unrecognizedNpcNames instead.
+- knownBy: list the NPC ledger IDs of witnesses who SAW or PARTICIPATED in this event. Only include NPCs who were present when the fact happened. Omit this field for rules_lore and locations (those are broadcast knowledge). If unsure, omit knownBy.
 - Focus on: permanent changes, new information, relationship shifts, acquisitions, losses, oaths, regime changes.
 - Skip transient details, emotional narration, momentary states, and anything the archive would already surface.
 - If a slot is empty, output [] for that slot.
@@ -564,6 +565,27 @@ export function parseCombinedSealOutput(
 
                 const hasReviewFlag = stillUnrecognized.length > 0;
 
+                let knownBy: string[] | undefined = undefined;
+                if (Array.isArray(rawItem.knownBy)) {
+                    const resolvedKnown: string[] = [];
+                    for (const kb of rawItem.knownBy) {
+                        if (typeof kb !== 'string') continue;
+                        if (npcLedger.some(n => n.id === kb)) {
+                            resolvedKnown.push(kb);
+                        } else {
+                            const nameMatch = npcNameMap.get(kb.toLowerCase());
+                            if (nameMatch) {
+                                if (!resolvedKnown.includes(nameMatch)) resolvedKnown.push(nameMatch);
+                            }
+                        }
+                    }
+                    if (resolvedKnown.length > 0) knownBy = resolvedKnown;
+                }
+
+                if (category === 'rules_lore' || category === 'locations') {
+                    knownBy = undefined;
+                }
+
                 entries.push({
                     id: `div_${uid()}`,
                     chapterId,
@@ -571,6 +593,7 @@ export function parseCombinedSealOutput(
                     text,
                     sceneRef,
                     npcIds: resolvedNpcIds,
+                    knownBy,
                     pinned: false,
                     source: 'auto',
                     reviewFlag: hasReviewFlag || undefined,

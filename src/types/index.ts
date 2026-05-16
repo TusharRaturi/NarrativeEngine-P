@@ -122,6 +122,7 @@ export type DivergenceEntry = {
     text: string;
     sceneRef: string;
     npcIds: string[];
+    knownBy?: string[];
     pinned: boolean;
     enabled?: boolean;
     source: 'auto' | 'manual';
@@ -166,9 +167,7 @@ export type AppSettings = {
 };
 
 export type CondenserState = {
-    condensedSummary: string;
     condensedUpToIndex: number;
-    isCondensing: boolean;
 };
 
 export type DiceConfig = {

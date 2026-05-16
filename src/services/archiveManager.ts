@@ -65,9 +65,7 @@ export async function rollbackArchiveFrom(deps: ArchiveManagerDeps, fromTimestam
         const rollbackAffectsCondensed = !lastCondensedMsg || fromTimestamp <= lastCondensedMsg.timestamp;
         if (rollbackAffectsCondensed) {
             deps.setCondenser({
-                condensedSummary: '',
                 condensedUpToIndex: -1,
-                isCondensing: false,
             });
             console.log('[Archive] Condenser reset — rollback affected condensed portion');
         } else {
@@ -97,9 +95,7 @@ export async function clearArchive(deps: ArchiveManagerDeps): Promise<void> {
         deps.clearArchive();
         deps.setChapters([]);
         deps.setCondenser({
-            condensedSummary: '',
             condensedUpToIndex: -1,
-            isCondensing: false,
         });
         console.log('[Archive] Cleared successfully');
     } catch (err) {

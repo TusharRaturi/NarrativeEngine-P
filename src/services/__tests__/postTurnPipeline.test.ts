@@ -66,7 +66,7 @@ const makeState = (overrides: Partial<TurnState> = {}): TurnState => ({
     settings: {} as any,
     context: baseContext(),
     messages: [],
-    condenser: { condensedSummary: '', condensedUpToIndex: -1, isCondensing: false },
+    condenser: { condensedUpToIndex: -1 },
     loreChunks: [],
     npcLedger: [],
     archiveIndex: [],
@@ -96,7 +96,6 @@ const makeCallbacks = (): TurnCallbacks => ({
     updateNPC: vi.fn(),
     addNPC: vi.fn(),
     setCondensed: vi.fn(),
-    setCondensing: vi.fn(),
     setStreaming: vi.fn(),
     setLoadingStatus: vi.fn(),
 });
