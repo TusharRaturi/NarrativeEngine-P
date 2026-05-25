@@ -2,6 +2,18 @@ import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+let safeStorage = null;
+if (process.versions.electron) {
+    try {
+        const electron = require('electron');
+        safeStorage = electron.safeStorage;
+    } catch (e) {
+        console.warn('[Vault] Could not load Electron safeStorage:', e);
+    }
+}
 
 // File format:
 // [4B: magic "NEV1"]
@@ -195,9 +207,24 @@ export class KeyVault {
         if (!this.hasRememberedKey()) return false;
 
         try {
-            const hexKey = fs.readFileSync(this.rememberPath, 'utf-8').trim();
-            const key = Buffer.from(hexKey, 'hex');
+            const fileData = fs.readFileSync(this.rememberPath);
+            let hexKey;
 
+            // Check for OS_SECURE prefix signature
+            const prefix = Buffer.from('OS_SECURE:', 'utf-8');
+            if (fileData.slice(0, prefix.length).equals(prefix)) {
+                if (safeStorage && safeStorage.isEncryptionAvailable()) {
+                    const encryptedData = fileData.slice(prefix.length);
+                    hexKey = safeStorage.decryptString(encryptedData);
+                } else {
+                    throw new Error('Remembered key is OS-secure encrypted, but safeStorage is unavailable');
+                }
+            } else {
+                // Legacy plaintext hex key fallback (e.g., development mode or pre-existing keys)
+                hexKey = fileData.toString('utf-8').trim();
+            }
+
+            const key = Buffer.from(hexKey, 'hex');
             const encrypted = fs.readFileSync(this.vaultPath);
 
             let vaultData;
@@ -212,6 +239,7 @@ export class KeyVault {
             this.derivedKey = key;
             return true;
         } catch (err) {
+            console.error('[Vault] Remembered key unlock failed:', err);
             this.clearRememberedKey();
             return false;
         }
@@ -271,7 +299,24 @@ export class KeyVault {
         if (!this.derivedKey) {
             throw new Error('No key to remember');
         }
-        fs.writeFileSync(this.rememberPath, this.derivedKey.toString('hex'), 'utf-8');
+        const rawKey = this.derivedKey.toString('hex');
+        
+        if (safeStorage && safeStorage.isEncryptionAvailable()) {
+            try {
+                const encrypted = safeStorage.encryptString(rawKey);
+                const prefix = Buffer.from('OS_SECURE:', 'utf-8');
+                const fileBuffer = Buffer.concat([prefix, encrypted]);
+                fs.writeFileSync(this.rememberPath, fileBuffer);
+                console.log('[Vault] Saved remembered key securely using OS credential storage');
+                return;
+            } catch (err) {
+                console.error('[Vault] safeStorage encryption failed, falling back to plain storage:', err);
+            }
+        }
+        
+        // Development mode or system fallback
+        fs.writeFileSync(this.rememberPath, rawKey, 'utf-8');
+        console.warn('[Vault] Remembered key stored in plaintext format (development fallback)');
     }
 
     /**

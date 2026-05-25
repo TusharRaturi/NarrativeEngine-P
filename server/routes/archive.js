@@ -1,6 +1,18 @@
 import fs from 'fs';
 import path from 'path';
 import { Router } from 'express';
+import { createRequire } from 'module';
+
+const require = createRequire(import.meta.url);
+let shell = null;
+if (process.versions.electron) {
+    try {
+        const electron = require('electron');
+        shell = electron.shell;
+    } catch (e) {
+        console.warn('[Archive] Could not load Electron shell:', e);
+    }
+}
 import {
     readJson, writeJson, ensureDirs,
     archivePath, archiveIndexPath, chaptersPath, entitiesPath, timelinePath,
@@ -324,16 +336,30 @@ export function createArchiveRouter() {
         if (!fs.existsSync(fp)) {
             return res.status(404).json({ error: 'No archive yet' });
         }
-        // Windows: start; macOS: open; Linux: xdg-open
-        const cmd = process.platform === 'win32' ? 'start ""'
-            : process.platform === 'darwin' ? 'open' : 'xdg-open';
 
-        import('child_process').then(({ exec }) => {
-            exec(`${cmd} "${fp}"`, (err) => {
-                if (err) return res.status(500).json({ error: 'Failed to open archive' });
+        if (shell) {
+            shell.openPath(fp).then(errorMsg => {
+                if (errorMsg) {
+                    console.error('[Archive] shell.openPath failed:', errorMsg);
+                    return res.status(500).json({ error: `Failed to open archive: ${errorMsg}` });
+                }
                 res.json({ ok: true });
+            }).catch(err => {
+                console.error('[Archive] shell.openPath rejected:', err);
+                res.status(500).json({ error: 'Failed to open archive' });
             });
-        });
+        } else {
+            // Standalone development mode fallback
+            const cmd = process.platform === 'win32' ? 'start ""'
+                : process.platform === 'darwin' ? 'open' : 'xdg-open';
+
+            import('child_process').then(({ exec }) => {
+                exec(`${cmd} "${fp}"`, (err) => {
+                    if (err) return res.status(500).json({ error: 'Failed to open archive' });
+                    res.json({ ok: true });
+                });
+            });
+        }
     }));
 
     router.post('/api/campaigns/:id/archive/semantic-candidates', wrapAsync(async (req, res) => {
