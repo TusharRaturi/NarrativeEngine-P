@@ -75,7 +75,7 @@ app.use((err, _req, res, _next) => {
 });
 
 // ─── Start ───
-app.listen(PORT, () => {
+app.listen(PORT, '127.0.0.1', () => {
     console.log(`[GM-Cockpit API] ✓ Running on http://localhost:${PORT}`);
     console.log(`[GM-Cockpit API]   Data dir: ${DATA_DIR}`);
 });

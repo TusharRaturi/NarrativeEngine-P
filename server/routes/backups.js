@@ -1,7 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { Router } from 'express';
-import { CAMPAIGNS_DIR, BACKUPS_DIR, readJson } from '../lib/fileStore.js';
+import { CAMPAIGNS_DIR, BACKUPS_DIR, readJson, validateCampaignId, campaignFileNames } from '../lib/fileStore.js';
 import { createBackup } from '../services/backup.js';
 
 export function createBackupsRouter() {
@@ -14,6 +14,7 @@ export function createBackupsRouter() {
     router.post('/api/campaigns/:id/backup', (req, res) => {
         try {
             const id = req.params.id;
+            validateCampaignId(id);
             const campaignFile = path.join(CAMPAIGNS_DIR, `${id}.json`);
             if (!fs.existsSync(campaignFile)) {
                 return res.json({ skipped: true, reason: 'Campaign file not yet saved to disk' });
@@ -26,13 +27,15 @@ export function createBackupsRouter() {
             res.json(result);
         } catch (err) {
             console.error('[Backup] Create failed:', err);
-            res.status(500).json({ error: 'Failed to create backup' });
+            res.status(err.statusCode || 500).json({ error: err.message || 'Failed to create backup' });
         }
     });
 
     router.get('/api/campaigns/:id/backups', (req, res) => {
         try {
-            const backupDir = path.join(BACKUPS_DIR, req.params.id);
+            const id = req.params.id;
+            validateCampaignId(id);
+            const backupDir = path.join(BACKUPS_DIR, id);
             if (!fs.existsSync(backupDir)) return res.json({ backups: [] });
 
             const backups = fs.readdirSync(backupDir)
@@ -48,13 +51,19 @@ export function createBackupsRouter() {
             res.json({ backups });
         } catch (err) {
             console.error('[Backup] List failed:', err);
-            res.status(500).json({ error: 'Failed to list backups' });
+            res.status(err.statusCode || 500).json({ error: err.message || 'Failed to list backups' });
         }
     });
 
     router.get('/api/campaigns/:id/backups/:ts', (req, res) => {
         try {
-            const backupPath = path.join(BACKUPS_DIR, req.params.id, req.params.ts);
+            const id = req.params.id;
+            validateCampaignId(id);
+            const ts = req.params.ts;
+            if (!/^\d+$/.test(ts)) {
+                return res.status(400).json({ error: 'Invalid timestamp parameter' });
+            }
+            const backupPath = path.join(BACKUPS_DIR, id, ts);
             if (!fs.existsSync(backupPath)) {
                 return res.status(404).json({ error: 'Backup not found' });
             }
@@ -62,14 +71,18 @@ export function createBackupsRouter() {
             const files = fs.readdirSync(backupPath).filter(f => f !== 'meta.json');
             res.json({ meta, files });
         } catch (err) {
-            res.status(500).json({ error: 'Failed to read backup' });
+            res.status(err.statusCode || 500).json({ error: err.message || 'Failed to read backup' });
         }
     });
 
     router.post('/api/campaigns/:id/backups/:ts/restore', async (req, res) => {
         try {
             const id = req.params.id;
+            validateCampaignId(id);
             const ts = req.params.ts;
+            if (!/^\d+$/.test(ts)) {
+                return res.status(400).json({ error: 'Invalid timestamp parameter' });
+            }
             const backupPath = path.join(BACKUPS_DIR, id, ts);
             if (!fs.existsSync(backupPath)) {
                 return res.status(404).json({ error: 'Backup not found' });
@@ -81,8 +94,13 @@ export function createBackupsRouter() {
                 isAuto: false,
             });
 
+            const allowedNames = new Set(campaignFileNames(id));
             const backupFiles = fs.readdirSync(backupPath).filter(f => f !== 'meta.json');
             for (const name of backupFiles) {
+                if (!allowedNames.has(name)) {
+                    // Zero-trust check: skip any files not in the campaign whitelist
+                    continue;
+                }
                 const src = path.join(backupPath, name);
                 const dst = path.join(CAMPAIGNS_DIR, name);
                 fs.copyFileSync(src, dst);
@@ -91,20 +109,26 @@ export function createBackupsRouter() {
             res.json({ ok: true, preRestoreBackup: restoreBackup });
         } catch (err) {
             console.error('[Backup] Restore failed:', err);
-            res.status(500).json({ error: 'Failed to restore backup' });
+            res.status(err.statusCode || 500).json({ error: err.message || 'Failed to restore backup' });
         }
     });
 
     router.delete('/api/campaigns/:id/backups/:ts', (req, res) => {
         try {
-            const backupPath = path.join(BACKUPS_DIR, req.params.id, req.params.ts);
+            const id = req.params.id;
+            validateCampaignId(id);
+            const ts = req.params.ts;
+            if (!/^\d+$/.test(ts)) {
+                return res.status(400).json({ error: 'Invalid timestamp parameter' });
+            }
+            const backupPath = path.join(BACKUPS_DIR, id, ts);
             if (!fs.existsSync(backupPath)) {
                 return res.status(404).json({ error: 'Backup not found' });
             }
             fs.rmSync(backupPath, { recursive: true, force: true });
             res.json({ ok: true });
         } catch (err) {
-            res.status(500).json({ error: 'Failed to delete backup' });
+            res.status(err.statusCode || 500).json({ error: err.message || 'Failed to delete backup' });
         }
     });
 

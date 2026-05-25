@@ -45,9 +45,10 @@ export function clampImportance(val) {
 export async function callLLMWithRetry(prompt, config, { retries = 1, timeoutMs = 6000, jsonPattern = /\{[\s\S]*\}/ } = {}) {
     let attempts = 0;
     while (attempts < retries) {
+        let timer;
         try {
             const controller = new AbortController();
-            const timer = setTimeout(() => controller.abort(), timeoutMs);
+            timer = setTimeout(() => controller.abort(), timeoutMs);
 
             const response = await fetch(`${normalizeEndpoint(config.endpoint)}/chat/completions`, {
                 method: 'POST',
@@ -64,7 +65,6 @@ export async function callLLMWithRetry(prompt, config, { retries = 1, timeoutMs 
                 signal: controller.signal,
             });
 
-            clearTimeout(timer);
             if (!response.ok) {
                 console.warn(`[LLM] attempt ${attempts + 1} HTTP ${response.status}`);
                 attempts++;
@@ -85,6 +85,8 @@ export async function callLLMWithRetry(prompt, config, { retries = 1, timeoutMs 
         } catch (err) {
             console.warn(`[LLM] attempt ${attempts + 1} failed:`, err.message);
             attempts++;
+        } finally {
+            if (timer) clearTimeout(timer);
         }
     }
     return null;

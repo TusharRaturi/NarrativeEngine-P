@@ -3,7 +3,7 @@ import { Router } from 'express';
 import {
     CAMPAIGNS_DIR, readJson, writeJson, ensureDirs,
     archivePath, archiveIndexPath, chaptersPath, factsPath,
-    entitiesPath, timelinePath,
+    entitiesPath, timelinePath, validateCampaignId,
 } from '../lib/fileStore.js';
 import { embedText, buildArchiveText, buildLoreText } from '../lib/embedder.js';
 import { storeArchiveEmbedding, storeLoreEmbedding } from '../lib/vectorStore.js';
@@ -60,6 +60,7 @@ export function createTransferRouter() {
     // Export a campaign as a portable bundle
     router.get('/api/campaigns/:id/export', wrapAsync((req, res) => {
         const id = req.params.id;
+        validateCampaignId(id);
         const metaPath = path.join(CAMPAIGNS_DIR, `${id}.json`);
         if (!fs.existsSync(metaPath)) return res.status(404).json({ error: 'Campaign not found' });
 
@@ -114,7 +115,9 @@ export function createTransferRouter() {
                 .map(f => f.slice(0, -5))
         );
         const originalId = bundle.campaign?.id;
+        validateCampaignId(originalId);
         const newId = existingIds.has(originalId) ? uid() : originalId;
+        validateCampaignId(newId);
 
         const campaign = { ...bundle.campaign, id: newId };
 

@@ -82,7 +82,75 @@ export function createVaultRouter(vault) {
 
     router.put('/api/vault/keys', (req, res) => {
         try {
-            vault.saveData(req.body);
+            const data = req.body;
+            if (!data || !Array.isArray(data.presets)) {
+                return res.status(400).json({ error: 'Invalid payload: presets must be an array' });
+            }
+
+            // Strict Schema Validation (Hard-Reject on extra keys or malformed structures)
+            const allowedRootKeys = new Set(['presets']);
+            for (const key of Object.keys(data)) {
+                if (!allowedRootKeys.has(key)) {
+                    return res.status(400).json({ error: `Invalid payload: unexpected property "${key}"` });
+                }
+            }
+
+            const allowedPresetKeys = new Set(['id', 'name', 'storyAI', 'imageAI', 'summarizerAI', 'utilityAI', 'auxiliaryAI', 'sampling']);
+            const allowedAIKeys = new Set(['endpoint', 'apiKey', 'modelName']);
+
+            for (const preset of data.presets) {
+                if (typeof preset !== 'object' || preset === null) {
+                    return res.status(400).json({ error: 'Invalid preset structure: must be an object' });
+                }
+                
+                // Check preset properties
+                for (const key of Object.keys(preset)) {
+                    if (!allowedPresetKeys.has(key)) {
+                        return res.status(400).json({ error: `Invalid preset: unexpected property "${key}"` });
+                    }
+                }
+
+                if (typeof preset.id !== 'string' || !preset.id) {
+                    return res.status(400).json({ error: 'Invalid preset: id is a required non-empty string' });
+                }
+                if (typeof preset.name !== 'string' || !preset.name) {
+                    return res.status(400).json({ error: 'Invalid preset: name is a required non-empty string' });
+                }
+
+                // Validate AI configs
+                const aiSections = ['storyAI', 'imageAI', 'summarizerAI', 'utilityAI', 'auxiliaryAI'];
+                for (const section of aiSections) {
+                    if (preset[section]) {
+                        const conf = preset[section];
+                        if (typeof conf !== 'object' || conf === null) {
+                            return res.status(400).json({ error: `Invalid preset: ${section} must be an object` });
+                        }
+                        for (const key of Object.keys(conf)) {
+                            if (!allowedAIKeys.has(key)) {
+                                return res.status(400).json({ error: `Invalid preset AI config in ${section}: unexpected property "${key}"` });
+                            }
+                        }
+                        if (conf.endpoint !== undefined && typeof conf.endpoint !== 'string') {
+                            return res.status(400).json({ error: `Invalid preset: ${section} endpoint must be a string` });
+                        }
+                        if (conf.apiKey !== undefined && typeof conf.apiKey !== 'string') {
+                            return res.status(400).json({ error: `Invalid preset: ${section} apiKey must be a string` });
+                        }
+                        if (conf.modelName !== undefined && typeof conf.modelName !== 'string') {
+                            return res.status(400).json({ error: `Invalid preset: ${section} modelName must be a string` });
+                        }
+                    }
+                }
+
+                // Validate sampling config if present
+                if (preset.sampling) {
+                    if (typeof preset.sampling !== 'object') {
+                        return res.status(400).json({ error: 'Invalid preset: sampling must be an object' });
+                    }
+                }
+            }
+
+            vault.saveData(data);
             res.json({ ok: true });
         } catch (err) {
             console.error('[Vault Save] Error:', err);
