@@ -51,8 +51,7 @@ describe('buildPayload — default rules fallback', () => {
         const result = buildPayload(baseSettings(), ctx, [], 'I look around');
         const firstSystem = result.messages.find(m => m.role === 'system');
         expect(firstSystem).toBeDefined();
-        expect(firstSystem!.content).toContain('<SYS>');
-        expect(firstSystem!.content).toContain('Impartial GM');
+        expect(firstSystem!.content).toContain('ROLE: Impartial GM.');
     });
 
     it('uses user-provided rulesRaw instead of DEFAULT_RULES', () => {
@@ -66,11 +65,11 @@ describe('buildPayload — default rules fallback', () => {
     });
 
     it('DEFAULT_RULES contains all expected sections', () => {
-        expect(DEFAULT_RULES).toContain('<OUTPUT_RULES>');
-        expect(DEFAULT_RULES).toContain('<NPC_ENGINE>');
-        expect(DEFAULT_RULES).toContain('<NAME_GEN>');
-        expect(DEFAULT_RULES).toContain('<LORE_TOOL>');
-        expect(DEFAULT_RULES).toContain('<ACTION_RESOLUTION>');
-        expect(DEFAULT_RULES).toContain('<EVENT_PROTOCOL>');
+        expect(DEFAULT_RULES).toContain('### OUTPUT RULES');
+        expect(DEFAULT_RULES).toContain('### NPC ENGINE');
+        expect(DEFAULT_RULES).toContain('### NAME GENERATION');
+        expect(DEFAULT_RULES).toContain('### LORE');
+        expect(DEFAULT_RULES).toContain('### ACTION RESOLUTION');
+        expect(DEFAULT_RULES).toContain('### EVENT PROTOCOL');
     });
 });
