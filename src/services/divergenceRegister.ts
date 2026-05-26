@@ -1,5 +1,4 @@
 import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, EndpointConfig, ProviderConfig } from '../types';
-import { uid } from '../utils/uid';
 import { countTokens } from './tokenizer';
 import { toast } from '../components/Toast';
 import { callLLM } from './callLLM';

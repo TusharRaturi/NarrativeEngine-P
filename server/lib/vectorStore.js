@@ -51,6 +51,7 @@ export function initDb() {
         console.warn(`[VectorStore] Dimension mismatch: schema=${storedDims}, active=${currentDims}. Rebuilding tables.`);
         db.exec("DROP TABLE IF EXISTS archive_vss");
         db.exec("DROP TABLE IF EXISTS lore_vss");
+        db.exec("DROP TABLE IF EXISTS rules_vss");
         console.warn('[VectorStore] Tables dropped — run migrateEmbeddings.js to re-index');
     }
 
@@ -65,6 +66,13 @@ export function initDb() {
         CREATE VIRTUAL TABLE IF NOT EXISTS lore_vss USING vec0(
             campaign_id TEXT,
             lore_id TEXT,
+            embedding FLOAT[${currentDims}] distance_metric=cosine
+        )
+    `);
+    db.exec(`
+        CREATE VIRTUAL TABLE IF NOT EXISTS rules_vss USING vec0(
+            campaign_id TEXT,
+            rule_id TEXT,
             embedding FLOAT[${currentDims}] distance_metric=cosine
         )
     `);
@@ -102,6 +110,7 @@ function createStoreFn(table, idCol, itemType) {
 }
 export const storeArchiveEmbedding = createStoreFn('archive_vss', 'scene_id', 'scene');
 export const storeLoreEmbedding = createStoreFn('lore_vss', 'lore_id', 'lore');
+export const storeRulesEmbedding = createStoreFn('rules_vss', 'rule_id', 'rule');
 
 function createSearchFn(table, idCol, resultKey, itemType) {
     return (campaignId, queryEmbedding, limit) => {
@@ -143,6 +152,7 @@ function createSearchFn(table, idCol, resultKey, itemType) {
 }
 export const searchArchive = createSearchFn('archive_vss', 'scene_id', 'sceneId', 'scene');
 export const searchLore = createSearchFn('lore_vss', 'lore_id', 'loreId', 'lore');
+export const searchRules = createSearchFn('rules_vss', 'rule_id', 'ruleId', 'rule');
 
 export function deleteArchiveEmbedding(campaignId, sceneId) {
     if (!db) return;
@@ -150,18 +160,26 @@ export function deleteArchiveEmbedding(campaignId, sceneId) {
     db.prepare("DELETE FROM embedding_meta WHERE campaign_id = ? AND item_type = 'scene' AND item_id = ?").run(campaignId, sceneId);
 }
 
+export function deleteRulesEmbedding(campaignId, ruleId) {
+    if (!db) return;
+    db.prepare("DELETE FROM rules_vss WHERE campaign_id = ? AND rule_id = ?").run(campaignId, ruleId);
+    db.prepare("DELETE FROM embedding_meta WHERE campaign_id = ? AND item_type = 'rule' AND item_id = ?").run(campaignId, ruleId);
+}
+
 export function deleteCampaignEmbeddings(campaignId) {
     if (!db) return;
     db.prepare("DELETE FROM archive_vss WHERE campaign_id = ?").run(campaignId);
     db.prepare("DELETE FROM lore_vss WHERE campaign_id = ?").run(campaignId);
+    db.prepare("DELETE FROM rules_vss WHERE campaign_id = ?").run(campaignId);
     db.prepare("DELETE FROM embedding_meta WHERE campaign_id = ?").run(campaignId);
 }
 
 export function getEmbeddingStatus(campaignId) {
-    if (!db) return { scenes: { total: 0, current: 0, stale: 0 }, lore: { total: 0, current: 0, stale: 0 }, version: EMBEDDING_VERSION };
+    if (!db) return { scenes: { total: 0, current: 0, stale: 0 }, lore: { total: 0, current: 0, stale: 0 }, rules: { total: 0, current: 0, stale: 0 }, version: EMBEDDING_VERSION };
     const currentVersion = EMBEDDING_VERSION;
     const sceneMeta = db.prepare("SELECT version, COUNT(*) as count FROM embedding_meta WHERE campaign_id = ? AND item_type = 'scene' GROUP BY version").all(campaignId);
     const loreMeta = db.prepare("SELECT version, COUNT(*) as count FROM embedding_meta WHERE campaign_id = ? AND item_type = 'lore' GROUP BY version").all(campaignId);
+    const rulesMeta = db.prepare("SELECT version, COUNT(*) as count FROM embedding_meta WHERE campaign_id = ? AND item_type = 'rule' GROUP BY version").all(campaignId);
 
     let scenesTotal = 0, scenesCurrent = 0, scenesStale = 0;
     for (const row of sceneMeta) {
@@ -177,9 +195,17 @@ export function getEmbeddingStatus(campaignId) {
         else loreStale += row.count;
     }
 
+    let rulesTotal = 0, rulesCurrent = 0, rulesStale = 0;
+    for (const row of rulesMeta) {
+        rulesTotal += row.count;
+        if (row.version >= currentVersion) rulesCurrent += row.count;
+        else rulesStale += row.count;
+    }
+
     return {
         scenes: { total: scenesTotal, current: scenesCurrent, stale: scenesStale },
         lore: { total: loreTotal, current: loreCurrent, stale: loreStale },
+        rules: { total: rulesTotal, current: rulesCurrent, stale: rulesStale },
         version: EMBEDDING_VERSION,
     };
 }

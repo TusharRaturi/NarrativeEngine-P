@@ -1,8 +1,6 @@
 import type { StateCreator } from 'zustand';
-import type { ArchiveIndexEntry, ChatMessage, CondenserState, GameContext, DivergenceRegister, DivergenceEntry, DivergenceCategory } from '../../types';
+import type { ArchiveIndexEntry, ChatMessage, CondenserState, GameContext, DivergenceRegister, DivergenceEntry, DivergenceCategory, TopicClusters } from '../../types';
 import { debouncedSaveCampaignState } from './campaignSlice';
-
-const MAX_PRUNED_LOG = 100;
 
 // ── Slice type ─────────────────────────────────────────────────────────
 
@@ -40,6 +38,8 @@ export type ChatSlice = {
     resetDivergenceRegister: () => void;
     updateMessageDivergence: (messageId: string, divergenceIds: string[]) => void;
     deleteReviewedEntry: (id: string) => void;
+    setTopicClusters: (clusters: TopicClusters) => void;
+    setManyFactsEnabled: (updates: Array<{ id: string; enabled: boolean }>) => void;
 };
 
 // ── Cross-slice dependencies ───────────────────────────────────────────
@@ -117,8 +117,16 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
     deleteDivergenceFact: (entryId) =>
         set((s) => {
             const entries = s.divergenceRegister.entries.filter(e => e.id !== entryId);
+            let topicClusters = s.divergenceRegister.topicClusters;
+            if (topicClusters) {
+                const groups = topicClusters.groups.map(g => ({
+                    ...g,
+                    factIds: g.factIds.filter(id => id !== entryId),
+                })).filter(g => g.factIds.length > 0);
+                topicClusters = { ...topicClusters, groups };
+            }
             debouncedSaveCampaignState();
-            return { divergenceRegister: { ...s.divergenceRegister, entries, lastUpdatedAt: Date.now() } };
+            return { divergenceRegister: { ...s.divergenceRegister, entries, topicClusters, lastUpdatedAt: Date.now() } };
         }),
     addDivergenceEntry: (entry) =>
         set((s) => {
@@ -179,6 +187,21 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
             const prunedLog = (s.divergenceRegister.prunedLog ?? []).filter(e => e.id !== id);
             debouncedSaveCampaignState();
             return { divergenceRegister: { ...s.divergenceRegister, entries, prunedLog, lastUpdatedAt: Date.now() } };
+        }),
+    setTopicClusters: (clusters) =>
+        set((s) => {
+            debouncedSaveCampaignState();
+            return { divergenceRegister: { ...s.divergenceRegister, topicClusters: clusters, lastUpdatedAt: Date.now() } };
+        }),
+    setManyFactsEnabled: (updates) =>
+        set((s) => {
+            const updateMap = new Map(updates.map(u => [u.id, u.enabled]));
+            const entries = s.divergenceRegister.entries.map(e => {
+                const enabled = updateMap.get(e.id);
+                return enabled !== undefined ? { ...e, enabled } : e;
+            });
+            debouncedSaveCampaignState();
+            return { divergenceRegister: { ...s.divergenceRegister, entries, lastUpdatedAt: Date.now() } };
         }),
 
     // Chat defaults

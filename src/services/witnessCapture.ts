@@ -26,13 +26,20 @@ export async function auxWitnessFallback(
     provider: EndpointConfig
 ): Promise<string[]> {
     const npcList = npcLedger.map(n => `- ${n.name} (id: ${n.id})`).join('\n');
-    const prompt = `Given this scene narration, which NPCs from the list below are physically present?\n\nNARRATION:\n${gmText.slice(0, 2000)}\n\nNPC LIST:\n${npcList}\n\nReturn a JSON array of NPC IDs only: ["id1", "id2"]`;
+    const prompt = `You are a system that analyzes text to identify which NPCs are present in a scene. Return ONLY a JSON array of NPC IDs.
+
+Given this scene narration, which NPCs from the list below are physically present?
+
+NARRATION:
+${gmText.slice(0, 2000)}
+
+NPC LIST:
+${npcList}
+
+Return a JSON array of NPC IDs only: ["id1", "id2"]`;
 
     try {
-        const response = await callLLM(provider, [
-            { role: 'system' as const, content: 'You analyze text to identify which NPCs are present in a scene. Return ONLY a JSON array of NPC IDs.' },
-            { role: 'user' as const, content: prompt },
-        ], { temperature: 0, maxTokens: 200, priority: 'low' as const });
+        const response = await callLLM(provider, prompt, { temperature: 0, maxTokens: 200, priority: 'low' as const });
 
         const jsonStr = extractJson(response);
         const ids = JSON.parse(jsonStr);

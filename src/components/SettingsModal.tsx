@@ -8,6 +8,7 @@ import { toast } from './Toast';
 import { uid } from '../utils/uid';
 import { SamplingPanel } from './SamplingPanel';
 import { getEmbeddingStatus, runBackfill } from '../services/backfillRunner';
+import { api } from '../services/apiClient';
 
 export function SettingsModal() {
     const { settings, updateSettings, settingsOpen, toggleSettings, addPreset, updatePreset, removePreset } = useAppStore();
@@ -26,6 +27,7 @@ export function SettingsModal() {
     const [reindexing, setReindexing] = useState(false);
     const [reindexStatus, setReindexStatus] = useState('');
     const [embedStatus, setEmbedStatus] = useState<import('../services/backfillRunner').BackfillStatus | null>(null);
+    const [rebuildingRules, setRebuildingRules] = useState(false);
 
     const handleReindex = async () => {
         const campaignId = useAppStore.getState().activeCampaignId;
@@ -52,6 +54,28 @@ export function SettingsModal() {
         } finally {
             setReindexing(false);
             setReindexStatus('');
+        }
+    };
+
+    const handleRebuildRules = async () => {
+        const campaignId = useAppStore.getState().activeCampaignId;
+        if (!campaignId) {
+            toast.error('No active campaign');
+            return;
+        }
+        setRebuildingRules(true);
+        try {
+            toast.info('Rebuilding rules embeddings...');
+            const res = await api.rules.reindex(campaignId);
+            if (res) {
+                toast.success(`Successfully rebuilt ${res.totalChunks} rule chunks`);
+            } else {
+                toast.error('Rebuild failed');
+            }
+        } catch (err) {
+            toast.error(`Rebuild failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+        } finally {
+            setRebuildingRules(false);
         }
     };
 
@@ -465,6 +489,25 @@ export function SettingsModal() {
                             </button>
                         </div>
 
+                        {/* Archive Agent Planner */}
+                        <div className="flex items-center justify-between bg-void p-3 border border-border rounded">
+                            <div>
+                                <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">
+                                    Archive Agent Planner
+                                </label>
+                                <p className="text-[9px] text-text-dim max-w-[240px] leading-tight">
+                                    Enables an intelligent utility AI planner to rank archive scenes based on structured scene events before recall.
+                                    Requires a utility AI endpoint and structured events populated.
+                                </p>
+                            </div>
+                            <button
+                                onClick={() => updateSettings({ enableArchivePlanner: !settings.enableArchivePlanner })}
+                                className={`relative w-10 h-5 rounded-full transition-colors focus:outline-none ${settings.enableArchivePlanner ? 'bg-terminal' : 'bg-border'}`}
+                            >
+                                <div className={`absolute top-[2px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.enableArchivePlanner ? 'translate-x-[22px]' : 'translate-x-[2px]'}`} />
+                            </button>
+                        </div>
+
                         {/* Re-index Embeddings */}
                         <div className="bg-void p-3 border border-border rounded space-y-2">
                             <div>
@@ -491,6 +534,103 @@ export function SettingsModal() {
                                     {` (v${embedStatus.version})`}
                                 </div>
                             )}
+                        </div>
+
+                        {/* Rules RAG Preferences */}
+                        <div className="bg-void p-3 border border-border rounded space-y-3">
+                            <div>
+                                <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">
+                                    Rules RAG Preferences
+                                </label>
+                                <p className="text-[9px] text-text-dim leading-tight">
+                                    Configure rules retrieval-augmented generation (RAG) settings, budget limits, and background extraction behavior.
+                                </p>
+                            </div>
+
+                            {/* Rules Context Budget Slider */}
+                            <div>
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[10px] text-text-dim uppercase tracking-wider">
+                                        Rules Context Budget
+                                    </label>
+                                    <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-[10px]">
+                                        {Math.round((settings.rulesBudgetPct ?? 0.10) * 100)}%
+                                    </span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min={0}
+                                    max={0.5}
+                                    step={0.05}
+                                    value={settings.rulesBudgetPct ?? 0.10}
+                                    onChange={(e) => updateSettings({ rulesBudgetPct: parseFloat(e.target.value) })}
+                                    className="w-full h-1.5 bg-border rounded-lg appearance-none cursor-pointer accent-terminal"
+                                />
+                                <div className="flex justify-between text-[8px] text-text-dim mt-0.5">
+                                    <span>0%</span>
+                                    <span>25%</span>
+                                    <span>50%</span>
+                                </div>
+                            </div>
+
+                            {/* Auto-Generate Keywords Toggle */}
+                            <div className="flex items-center justify-between py-1.5 border-t border-border/30">
+                                <div>
+                                    <label className="block text-[10px] text-text-primary uppercase tracking-wider font-bold mb-0.5">
+                                        Auto-Generate Keywords
+                                    </label>
+                                    <p className="text-[9px] text-text-dim leading-tight">
+                                        Automatically extract lookup keywords from rules using Utility AI.
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => updateSettings({ autoGenerateRuleKeywords: !settings.autoGenerateRuleKeywords })}
+                                    className={`relative w-10 h-5 rounded-full transition-colors focus:outline-none ${settings.autoGenerateRuleKeywords ? 'bg-terminal' : 'bg-border'}`}
+                                >
+                                    <div className={`absolute top-[2px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.autoGenerateRuleKeywords ? 'translate-x-[22px]' : 'translate-x-[2px]'}`} />
+                                </button>
+                            </div>
+
+                            {/* Utility AI Timeout Field */}
+                            <div className="pt-2 border-t border-border/30">
+                                <div className="flex items-center justify-between mb-1">
+                                    <label className="text-[10px] text-text-dim uppercase tracking-wider">
+                                        Utility AI Timeout (Seconds)
+                                    </label>
+                                </div>
+                                <input
+                                    type="number"
+                                    min={5}
+                                    max={300}
+                                    step={5}
+                                    value={settings.utilityTimeoutSeconds ?? 45}
+                                    onChange={(e) => {
+                                        const v = parseInt(e.target.value);
+                                        if (!isNaN(v) && v > 0) updateSettings({ utilityTimeoutSeconds: v });
+                                    }}
+                                    className="w-full h-7 bg-surface border border-border rounded px-2 text-xs text-text font-mono focus:outline-none focus:border-terminal"
+                                />
+                            </div>
+
+                            {/* Rebuild Rules Embeddings Button */}
+                            <div className="pt-2 border-t border-border/30 flex items-center justify-between">
+                                <div>
+                                    <label className="block text-[10px] text-text-primary uppercase tracking-wider font-bold mb-0.5">
+                                        Rebuild Rules Embeddings
+                                    </label>
+                                    <p className="text-[9px] text-text-dim max-w-[200px] leading-tight">
+                                        Manually parse and re-embed rules markdown.
+                                    </p>
+                                </div>
+                                <button
+                                    disabled={rebuildingRules}
+                                    onClick={handleRebuildRules}
+                                    className="text-[10px] uppercase tracking-widest bg-terminal/10 border border-terminal/30 text-terminal px-3 py-1.5 rounded hover:bg-terminal/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                                >
+                                    {rebuildingRules ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
+                                    {rebuildingRules ? 'Rebuilding...' : 'Rebuild Now'}
+                                </button>
+                            </div>
                         </div>
 
                         {/* Divergence Register */}

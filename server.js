@@ -14,6 +14,7 @@ import { createAssetsRouter } from './server/routes/assets.js';
 import { createOverworldRouter } from './server/routes/overworld.js';
 import { createTransferRouter } from './server/routes/transfer.js';
 import { createDivergenceRouter } from './server/routes/divergence.js';
+import { createRulesRouter } from './server/routes/rules.js';
 import { initDb } from './server/lib/vectorStore.js';
 import { warmup as warmupEmbedder } from './server/lib/embedder.js';
 
@@ -66,6 +67,7 @@ app.use(createAssetsRouter());
 app.use(createOverworldRouter());
 app.use(createTransferRouter());
 app.use(createDivergenceRouter());
+app.use(createRulesRouter());
 
 // ─── Central Error Handler ───
 app.use((err, _req, res, _next) => {

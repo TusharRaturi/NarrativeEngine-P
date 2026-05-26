@@ -292,7 +292,7 @@ export function buildChatBody(
             }
         } else {
             const modelName = (provider.modelName || '').toLowerCase();
-            const isDeepSeek = modelName.includes('deepseek') || (provider as EndpointConfig).apiFormat === 'deepseek' || (() => { try { return new URL(provider.endpoint.replace(/\/+$/, '')).hostname.includes('deepseek'); } catch { return false; } })();
+            const isDeepSeek = modelName.includes('deepseek') || (() => { try { return new URL(provider.endpoint.replace(/\/+$/, '')).hostname.includes('deepseek'); } catch { return false; } })();
             const effortMap = isDeepSeek ? DEEPSEEK_EFFORT_MAP : OPENAI_EFFORT_MAP;
             const mapped = effortMap[effort];
             if (mapped !== undefined) {

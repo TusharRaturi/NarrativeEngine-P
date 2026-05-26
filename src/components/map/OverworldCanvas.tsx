@@ -44,6 +44,7 @@ const TILE_MAP = {
     WATER: { x: 0, y: 0 }, // From WaterTileSet
     ROCK_PEAK: { x: 1, y: 0 } // From LoftedRocks
 };
+import type { MapPin } from '../../types';
 import { useAppStore } from '../../store/useAppStore';
 import { REGISTRIES } from '../../services/mapEngine/registries';
 
@@ -196,7 +197,7 @@ export function OverworldCanvas() {
                 const gridRow = Math.floor(localY / cs);
                 const store = useAppStore.getState();
                 const currentPins = store.overworldMap?.pins ?? [];
-                const hit = currentPins.find(p => Math.abs(p.x - gridCol) <= 1 && Math.abs(p.y - gridRow) <= 1);
+                const hit = currentPins.find((p: MapPin) => Math.abs(p.x - gridCol) <= 1 && Math.abs(p.y - gridRow) <= 1);
                 if (hit) {
                     const cid = store.activeCampaignId;
                     if (cid) store.deletePin(cid, hit.id);

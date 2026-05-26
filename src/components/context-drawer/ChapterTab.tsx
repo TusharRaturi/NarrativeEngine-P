@@ -14,7 +14,7 @@ export const ChapterTab: React.FC = () => {
         getActiveSummarizerEndpoint,
         timeline, setTimeline, removeTimelineEvent,
         pinnedChapterIds, pinChapter,
-        messages, archiveIndex, loreChunks, npcLedger, getFreshProvider,
+        messages, archiveIndex, loreChunks, npcLedger,
     } = useAppStore();
     
     const [expandedId, setExpandedId] = useState<string | null>(null);

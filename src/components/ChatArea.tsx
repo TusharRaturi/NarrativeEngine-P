@@ -12,10 +12,8 @@ import { GenerationProgress } from './GenerationProgress';
 import { useCondenser } from './hooks/useCondenser';
 import { useChapterSealing } from './hooks/useChapterSealing';
 import { useMessageEditor } from './hooks/useMessageEditor';
-import type { ChatMessage, DivergenceRegister, EndpointConfig } from '../types';
 import { UtilityCallStrip } from './UtilityCallStrip';
 import { CreateTroubleButton } from './CreateTroubleButton';
-
 
 export function ChatArea() {
     const messages = useAppStore(s => s.messages);
@@ -37,7 +35,7 @@ export function ChatArea() {
     const {
         setArchiveIndex, clearArchive, updateLastAssistant, updateContext,
         setCondensed, deleteMessage, deleteMessagesFrom,
-        resetCondenser, setTimeline, setChapters,
+        setTimeline, setChapters,
         pipelinePhase, streamingStats, setPipelinePhase, setStreamingStats,
     } = useAppStore(
         useShallow(s => ({
@@ -48,7 +46,6 @@ export function ChatArea() {
             setCondensed: s.setCondensed,
             deleteMessage: s.deleteMessage,
             deleteMessagesFrom: s.deleteMessagesFrom,
-            resetCondenser: s.resetCondenser,
             setTimeline: s.setTimeline,
             setChapters: s.setChapters,
             pipelinePhase: s.pipelinePhase,
@@ -58,7 +55,6 @@ export function ChatArea() {
         }))
     );
 
-    const divergenceRegister = useAppStore(s => s.divergenceRegister);
 
     const [input, setInput] = useState('');
     const [isStreaming, setStreaming] = useState(false);

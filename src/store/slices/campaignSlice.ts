@@ -190,6 +190,8 @@ export function dedupeNPCLedger(ledger: NPCEntry[]): NPCEntry[] {
 export const defaultContext: GameContext = {
     loreRaw: '',
     rulesRaw: '',
+    rulesChunkMeta: {},
+    rulesChunks: [],
     canonState: '',
     headerIndex: '',
     starter: '',

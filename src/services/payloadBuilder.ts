@@ -171,7 +171,9 @@ export function buildPayload(
     deepContextSummary?: string,
     divergenceRegister?: DivergenceRegister,
     chapters?: ArchiveChapter[],
-    onStageNpcIds?: string[]
+    onStageNpcIds?: string[],
+    relevantRules?: LoreChunk[],
+    rulesManifest?: string
 ): { messages: OpenAIMessage[]; trace?: PayloadTrace[]; debugSections?: DebugSection[] } {
     const trace: PayloadTrace[] = [];
     const debugSections: DebugSection[] = [];
@@ -180,16 +182,20 @@ export function buildPayload(
 
     // --- 1. Define Budgets (ST-inspired proportionality) ---
     // Protect core truth, but ensure history isn't completely starved.
+    // Carve out rules budget upfront.
+    const rulesBudget = Math.floor(limit * (settings.rulesBudgetPct ?? 0.10));
+    const remainingAfterRules = limit - rulesBudget;
+
     const budgetMap = deepContextSummary
         ? {
-            stable: Math.floor(limit * 0.15),
-            world: Math.floor(limit * 0.60),
-            volatile: Math.floor(limit * 0.10),
+            stable: Math.floor(remainingAfterRules * 0.15),
+            world: Math.floor(remainingAfterRules * 0.60),
+            volatile: Math.floor(remainingAfterRules * 0.10),
         }
         : {
-            stable: Math.floor(limit * 0.25),
-            world: Math.floor(limit * 0.40),
-            volatile: Math.floor(limit * 0.10),
+            stable: Math.floor(remainingAfterRules * 0.25),
+            world: Math.floor(remainingAfterRules * 0.40),
+            volatile: Math.floor(remainingAfterRules * 0.10),
         };
 
     // Helper to log to trace if debug
@@ -203,11 +209,37 @@ export function buildPayload(
     // --- 2. Calculate Stable Truth & Summary (High Priority) ---
     const stableParts: string[] = [];
     if (sceneNumber) stableParts.push(`[CURRENT SCENE: #${sceneNumber}]\n[ENGINE: Scene header is auto-injected. Do NOT write "Scene #${sceneNumber}" yourself. Start your response with the date/location/NPCs line directly.]`);
+    
+    // Inject either selected Rules RAG chunks or complete raw rules
     const effectiveRules = context.rulesRaw || DEFAULT_RULES;
     const rulesWithMode = context.diceFairnessActive === false
         ? swapActionResolutionForToolMode(effectiveRules)
         : effectiveRules;
-    if (rulesWithMode) stableParts.push(rulesWithMode);
+        
+    const hasRulesRAG = (context.rulesChunks?.length ?? 0) > 0;
+    let rulesText = '';
+    if (hasRulesRAG && relevantRules && relevantRules.length > 0) {
+        let rulesTokens = 0;
+        const acceptedChunks: LoreChunk[] = [];
+        for (const chunk of relevantRules) {
+            if (rulesTokens + chunk.tokens <= rulesBudget) {
+                acceptedChunks.push(chunk);
+                rulesTokens += chunk.tokens;
+            }
+        }
+        const chunksText = acceptedChunks.map(c => `### ${c.header}\n${c.content}`).join('\n\n');
+        rulesText = `## RULES\n\n${chunksText}`;
+        if (rulesManifest) {
+            rulesText += `\n\n${rulesManifest}`;
+        }
+        addTrace({ source: 'RAG Rules', classification: 'stable_truth', tokens: rulesTokens, reason: `RAG injected (${acceptedChunks.length} chunks)`, included: true, position: 'system_static' });
+    } else {
+        rulesText = rulesWithMode;
+        addTrace({ source: 'Raw Rules', classification: 'stable_truth', tokens: countTokens(rulesText), reason: 'Complete rules list (RAG not loaded or below threshold)', included: true, position: 'system_static' });
+    }
+    
+    if (rulesText) stableParts.push(rulesText);
+    
     if (context.canonStateActive && context.canonState) {
         stableParts.push(context.canonState);
     }
@@ -224,7 +256,7 @@ export function buildPayload(
 
     const stableContent = stableParts.join('\n\n');
     const stableTokens = countTokens(stableContent);
-    addTrace({ source: 'Stable Preamble', classification: 'stable_truth', tokens: stableTokens, reason: 'Rules & Core state', included: true, position: 'system_static' });
+    addTrace({ source: 'Stable Preamble', classification: 'stable_truth', tokens: stableTokens, reason: 'Preamble & Core state', included: true, position: 'system_static' });
     addSection({ label: 'Stable Preamble', role: 'system', tokens: stableTokens, content: stableContent, classification: 'stable_truth' });
 
     // --- 3. Gather trimmable World Context (Medium Priority) ---
@@ -259,7 +291,7 @@ export function buildPayload(
             });
             if (isDebug) {
                 const filtered = archiveRecall.length - filteredRecall.length;
-                if (filtered > 0) addTrace({ source: 'Archive Recall', tokens: 0, text: `Perceptual filter removed ${filtered} scenes (not witnessed by active NPCs)` });
+                if (filtered > 0) addTrace({ source: 'Archive Recall', classification: 'world_context', tokens: 0, reason: `Perceptual filter removed ${filtered} scenes (not witnessed by active NPCs)`, included: false });
             }
         }
 

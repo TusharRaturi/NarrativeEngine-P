@@ -90,6 +90,10 @@ export const defaultSettings: AppSettings = {
     autoCondenseEnabled: true,
     condenseAggressiveness: 'smart',
     autoArchiveStaleNPCsTurns: 0,
+    rulesBudgetPct: 0.10,
+    autoGenerateRuleKeywords: true,
+    utilityTimeoutSeconds: 45,
+    enableArchivePlanner: false,
 };
 
 export function applyTheme(theme: 'light' | 'dark') {
@@ -116,6 +120,11 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
             autoCondenseEnabled: (raw.autoCondenseEnabled as boolean) ?? true,
             condenseAggressiveness: (raw.condenseAggressiveness as 'tight' | 'smart' | 'deep') ?? 'smart',
             autoArchiveStaleNPCsTurns: (raw.autoArchiveStaleNPCsTurns as number) ?? 0,
+            rulesBudgetPct: (raw.rulesBudgetPct as number) ?? 0.10,
+            autoGenerateRuleKeywords: (raw.autoGenerateRuleKeywords as boolean) ?? true,
+            utilityTimeoutSeconds: (raw.utilityTimeoutSeconds as number) ?? 45,
+            verboseUtilityLogging: raw.verboseUtilityLogging as boolean,
+            enableArchivePlanner: (raw.enableArchivePlanner as boolean) ?? false,
         };
     }
 
@@ -166,6 +175,10 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         autoCondenseEnabled: true,
         condenseAggressiveness: 'smart',
         autoArchiveStaleNPCsTurns: 0,
+        rulesBudgetPct: 0.10,
+        autoGenerateRuleKeywords: true,
+        utilityTimeoutSeconds: 45,
+        enableArchivePlanner: false,
     };
 }
 

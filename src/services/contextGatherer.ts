@@ -2,6 +2,7 @@ import type { ArchiveScene, TimelineEvent, LoreChunk, ArchiveChapter, NPCEntry }
 import type { TurnState } from './turnOrchestrator';
 import { API_BASE as API } from '../lib/apiBase';
 import { retrieveRelevantLore } from './loreRetriever';
+import { retrieveRelevantRules } from './rulesRetriever';
 import { recallArchiveScenes, retrieveArchiveMemory, fetchArchiveScenes } from './archiveMemory';
 import { rankChapters, recallWithChapterFunnel } from './archiveChapterEngine';
 import { recommendContext } from './contextRecommender';
@@ -10,6 +11,7 @@ import { getDivergenceSceneIds, EMPTY_REGISTER, buildSceneMap } from './divergen
 import { rerankCandidates, type RerankCandidate } from './semanticReranker';
 import { callLLM } from './callLLM';
 import { queryFacts, formatFactsForContext } from './semanticMemory';
+import { runArchivePlanner } from './archivePlanner';
 
 const CALLBACK_REGEX = /\b(remember|earlier|back when|before|previously|that .*(we|i) (did|met|fought|saw|found|got))\b/i;
 
@@ -56,6 +58,8 @@ export type GatheredContext = {
     profileFields: string[] | undefined;
     deepContextSummary?: string;
     semanticFactText?: string;
+    relevantRules?: LoreChunk[];
+    rulesManifest?: string;
 };
 
 type GatherDeps = {
@@ -90,6 +94,18 @@ export async function gatherContext(
     let profileFields: string[] | undefined;
     let semanticArchiveIds: string[] | undefined;
     let semanticLoreIds: string[] | undefined;
+    let semanticRuleIds: string[] | undefined;
+    let plannerSceneIds: string[] | undefined;
+
+    const plannerEndpoint = state.getUtilityEndpoint?.();
+    const plannerTimeoutMs = (state.settings.utilityTimeoutSeconds ?? 45) * 1000;
+    const plannerPromise = state.settings.enableArchivePlanner && plannerEndpoint?.endpoint
+        ? runArchivePlanner(plannerEndpoint, input, archiveIndex, plannerTimeoutMs, signal)
+            .then(ids => {
+                plannerSceneIds = ids;
+            })
+            .catch(() => {})
+        : Promise.resolve();
 
     // ─── Semantic Candidate Pre-filter ───
     const semanticPromise = activeCampaignId
@@ -109,7 +125,7 @@ export async function gatherContext(
                 }
 
                 const queryBody = queries.length > 1 ? { queries } : { query: input };
-                const [archiveRes, loreRes] = await Promise.all([
+                const [archiveRes, loreRes, rulesRes] = await Promise.all([
                     fetch(`${API}/campaigns/${activeCampaignId}/archive/semantic-candidates`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -117,6 +133,12 @@ export async function gatherContext(
                         signal,
                     }),
                     fetch(`${API}/campaigns/${activeCampaignId}/lore/semantic-candidates`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(queryBody),
+                        signal,
+                    }),
+                    fetch(`${API}/campaigns/${activeCampaignId}/rules/search`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify(queryBody),
@@ -130,6 +152,10 @@ export async function gatherContext(
                 if (loreRes.ok) {
                     const data = await loreRes.json();
                     semanticLoreIds = data.loreIds;
+                }
+                if (rulesRes.ok) {
+                    const data = await rulesRes.json();
+                    semanticRuleIds = data.ruleIds;
                 }
 
                 // Rerank candidates via LLM if enough results and utility endpoint available
@@ -182,7 +208,7 @@ export async function gatherContext(
     // ─── Phase 4A: Two-Stage Chapter Funnel Retrieval ───
     const archivePromise = (archiveIndex.length > 0 && activeCampaignId)
         ? (async () => {
-            await semanticPromise;
+            await Promise.all([semanticPromise, plannerPromise]);
 
             const chapters = deps.chapters;
             const hasSealedChapters = chapters.some(c => c.sealedAt && c.summary);
@@ -193,7 +219,8 @@ export async function gatherContext(
                     npcLedger, (state as any).semanticFacts,
                     undefined, semanticArchiveIds,
                     getDivergenceSceneIds(state.divergenceRegister || EMPTY_REGISTER),
-                    excludeSceneIds
+                    excludeSceneIds,
+                    plannerSceneIds
                 );
                 archiveRecall = result;
                 return;
@@ -226,7 +253,8 @@ export async function gatherContext(
                         undefined, (state as any).semanticFacts, fallbackRanges,
                         undefined, semanticArchiveIds,
                         getDivergenceSceneIds(state.divergenceRegister || EMPTY_REGISTER),
-                        excludeSceneIds
+                        excludeSceneIds,
+                        plannerSceneIds
                     );
                     fetchArchiveScenes(activeCampaignId!, matchedIds, 3000)
                         .then(resolve)
@@ -243,7 +271,8 @@ export async function gatherContext(
                     npcLedger, (state as any).semanticFacts,
                     undefined, semanticArchiveIds,
                     getDivergenceSceneIds(state.divergenceRegister || EMPTY_REGISTER),
-                    excludeSceneIds
+                    excludeSceneIds,
+                    plannerSceneIds
                 );
             }
         })()
@@ -280,13 +309,34 @@ export async function gatherContext(
             : undefined;
     })();
 
+    // Rules retrieval — wait for semantic candidates first
+    const rulesBudget = Math.floor(
+        (state.settings.contextLimit ?? 8192) * (state.settings.rulesBudgetPct ?? 0.10)
+    );
+    const rulesPromise = (async () => {
+        await semanticPromise;
+        const candidateMessages = (state.condenser?.condensedUpToIndex !== undefined && state.condenser.condensedUpToIndex >= 0)
+            ? messages.slice(state.condenser.condensedUpToIndex + 1)
+            : messages;
+        return (context.rulesChunks?.length ?? 0) > 0
+            ? retrieveRelevantRules(
+                context.rulesChunks ?? [],
+                context.rulesChunkMeta,
+                input,
+                rulesBudget,
+                candidateMessages,
+                semanticRuleIds
+            )
+            : { selected: [], manifest: '' };
+    })();
+
     // Timeline events — from state, used directly in buildPayload
     const timelineEvents: TimelineEvent[] = state.timeline || [];
 
     // Await all async operations simultaneously, with a 15s safety timeout.
     const CONTEXT_GATHER_TIMEOUT_MS = 15_000;
     await Promise.race([
-        Promise.all([timelinePromise, archivePromise, recommenderPromise, lorePromise]),
+        Promise.all([timelinePromise, archivePromise, recommenderPromise, lorePromise, rulesPromise, plannerPromise]),
         new Promise<void>((resolve) => setTimeout(() => {
             console.warn('[ContextGatherer] Context gather timeout — proceeding with partial results');
             resolve();
@@ -294,6 +344,7 @@ export async function gatherContext(
     ]);
 
     const relevantLore = await lorePromise;
+    const { selected: relevantRules, manifest: rulesManifest } = await rulesPromise.catch(() => ({ selected: [], manifest: '' }));
 
     // ─── Pinned Chapter Injection ──────────────────────────────────────
     if (deps.pinnedChapterIds.length > 0 && activeCampaignId) {
@@ -310,7 +361,8 @@ export async function gatherContext(
                 undefined, (state as any).semanticFacts,
                 pinnedRanges, undefined, semanticArchiveIds,
                 getDivergenceSceneIds(state.divergenceRegister || EMPTY_REGISTER),
-                excludeSceneIds
+                excludeSceneIds,
+                plannerSceneIds
             ).filter(id => !alreadyCoveredIds.has(id));
 
             if (scoredIds.length > 0) {
@@ -353,12 +405,12 @@ export async function gatherContext(
         }
     }
 
-    const semanticFacts = state.semanticFacts ?? [];
+    const semanticFacts = (state as any).semanticFacts ?? [];
     let semanticFactText: string | undefined;
     if (semanticFacts.length > 0) {
         const relevantFacts = queryFacts(semanticFacts, finalInput, messages, npcLedger, 500);
         semanticFactText = formatFactsForContext(relevantFacts) || undefined;
     }
 
-    return { sceneNumber, archiveRecall, recommendedNPCNames, timelineEvents, relevantLore, semanticArchiveIds, semanticLoreIds, inventoryCategories, profileFields, deepContextSummary, semanticFactText };
+    return { sceneNumber, archiveRecall, recommendedNPCNames, timelineEvents, relevantLore, semanticArchiveIds, semanticLoreIds, inventoryCategories, profileFields, deepContextSummary, semanticFactText, relevantRules, rulesManifest };
 }

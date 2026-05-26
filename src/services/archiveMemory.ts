@@ -190,6 +190,46 @@ export function expandActivationsWithFacts(
     return expanded;
 }
 
+export function applyEventBoost(
+    candidates: ArchiveIndexEntry[],
+    query: string,
+    recentMessages: ChatMessage[],
+): Map<string, number> {
+    const boostMap = new Map<string, number>();
+    const contextText = [
+        query,
+        ...recentMessages.slice(-3).map(m => m.content || '')
+    ].join('\n').toLowerCase();
+
+    for (const entry of candidates) {
+        if (!entry.events || entry.events.length === 0) continue;
+        let bonus = 0;
+        for (const event of entry.events) {
+            if (event.importance >= 7) {
+                bonus += 1.5;
+            }
+            if (event.characters) {
+                for (const char of event.characters) {
+                    if (char && contextText.includes(char.toLowerCase())) {
+                        bonus += 1.0;
+                    }
+                }
+            }
+            if (event.locations) {
+                for (const loc of event.locations) {
+                    if (loc && contextText.includes(loc.toLowerCase())) {
+                        bonus += 1.0;
+                    }
+                }
+            }
+        }
+        if (bonus > 0) {
+            boostMap.set(entry.sceneId, bonus);
+        }
+    }
+    return boostMap;
+}
+
 /**
  * Search the archive index using 3D scoring, return matching scene IDs
  * ranked by score (best first).
@@ -205,7 +245,8 @@ export function retrieveArchiveMemory(
     npcPerspective?: string,
     semanticCandidateIds?: string[],
     divergenceSceneIds?: Set<string>,
-    excludeSceneIds?: Set<string>
+    excludeSceneIds?: Set<string>,
+    plannerSceneIds?: string[]
 ): string[] {
     if (!index || index.length === 0) {
         console.log('[Archive Retrieval] Index is empty — no recall.');
@@ -247,10 +288,21 @@ export function retrieveArchiveMemory(
     }
 
     const totalScenes = scopedIndex.length;
-    const scored = scopedIndex.map(entry => ({
-        sceneId: entry.sceneId,
-        score: scoreEntry(entry, contextText, contextActivations, totalScenes, npcPerspective, divergenceSceneIds),
-    }));
+    const eventBoosts = applyEventBoost(scopedIndex, userMessage, recentMessages);
+    const scored = scopedIndex.map(entry => {
+        let score = scoreEntry(entry, contextText, contextActivations, totalScenes, npcPerspective, divergenceSceneIds);
+        const boost = eventBoosts.get(entry.sceneId) ?? 0;
+        if (score > 0 && boost > 0) {
+            score += boost;
+        }
+        if (plannerSceneIds && plannerSceneIds.includes(entry.sceneId)) {
+            score += 3.5;
+        }
+        return {
+            sceneId: entry.sceneId,
+            score,
+        };
+    });
 
     const sorted = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score);
     const topScore = sorted[0]?.score ?? 0;
@@ -335,9 +387,10 @@ export async function recallArchiveScenes(
     npcPerspective?: string,
     semanticCandidateIds?: string[],
     divergenceSceneIds?: Set<string>,
-    excludeSceneIds?: Set<string>
+    excludeSceneIds?: Set<string>,
+    plannerSceneIds?: string[]
 ): Promise<ArchiveScene[]> {
-    const matchedIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, npcPerspective, semanticCandidateIds, divergenceSceneIds, excludeSceneIds);
+    const matchedIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, npcPerspective, semanticCandidateIds, divergenceSceneIds, excludeSceneIds, plannerSceneIds);
     if (matchedIds.length === 0) return [];
     return fetchArchiveScenes(campaignId, matchedIds, tokenBudget);
 }

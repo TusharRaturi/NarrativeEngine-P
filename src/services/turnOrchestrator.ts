@@ -105,7 +105,7 @@ export async function runTurn(
 
     // ─── Context Gathering (parallel: archive, timeline, recommender, lore, pinned chapters) ───
     const {
-        sceneNumber, archiveRecall, recommendedNPCNames, timelineEvents, relevantLore, inventoryCategories, profileFields, deepContextSummary, semanticFactText,
+        sceneNumber, archiveRecall, recommendedNPCNames, timelineEvents, relevantLore, inventoryCategories, profileFields, deepContextSummary, semanticFactText, relevantRules, rulesManifest,
     } = await gatherContext(state, finalInput, {
         chapters: state.chapters,
         pinnedChapterIds: state.pinnedChapterIds,
@@ -163,6 +163,8 @@ export async function runTurn(
         state.divergenceRegister,
         state.chapters,
         state.onStageNpcIds,
+        relevantRules,
+        rulesManifest,
     );
 
     const payload = payloadResult.messages;

@@ -130,6 +130,18 @@ export type DivergenceEntry = {
     unrecognizedNpcNames?: string[];
 };
 
+export type TopicCluster = {
+    id: string;
+    name: string;
+    factIds: string[];
+};
+
+export type TopicClusters = {
+    groups: TopicCluster[];
+    generatedAt: string;
+    generatedFromFactCount: number;
+};
+
 export type DivergenceRegister = {
     entries: DivergenceEntry[];
     chapterToggles: Record<string, boolean>;
@@ -138,7 +150,9 @@ export type DivergenceRegister = {
     lastUpdatedSceneId: string;
     lastUpdatedAt: number;
     version: 2;
+    topicClusters?: TopicClusters;
 };
+
 
 export type AppSettings = {
     presets: AIPreset[];
@@ -154,6 +168,11 @@ export type AppSettings = {
     autoCondenseEnabled?: boolean;
     condenseAggressiveness?: 'tight' | 'smart' | 'deep';
     autoArchiveStaleNPCsTurns?: number;
+    rulesBudgetPct?: number;               // fraction of context limit for rules RAG, default 0.10
+    autoGenerateRuleKeywords?: boolean;    // default true; false = header+bold extraction only
+    utilityTimeoutSeconds?: number;        // soft deadline for utility AI calls (default 45)
+    verboseUtilityLogging?: boolean;
+    enableArchivePlanner?: boolean;
 
     // Legacy fields kept for migration only
     providers?: ProviderConfig[];
@@ -259,6 +278,8 @@ export type GameContext = {
     npcIntroEngineActive?: boolean;         // master toggle
     npcIntroDC?: number;                    // current DC (decays on failed rolls)
     npcIntroConfig?: NpcIntroConfig;        // config block
+    rulesChunkMeta?: Record<string, RuleChunkMeta>;
+    rulesChunks?: LoreChunk[];
 };
 
 export type NotebookNote = {
@@ -296,6 +317,23 @@ export type ArchiveChunk = {
     tokens: number;
 };
 
+export type SceneEventType =
+    | 'combat' | 'discovery' | 'item_acquired' | 'item_lost'
+    | 'relationship_shift' | 'travel' | 'promise' | 'betrayal'
+    | 'death' | 'revelation' | 'quest_milestone' | 'other';
+
+export type SceneEvent = {
+    eventType: SceneEventType;
+    importance: number;       // 1–10
+    text: string;             // short summary line
+    characters?: string[];
+    locations?: string[];
+    items?: string[];
+    concepts?: string[];
+    cause?: string;
+    result?: string;
+};
+
 /** Search index entry — one per scene, auto-built by server on every turn. */
 export type ArchiveIndexEntry = {
     sceneId: string;
@@ -308,6 +346,7 @@ export type ArchiveIndexEntry = {
     keywordStrengths?: Record<string, number>;
     npcStrengths?: Record<string, number>;
     importance?: number;
+    events?: SceneEvent[];
 };
 
 /** Full verbatim scene content fetched from .archive.md for recall injection. */
@@ -357,6 +396,18 @@ export type LoreChunk = {
     summary?: string;
     group?: string;
     groupWeight?: number;
+};
+
+export type RuleChunkMeta = {
+    id: string;
+    activationModes: ('vector' | 'keyword' | 'always')[];
+    triggerKeywords?: string[];
+    secondaryKeywords?: string[];
+    priority?: number;
+    keywordsUserEdited?: boolean;
+    hasEmbedding?: boolean;
+    modelId?: string;
+    version?: number;
 };
 
 export type WorldLoreItem = {
@@ -745,6 +796,8 @@ export function migrateLegacyContext(ctx: Partial<GameContext>): GameContext {
     const base: GameContext = {
         loreRaw: '',
         rulesRaw: '',
+        rulesChunkMeta: {},
+        rulesChunks: [],
         canonState: '',
         headerIndex: '',
         starter: '',

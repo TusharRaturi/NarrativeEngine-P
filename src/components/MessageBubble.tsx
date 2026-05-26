@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Edit2, RotateCcw, Trash2, Loader2, Zap } from 'lucide-react';
+import { Edit2, RotateCcw, Trash2, Loader2 } from 'lucide-react';
 import type { ChatMessage, DebugSection } from '../types';
 import { DebugPayloadView } from './DebugPayloadView';
 

@@ -7,8 +7,7 @@ import {
 import { DEFAULT_CONTEXT, DEFAULT_CONDENSER } from '../services/campaignInit';
 import { migrateLegacyContext } from '../types';
 import type { GameContext, ArchiveChapter, DivergenceRegister } from '../types';
-import { EMPTY_REGISTER, migrateV1ToV2 } from '../services/divergenceRegister';
-import { toast } from '../components/Toast';
+import { migrateV1ToV2 } from '../services/divergenceRegister';
 
 function backfillSceneIds(chapters: ArchiveChapter[]): { chapters: ArchiveChapter[]; changed: boolean } {
     let changed = false;

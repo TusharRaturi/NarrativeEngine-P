@@ -85,6 +85,7 @@ export function sealChapter(
         chapterId: `CH${String(nextChapterNum).padStart(2, '0')}`,
         title: 'Open Chapter',
         sceneRange: [nextScene, nextScene],
+        sceneIds: [],
         summary: '',
         keywords: [],
         npcs: [],

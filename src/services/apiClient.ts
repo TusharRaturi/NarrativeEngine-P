@@ -1,4 +1,4 @@
-import type { AppSettings, ArchiveChapter, ArchiveIndexEntry, SemanticFact, EntityEntry, BackupMeta, TimelineEvent } from '../types';
+import type { AppSettings, ArchiveChapter, ArchiveIndexEntry, SemanticFact, EntityEntry, BackupMeta, TimelineEvent, SceneEvent } from '../types';
 
 import { API_BASE as API } from '../lib/apiBase';
 
@@ -62,6 +62,20 @@ export const api = {
                 }
             } catch (err) {
                 console.warn('[Archive] Failed to patch witnesses:', err);
+            }
+        },
+        async patchEvents(campaignId: string, patches: { sceneId: string; events: SceneEvent[] }[]): Promise<void> {
+            try {
+                const res = await fetch(`${API}/campaigns/${campaignId}/archive/events`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ patches }),
+                });
+                if (!res.ok) {
+                    console.warn('[Archive] Failed to patch events:', res.status);
+                }
+            } catch (err) {
+                console.warn('[Archive] Failed to patch events:', err);
             }
         },
     },
@@ -320,5 +334,55 @@ export const api = {
         async delete(): Promise<void> {
             await fetch(`${API}/vault`, { method: 'DELETE' });
         },
+    },
+    rules: {
+        async upsertEmbedding(campaignId: string, chunkId: string, text: string): Promise<{ chunkId: string; modelId: string; version: number } | undefined> {
+            try {
+                const res = await fetch(`${API}/campaigns/${campaignId}/rules/embed`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ chunkId, text }),
+                });
+                if (res.ok) return await res.json();
+            } catch (err) {
+                console.warn('[Rules API] Failed to upsert embedding:', err);
+            }
+            return undefined;
+        },
+        async deleteEmbedding(campaignId: string, chunkId: string): Promise<boolean> {
+            try {
+                const res = await fetch(`${API}/campaigns/${campaignId}/rules/embed/${chunkId}`, {
+                    method: 'DELETE',
+                });
+                return res.ok;
+            } catch (err) {
+                console.warn('[Rules API] Failed to delete embedding:', err);
+                return false;
+            }
+        },
+        async search(campaignId: string, query: string, limit?: number): Promise<{ ruleIds: string[] }> {
+            try {
+                const res = await fetch(`${API}/campaigns/${campaignId}/rules/search`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query, limit }),
+                });
+                if (res.ok) return await res.json();
+            } catch (err) {
+                console.warn('[Rules API] Failed to search:', err);
+            }
+            return { ruleIds: [] };
+        },
+        async reindex(campaignId: string): Promise<{ status: string; totalChunks: number } | undefined> {
+            try {
+                const res = await fetch(`${API}/campaigns/${campaignId}/rules/reindex`, {
+                    method: 'POST',
+                });
+                if (res.ok) return await res.json();
+            } catch (err) {
+                console.warn('[Rules API] Failed to reindex:', err);
+            }
+            return undefined;
+        }
     },
 };

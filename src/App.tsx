@@ -16,9 +16,11 @@ import { ToastContainer } from './components/Toast';
 import { VaultUnlockModal } from './components/VaultUnlockModal';
 // import { MapPanel } from './components/map/MapPanel';
 import { hydrateCampaign } from './store/campaignHydrator';
+import { useRulesIndexer } from './hooks/useRulesIndexer';
 
 export default function App() {
   const activeCampaignId = useAppStore((s) => s.activeCampaignId);
+  useRulesIndexer();
   const settingsLoaded = useAppStore((s) => s.settingsLoaded);
   const loadSettings = useAppStore((s) => s.loadSettings);
   const vaultStatus = useAppStore((s) => s.vaultStatus);

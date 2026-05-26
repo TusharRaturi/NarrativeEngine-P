@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { ScrollText, Database, Sparkles, Save, BookOpen, Brain } from 'lucide-react';
+import { ScrollText, Database, Sparkles, Save, BookOpen, Brain, Sliders } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { RulesTab } from './context-drawer/RulesTab';
+import { RulesManagerTab } from './context-drawer/RulesManagerTab';
 import { LoreTab } from './context-drawer/LoreTab';
 import { EnginesTab } from './context-drawer/EnginesTab';
 import { BookkeepingTab } from './context-drawer/BookkeepingTab';
@@ -10,6 +11,7 @@ import { MemoryTab } from './context-drawer/MemoryTab';
 
 const TABS = [
     { key: 'sys'   as const, Icon: ScrollText, label: 'System Context' },
+    { key: 'rules-mgr' as const, Icon: Sliders, label: 'Rules Manager' },
     { key: 'world' as const, Icon: Database,   label: 'World Info' },
     { key: 'eng'   as const, Icon: Sparkles,   label: 'Engine Tuning' },
     { key: 'chpt'  as const, Icon: BookOpen,   label: 'Chapters' },
@@ -51,12 +53,12 @@ export function ContextDrawer() {
                 </div>
 
                 {/* Tab Bar */}
-                <div className="flex border-b border-border shrink-0">
+                <div className="flex border-b border-border shrink-0 overflow-x-auto no-scrollbar">
                     {TABS.map(({ key, Icon: TabIcon, label }) => (
                         <button
                             key={key}
                             onClick={() => setActiveTab(key)}
-                            className={`flex-1 flex flex-col items-center gap-0.5 py-2 text-[9px] uppercase tracking-wider transition-colors ${
+                            className={`flex-1 flex flex-col items-center gap-0.5 py-2 px-1 text-[9px] uppercase tracking-wider transition-colors ${
                                 activeTab === key
                                     ? 'text-terminal border-b-2 border-terminal -mb-px'
                                     : 'text-text-dim hover:text-text-primary'
@@ -64,14 +66,15 @@ export function ContextDrawer() {
                             title={label}
                         >
                             <TabIcon size={13} />
-                            {key.toUpperCase()}
+                            {key.replace('-mgr', '').toUpperCase()}
                         </button>
                     ))}
                 </div>
 
                 {/* Tab Panels */}
                 <div className="flex-1 overflow-y-auto">
-                    {activeTab === 'sys' && <RulesTab />}
+                    {activeTab === 'sys' && <RulesTab onOpenManager={() => setActiveTab('rules-mgr')} />}
+                    {activeTab === 'rules-mgr' && <RulesManagerTab onBack={() => setActiveTab('sys')} />}
                     {activeTab === 'world' && <LoreTab />}
                     {activeTab === 'eng' && <EnginesTab />}
                     {activeTab === 'chpt' && <ChapterTab />}

@@ -4,7 +4,6 @@ import type { NPCEntry, NPCVisualProfile } from '../../types';
 import { DEFAULT_VISUAL_PROFILE } from '../../types';
 import { useAppStore } from '../../store/useAppStore';
 import { getEntriesForNpc, CATEGORY_LABELS, EMPTY_REGISTER } from '../../services/divergenceRegister';
-import type { DivergenceCategory } from '../../types';
 
 type Props = {
     form: Partial<NPCEntry>;

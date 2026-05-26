@@ -6,6 +6,7 @@ import { CHAPTER_SCENE_SOFT_CAP } from '../types';
 import { rateImportance } from './importanceRater';
 import { sealChapterCombined } from './saveFileEngine';
 import { backgroundQueue } from './backgroundQueue';
+import { extractSceneEvents } from './sceneEventExtractor';
 import { extractNPCNames, classifyNPCNames, validateNPCCandidates } from './npcDetector';
 import { generateNPCProfile, updateExistingNPCs, backfillNPCDrives } from './chatEngine';
 import { scanPressure, buildPressurePatch, shouldArchiveNPC, findArchivedToRestore } from './npcPressureTracker';
@@ -107,6 +108,21 @@ async function runArchiveTrack(
     callbacks.setTimeline?.(freshTimeline);
     state.setChapters(freshChapters);
     console.log(`[Archive] Appended scene #${appendedSceneId}`);
+
+    const entry = freshIndex.find(e => e.sceneId === appendedSceneId);
+    const bkProvider = state.getFreshProvider();
+    if (entry && !entry.events && bkProvider) {
+        const sceneText = `${displayInput}\n\n${lastAssistantContent}`;
+        backgroundQueue.push(`Event-Extraction:${appendedSceneId}`, async () => {
+            const events = await extractSceneEvents(bkProvider, sceneText);
+            if (events && events.length > 0) {
+                await api.archive.patchEvents(activeCampaignId, [{ sceneId: entry.sceneId, events }]);
+                const updatedIndex = await api.archive.getIndex(activeCampaignId);
+                callbacks.setArchiveIndex(updatedIndex);
+                console.log(`[Archive] Post-turn events extracted for scene #${entry.sceneId}`);
+            }
+        }).catch(err => console.warn('[PostTurn] Background event extraction failed:', err));
+    }
 
     const openChapter = freshChapters.find(c => !c.sealedAt);
     if (openChapter && openChapter.sceneCount >= CHAPTER_SCENE_SOFT_CAP) {
@@ -212,7 +228,7 @@ export async function runCombinedSeal(
     const effectiveScanBudget = scanBudgetSetting > 0 ? scanBudgetSetting : Math.round(contextLimit * 0.75);
 
     const result = await sealChapterCombined(
-        provider,
+        provider as any,
         scenes,
         chapter.chapterId,
         chapter.title,
@@ -229,7 +245,7 @@ export async function runCombinedSeal(
     }
 
     if (result.divergenceParseError && result.divergences.length === 0) {
-        toast.warn('Summary generated but facts extraction failed. You can regenerate to retry.');
+        toast.warning('Summary generated but facts extraction failed. You can regenerate to retry.');
     }
 
     if (result.summary) {
@@ -280,6 +296,22 @@ export async function runCombinedSeal(
             }
         } catch (e) {
             console.warn('[CombinedSeal] Failed to apply witness corrections:', e);
+        }
+    }
+
+    // ── Apply scene event corrections/backfill from seal audit ──
+    if (result.sceneEventMap && Object.keys(result.sceneEventMap).length > 0) {
+        try {
+            const patches = Object.entries(result.sceneEventMap).map(([sceneId, events]) => ({
+                sceneId,
+                events
+            }));
+            await api.archive.patchEvents(activeCampaignId, patches);
+            const freshIndex = await api.archive.getIndex(activeCampaignId);
+            callbacks.setArchiveIndex(freshIndex);
+            console.log(`[CombinedSeal] Applied scene events backfill for ${patches.length} scenes`);
+        } catch (e) {
+            console.warn('[CombinedSeal] Failed to apply scene events backfill:', e);
         }
     }
 
