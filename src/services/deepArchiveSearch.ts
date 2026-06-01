@@ -2,27 +2,11 @@ import type { ArchiveChapter, ArchiveIndexEntry, ChatMessage, EndpointConfig } f
 import { llmCall } from '../utils/llmCall';
 import { fetchArchiveScenes } from './archiveMemory';
 import { safeSceneNum } from '../utils/helpers';
+import { extractJsonRobust } from './jsonExtract';
 
 const TIMEOUT_CHAPTER_SCAN_MS = 120_000;
 const TIMEOUT_SCENE_SCAN_MS = 210_000;
 const TIMEOUT_SUMMARIZE_MS = 180_000;
-
-function extractJson(text: string): string {
-    let clean = text.replace(/<think[\s\S]*?<\/think\s*>/gi, '');
-    const mdMatch = clean.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (mdMatch) clean = mdMatch[1];
-    const firstObj = clean.indexOf('{');
-    const lastObj = clean.lastIndexOf('}');
-    const firstArr = clean.indexOf('[');
-    const lastArr = clean.lastIndexOf(']');
-    if (firstObj !== -1 && lastObj > firstObj && (firstArr === -1 || firstObj < firstArr)) {
-        return clean.substring(firstObj, lastObj + 1);
-    }
-    if (firstArr !== -1 && lastArr > firstArr) {
-        return clean.substring(firstArr, lastArr + 1);
-    }
-    return clean.trim();
-}
 
 function estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
@@ -127,15 +111,14 @@ async function scanChapters(
         'Chapter scan'
     );
 
-    const jsonStr = extractJson(rawContent);
-    try {
-        const parsed = JSON.parse(jsonStr);
-        if (parsed.chapters && Array.isArray(parsed.chapters)) {
-            const validIds = new Set(sealedChapters.map(c => c.chapterId));
-            return parsed.chapters.filter((id: unknown) => typeof id === 'string' && validIds.has(id));
-        }
-    } catch {
+    const { value: parsed, parseOk } = extractJsonRobust<{ chapters?: string[] }>(rawContent, {});
+    if (!parseOk) {
         console.warn('[DeepArchiveSearch] Failed to parse chapter scan response');
+        return [];
+    }
+    if (Array.isArray(parsed.chapters)) {
+        const validIds = new Set(sealedChapters.map(c => c.chapterId));
+        return parsed.chapters.filter((id: unknown) => typeof id === 'string' && validIds.has(id));
     }
     return [];
 }
@@ -179,20 +162,19 @@ async function scanScenes(
         'Scene scan'
     );
 
-    const jsonStr = extractJson(rawContent);
+    const { value: parsed, parseOk } = extractJsonRobust<{ scenes?: string[] }>(rawContent, {});
     const result = new Set<string>();
-    try {
-        const parsed = JSON.parse(jsonStr);
-        if (parsed.scenes && Array.isArray(parsed.scenes)) {
-            const validIds = new Set(archiveIndex.map(e => e.sceneId));
-            for (const id of parsed.scenes) {
-                if (typeof id === 'string' && validIds.has(id)) {
-                    result.add(id);
-                }
+    if (!parseOk) {
+        console.warn('[DeepArchiveSearch] Failed to parse scene scan response');
+        return result;
+    }
+    if (Array.isArray(parsed.scenes)) {
+        const validIds = new Set(archiveIndex.map(e => e.sceneId));
+        for (const id of parsed.scenes) {
+            if (typeof id === 'string' && validIds.has(id)) {
+                result.add(id);
             }
         }
-    } catch {
-        console.warn('[DeepArchiveSearch] Failed to parse scene scan response');
     }
     return result;
 }

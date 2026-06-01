@@ -159,3 +159,29 @@ describe('extractJson', () => {
         expect(result).toBe('just plain text');
     });
 });
+
+// Documents the response shapes deepArchiveSearch relies on after migrating
+// off its local extractJson onto extractJsonRobust (the canonical parser).
+describe('deepArchiveSearch response contract', () => {
+    it('parses a chapter-scan response with chatter + fence', () => {
+        const raw = 'Here are the chapters:\n```json\n{"chapters":["CH01","CH03"]}\n```';
+        const { value, parseOk } = extractJsonRobust<{ chapters?: string[] }>(raw, {});
+        expect(parseOk).toBe(true);
+        expect(value.chapters).toEqual(['CH01', 'CH03']);
+    });
+
+    it('recovers a scene-scan response missing its closing brace', () => {
+        // Array closed but outer object truncated — recoverable.
+        const raw = '{"scenes":["042","011"]';
+        const { value, parseOk } = extractJsonRobust<{ scenes?: string[] }>(raw, {});
+        expect(parseOk).toBe(true);
+        expect(value.scenes).toEqual(['042', '011']);
+    });
+
+    it('returns fallback (parseOk=false) when the model emits no JSON', () => {
+        const raw = 'I could not find any relevant chapters.';
+        const { value, parseOk } = extractJsonRobust<{ chapters?: string[] }>(raw, {});
+        expect(parseOk).toBe(false);
+        expect(value.chapters).toBeUndefined();
+    });
+});
