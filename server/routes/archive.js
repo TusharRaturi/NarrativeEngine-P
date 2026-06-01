@@ -10,7 +10,7 @@ if (process.versions.electron) {
         const electron = require('electron');
         shell = electron.shell;
     } catch (e) {
-        console.warn('[Archive] Could not load Electron shell:', e);
+        console.warn('[Archive] Could not load Electron shell:', e.message);
     }
 }
 import {
@@ -97,7 +97,7 @@ export function createArchiveRouter() {
 
         embedText(buildArchiveText(indexEntry))
             .then(embedding => storeArchiveEmbedding(req.params.id, sceneId, embedding))
-            .catch(err => console.error('[Archive] Embedding failed:', err.message));
+            .catch(err => console.warn('[Archive] Embedding failed:', err.message));
 
         // Extract timeline events (LLM with regex fallback) and append to timeline store
         const entitiesFile = entitiesPath(req.params.id);
@@ -379,24 +379,29 @@ export function createArchiveRouter() {
         if (shell) {
             shell.openPath(fp).then(errorMsg => {
                 if (errorMsg) {
-                    console.error('[Archive] shell.openPath failed:', errorMsg);
+                    console.warn('[Archive] shell.openPath returned error:', errorMsg);
                     return res.status(500).json({ error: `Failed to open archive: ${errorMsg}` });
                 }
                 res.json({ ok: true });
             }).catch(err => {
-                console.error('[Archive] shell.openPath rejected:', err);
+                console.error('[Archive] shell.openPath rejected:', err.message);
                 res.status(500).json({ error: 'Failed to open archive' });
             });
         } else {
-            // Standalone development mode fallback
             const cmd = process.platform === 'win32' ? 'cmd' : process.platform === 'darwin' ? 'open' : 'xdg-open';
             const args = process.platform === 'win32' ? ['/c', 'start', '""', fp] : [fp];
 
             import('child_process').then(({ execFile }) => {
                 execFile(cmd, args, (err) => {
-                    if (err) return res.status(500).json({ error: 'Failed to open archive' });
+                    if (err) {
+                        console.warn('[Archive] execFile failed:', err.message);
+                        return res.status(500).json({ error: 'Failed to open archive' });
+                    }
                     res.json({ ok: true });
                 });
+            }).catch(err => {
+                console.error('[Archive] child_process import failed:', err.message);
+                res.status(500).json({ error: 'Failed to open archive' });
             });
         }
     }));

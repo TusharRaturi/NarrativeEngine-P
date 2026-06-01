@@ -157,16 +157,23 @@ export function createTransferRouter() {
 
         // Background re-embedding
         setImmediate(async () => {
-            try {
-                for (const entry of bundle.archiveIndex || []) {
-                    const vec = await embedText(buildArchiveText(entry)).catch(() => null);
-                    if (vec) storeArchiveEmbedding(newId, entry.sceneId, vec);
-                }
-                for (const chunk of bundle.lore || []) {
-                    const vec = await embedText(buildLoreText(chunk)).catch(() => null);
-                    if (vec) storeLoreEmbedding(newId, chunk.id, vec);
-                }
-            } catch { /* non-fatal */ }
+            let embedOk = 0;
+            let embedFail = 0;
+            for (const entry of bundle.archiveIndex || []) {
+                try {
+                    const vec = await embedText(buildArchiveText(entry));
+                    storeArchiveEmbedding(newId, entry.sceneId, vec);
+                    embedOk++;
+                } catch (e) { console.warn('[Transfer] Archive embed failed:', entry.sceneId, e.message); embedFail++; }
+            }
+            for (const chunk of bundle.lore || []) {
+                try {
+                    const vec = await embedText(buildLoreText(chunk));
+                    storeLoreEmbedding(newId, chunk.id, vec);
+                    embedOk++;
+                } catch (e) { console.warn('[Transfer] Lore embed failed:', chunk.id, e.message); embedFail++; }
+            }
+            if (embedOk || embedFail) console.log(`[Transfer] Background embed: ${embedOk} ok, ${embedFail} failed`);
         });
 
         res.json({ ok: true, id: newId, name: campaign.name });

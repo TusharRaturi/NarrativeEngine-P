@@ -116,18 +116,17 @@ export function createRulesRouter() {
 
         const chunks = chunkRulesServer(rulesRaw);
         
-        // 1. Purge existing rules embeddings for this campaign
-        deleteRulesEmbedding(campaignId, '%'); // deletes rules in meta & DB using like or specific purge
-        // Let's explicitly clear them for safety
-        const db = rulesMeta => {}; 
-        // Wait, vectorStore.js already has `deleteCampaignEmbeddings(campaignId)` but we only want to purge rules here:
-        import('../lib/vectorStore.js').then(({ getDb }) => {
+        deleteRulesEmbedding(campaignId, '%');
+        try {
+            const { getDb } = await import('../lib/vectorStore.js');
             const sqliteDb = getDb();
             if (sqliteDb) {
                 sqliteDb.prepare("DELETE FROM rules_vss WHERE campaign_id = ?").run(campaignId);
                 sqliteDb.prepare("DELETE FROM embedding_meta WHERE campaign_id = ? AND item_type = 'rule'").run(campaignId);
             }
-        }).catch(err => console.warn('[Rules Reindex] Failed to clear DB explicitly:', err));
+        } catch (err) {
+            console.warn('[Rules Reindex] Failed to clear DB explicitly:', err.message);
+        }
 
         if (chunks.length === 0) {
             return res.json({ status: 'success', totalChunks: 0 });

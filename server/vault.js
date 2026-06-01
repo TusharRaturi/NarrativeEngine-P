@@ -11,7 +11,7 @@ if (process.versions.electron) {
         const electron = require('electron');
         safeStorage = electron.safeStorage;
     } catch (e) {
-        console.warn('[Vault] Could not load Electron safeStorage:', e);
+        console.warn('[Vault] Could not load Electron safeStorage:', e.message);
     }
 }
 
@@ -243,7 +243,7 @@ export class KeyVault {
             this.derivedKey = key;
             return true;
         } catch (err) {
-            console.error('[Vault] Remembered key unlock failed:', err);
+            console.warn('[Vault] Remembered key unlock failed:', err.message);
             this.clearRememberedKey();
             return false;
         }

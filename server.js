@@ -17,6 +17,7 @@ import { createDivergenceRouter } from './server/routes/divergence.js';
 import { createRulesRouter } from './server/routes/rules.js';
 import { initDb } from './server/lib/vectorStore.js';
 import { warmup as warmupEmbedder } from './server/lib/embedder.js';
+import { serverError } from './server/lib/serverError.js';
 
 const app = express();
 const PORT = 3001;
@@ -71,9 +72,7 @@ app.use(createRulesRouter());
 
 // ─── Central Error Handler ───
 app.use((err, _req, res, _next) => {
-    const status = err.statusCode || 500;
-    console.error(`[Server] Error ${status}:`, err.message);
-    res.status(status).json({ error: err.message || 'Internal server error' });
+    serverError(res, err, 'Server');
 });
 
 // ─── Start ───

@@ -29,7 +29,8 @@ function getStoredSchemaDims() {
         if (!row) return null;
         const match = row.sql.match(/float\[(\d+)\]/i);
         return match ? parseInt(match[1], 10) : null;
-    } catch {
+    } catch (e) {
+        console.warn(`[VectorStore] Schema dims read failed: ${e.message}`);
         return null;
     }
 }

@@ -115,16 +115,20 @@ export function createCampaignsRouter() {
         const chunks = req.body;
         if (Array.isArray(chunks)) {
             (async () => {
+                let ok = 0;
+                let fail = 0;
                 for (const chunk of chunks) {
                     try {
                         const text = buildLoreText(chunk);
                         const embedding = await embedText(text);
                         storeLoreEmbedding(req.params.id, chunk.id, embedding);
+                        ok++;
                     } catch (err) {
-                        console.error(`[Lore Embed] Failed for ${chunk.id}:`, err.message);
+                        console.warn(`[Lore Embed] Failed for ${chunk.id}: ${err.message}`);
+                        fail++;
                     }
                 }
-                console.log(`[Lore Embed] Stored ${chunks.length} lore embeddings for ${req.params.id}`);
+                console.log(`[Lore Embed] Stored ${ok}/${chunks.length} lore embeddings for ${req.params.id}${fail ? ` (${fail} failed)` : ''}`);
             })().catch(err => console.error('[Lore Embed] Batch failed:', err.message));
         }
     }));

@@ -129,7 +129,8 @@ Respond ONLY with valid JSON:
             return parsed;
         }
         return null;
-    } catch {
+    } catch (e) {
+        console.warn('[LLM] Witness JSON parse failed:', e.message);
         return null;
     }
 }
@@ -185,7 +186,8 @@ If no state changes, return: []`;
             importance: clampImportance(e.importance),
             source: 'llm',
         }));
-    } catch {
+    } catch (e) {
+        console.warn('[LLM] Timeline events JSON parse failed:', e.message);
         return null;
     }
 }

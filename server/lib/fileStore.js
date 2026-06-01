@@ -35,7 +35,7 @@ export function readJson(filePath, fallback = null) {
     try {
         if (!fs.existsSync(filePath)) return fallback;
         return JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-    } catch { return fallback; }
+    } catch (e) { console.warn(`[fileStore] readJson failed: ${filePath} — ${e.message}`); return fallback; }
 }
 
 export function writeJson(filePath, data) {
@@ -45,8 +45,8 @@ export function writeJson(filePath, data) {
         fs.writeFileSync(tmp, JSON.stringify(data, null, 2), 'utf-8');
         fs.renameSync(tmp, filePath);
     } catch (err) {
-        console.error(`[writeJson] Failed to write ${filePath}:`, err);
-        throw err; // re-throw so callers can return 500
+        console.error(`[writeJson] Failed to write ${filePath}: ${err.message}`);
+        throw err;
     }
 }
 
