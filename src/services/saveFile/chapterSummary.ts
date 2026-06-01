@@ -1,6 +1,6 @@
 import type { ArchiveChapter, ProviderConfig, EndpointConfig } from '../../types';
 import { countTokens } from '../tokenizer';
-import { extractJson } from '../payloadBuilder';
+import { extractJson } from '../jsonExtract';
 import { llmCall } from '../../utils/llmCall';
 import { truncateScenesToBudget, CHAPTER_SUMMARY_TOKEN_BUDGET } from './shared';
 

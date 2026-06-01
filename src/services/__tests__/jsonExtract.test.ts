@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractJsonRobust } from '../jsonExtract';
+import { extractJsonRobust, extractJson } from '../jsonExtract';
 
 describe('extractJsonRobust', () => {
     describe('object root', () => {
@@ -98,5 +98,64 @@ describe('extractJsonRobust', () => {
             expect(parseOk).toBe(false);
             expect(value).toEqual([]);
         });
+    });
+});
+
+describe('extractJson', () => {
+    it('strips <think>...</think> blocks before extracting', () => {
+        const input = '<think>some internal reasoning</think>{"key":"value"}';
+        const result = extractJson(input);
+        expect(JSON.parse(result)).toEqual({ key: 'value' });
+        expect(result).not.toContain('<think>');
+    });
+
+    it('unwraps a ```json fenced code block', () => {
+        const input = '```json\n{"name":"Alice","level":5}\n```';
+        const result = extractJson(input);
+        expect(JSON.parse(result)).toEqual({ name: 'Alice', level: 5 });
+    });
+
+    it('repairs a trailing comma before }', () => {
+        const input = '{"a":1,"b":2,}';
+        const result = extractJson(input);
+        expect(JSON.parse(result)).toEqual({ a: 1, b: 2 });
+    });
+
+    it('repairs a trailing comma before ]', () => {
+        const input = '{"items":["x","y",]}';
+        const result = extractJson(input);
+        expect(JSON.parse(result)).toEqual({ items: ['x', 'y'] });
+    });
+
+    it('converts single-quoted string values to double-quoted', () => {
+        const input = "{'key': 'hello'}";
+        // repairJson converts single-quoted values; result should be parseable
+        const result = extractJson(input);
+        // After repair the value should be accessible
+        expect(result).toContain('"hello"');
+    });
+
+    it('selects object root when { precedes [', () => {
+        // { before [ — extractJson starts at { and ends at last }, so object wins
+        const input = 'preamble {"items":[1,2,3]}';
+        const result = extractJson(input);
+        const parsed = JSON.parse(result);
+        expect(parsed).toHaveProperty('items');
+        expect(Array.isArray(parsed.items)).toBe(true);
+    });
+
+    it('selects array root when [ precedes {', () => {
+        // [ before any { — extractJson starts at [ and ends at last ]
+        const input = 'preamble [1,2,3]';
+        const result = extractJson(input);
+        const parsed = JSON.parse(result);
+        expect(Array.isArray(parsed)).toBe(true);
+        expect(parsed).toEqual([1, 2, 3]);
+    });
+
+    it('trims and returns input as-is when no JSON present', () => {
+        const input = '   just plain text   ';
+        const result = extractJson(input);
+        expect(result).toBe('just plain text');
     });
 });

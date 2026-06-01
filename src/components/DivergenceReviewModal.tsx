@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { X, Sparkles, Loader2 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { sendMessage } from '../services/llmService';
-import { extractJson } from '../services/payloadBuilder';
+import { extractJson } from '../services/jsonExtract';
 import { CATEGORY_LABELS, coerceCategory } from '../services/divergenceRegister';
 import { uid } from '../utils/uid';
 import { toast } from './Toast';
