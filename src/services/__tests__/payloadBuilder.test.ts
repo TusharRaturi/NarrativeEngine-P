@@ -1,7 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { buildPayload } from '../payloadBuilder';
 import { DEFAULT_RULES } from '../defaultRules';
-import type { GameContext, AppSettings } from '../../types';
+import type {
+    GameContext,
+    AppSettings,
+    LoreChunk,
+    NPCEntry,
+    ArchiveScene,
+    ArchiveIndexEntry,
+    TimelineEvent,
+    DivergenceRegister,
+    ChatMessage,
+} from '../../types';
 
 const baseContext = (): GameContext => ({
     loreRaw: '',
@@ -71,5 +81,837 @@ describe('buildPayload — default rules fallback', () => {
         expect(DEFAULT_RULES).toContain('### LORE');
         expect(DEFAULT_RULES).toContain('### ACTION RESOLUTION');
         expect(DEFAULT_RULES).toContain('### EVENT PROTOCOL');
+    });
+});
+
+// ─── Characterization tests: pin current buildPayload behaviour ────────────────
+
+// ── Helper fixtures ────────────────────────────────────────────────────────────
+
+function makeMsg(
+    role: ChatMessage['role'],
+    content: string,
+    extras?: Partial<ChatMessage>
+): ChatMessage {
+    return { id: `msg-${Math.random()}`, role, content, timestamp: Date.now(), ...extras };
+}
+
+function makeLoreChunk(overrides: Partial<LoreChunk> & { category: LoreChunk['category'] }): LoreChunk {
+    return {
+        id: 'lc1',
+        header: 'Test Header',
+        content: 'Test content',
+        tokens: 5,
+        alwaysInclude: false,
+        triggerKeywords: [],
+        scanDepth: 3,
+        category: overrides.category,
+        linkedEntities: [],
+        priority: 1,
+        ...overrides,
+    };
+}
+
+function makeNPC(overrides: Partial<NPCEntry>): NPCEntry {
+    return {
+        id: 'npc1',
+        name: 'TestNPC',
+        aliases: '',
+        appearance: '',
+        faction: '',
+        storyRelevance: '',
+        disposition: 'neutral',
+        status: 'alive',
+        goals: '',
+        voice: '',
+        personality: '',
+        exampleOutput: '',
+        affinity: 0,
+        archived: false,
+        ...overrides,
+    };
+}
+
+function makeArchiveScene(sceneId: string, content: string): ArchiveScene {
+    return { sceneId, content, tokens: Math.ceil(content.length / 4) };
+}
+
+function makeArchiveIndexEntry(sceneId: string, witnesses: string[]): ArchiveIndexEntry {
+    return {
+        sceneId,
+        timestamp: Date.now(),
+        keywords: [],
+        npcsMentioned: [],
+        witnesses,
+        userSnippet: '',
+    };
+}
+
+function makeTimelineEvent(overrides: Partial<TimelineEvent>): TimelineEvent {
+    return {
+        id: 'tl_0001',
+        sceneId: '001',
+        chapterId: 'CH01',
+        subject: 'TestSubject',
+        predicate: 'status',
+        object: 'alive',
+        summary: 'Test summary',
+        importance: 5,
+        source: 'manual',
+        ...overrides,
+    };
+}
+
+function makeDivergenceRegister(text: string): DivergenceRegister {
+    return {
+        entries: [
+            {
+                id: 'div1',
+                chapterId: 'CH01',
+                category: 'world_state',
+                text,
+                sceneRef: '001',
+                npcIds: [],
+                pinned: true,
+                enabled: true,
+                source: 'manual',
+            },
+        ],
+        chapterToggles: {},
+        categoryToggles: {},
+        lastUpdatedSceneId: '001',
+        lastUpdatedAt: Date.now(),
+        version: 2,
+    };
+}
+
+// ── Scenario 1: Minimal ────────────────────────────────────────────────────────
+describe('buildPayload — scenario 1: minimal', () => {
+    it('first message is system and contains stable preamble (rules text)', () => {
+        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        expect(result.messages.length).toBeGreaterThanOrEqual(3);
+        expect(result.messages[0].role).toBe('system');
+        // rules text is in the first system message
+        expect(result.messages[0].content).toContain('ROLE: Impartial GM.');
+    });
+
+    it('a system message near the end contains the GM REMINDER literal', () => {
+        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const sysMessages = result.messages.filter(m => m.role === 'system');
+        const hasReminder = sysMessages.some(
+            m => typeof m.content === 'string' && m.content.includes('[GM REMINDER')
+        );
+        expect(hasReminder).toBe(true);
+    });
+
+    it('the LAST message is the user message', () => {
+        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const last = result.messages[result.messages.length - 1];
+        expect(last.role).toBe('user');
+        expect(last.content).toBe('Hello world');
+    });
+
+    it('message ordering: system first, then GM reminder (second-to-last), then user last', () => {
+        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const msgs = result.messages;
+        expect(msgs[0].role).toBe('system');
+        const reminderIdx = msgs.findIndex(
+            m => typeof m.content === 'string' && m.content.includes('[GM REMINDER')
+        );
+        expect(reminderIdx).toBe(msgs.length - 2);
+        expect(msgs[msgs.length - 1].role).toBe('user');
+    });
+
+    it('returns trace and debugSections when debugMode is true', () => {
+        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        expect(result.trace).toBeDefined();
+        expect(result.debugSections).toBeDefined();
+    });
+
+    it('does NOT return trace/debugSections when debugMode is false', () => {
+        const settings = { ...baseSettings(), debugMode: false } as unknown as AppSettings;
+        const result = buildPayload(settings, baseContext(), [], 'Hello world');
+        expect(result.trace).toBeUndefined();
+        expect(result.debugSections).toBeUndefined();
+    });
+});
+
+// ── Scenario 2: Full world context ────────────────────────────────────────────
+describe('buildPayload — scenario 2: full world context', () => {
+    const lore: LoreChunk[] = [
+        makeLoreChunk({ id: 'lc_faction', category: 'faction', header: 'Iron Guild', content: 'A powerful trading faction.', tokens: 8 }),
+        makeLoreChunk({ id: 'lc_loc', category: 'location', header: 'The Docks', content: 'Busy harbor district.', tokens: 7 }),
+    ];
+    const npcs: NPCEntry[] = [
+        makeNPC({ id: 'npc_a', name: 'Aldric', aliases: '' }),
+        makeNPC({ id: 'npc_b', name: 'Bella', aliases: '' }),
+    ];
+    const archive: ArchiveScene[] = [
+        makeArchiveScene('001', 'The party fought goblins near the docks.'),
+    ];
+    const timeline: TimelineEvent[] = [
+        makeTimelineEvent({ id: 'tl1', subject: 'Aldric', predicate: 'status', object: 'injured', summary: 'Aldric was injured in scene 001' }),
+    ];
+    const divReg = makeDivergenceRegister('The bridge was destroyed in scene 001.');
+    const userMsg = 'Aldric and Bella are at the docks. What happens next?';
+
+    it('world lore marker appears in assembled system content', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], userMsg,
+            undefined, lore, npcs, archive,
+            undefined, undefined, 'Some semantic fact',
+            undefined, timeline, undefined, undefined, undefined, divReg
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('[WORLD LORE');
+    });
+
+    it('FACTIONS section appears when faction lore is provided', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], userMsg,
+            undefined, lore
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('[FACTIONS]');
+    });
+
+    it('LOCATIONS section appears when location lore is provided', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], userMsg,
+            undefined, lore
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('[LOCATIONS]');
+    });
+
+    it('archive recall marker appears when archiveRecall is provided', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], userMsg,
+            undefined, undefined, undefined, archive
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('[ARCHIVE RECALL');
+    });
+
+    it('active NPC context marker appears when matching NPCs are in ledger', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], userMsg,
+            undefined, undefined, npcs
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('[ACTIVE NPC CONTEXT]');
+    });
+
+    it('semantic fact text is present in assembled content', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], userMsg,
+            undefined, undefined, undefined, undefined,
+            undefined, undefined, 'SEMANTIC FACT: the sky is red'
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('SEMANTIC FACT: the sky is red');
+    });
+
+    it('trace has included:true entries for RAG Lore and Active NPCs', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], userMsg,
+            undefined, lore, npcs
+        );
+        const traceSourcesIncluded = (result.trace ?? [])
+            .filter(t => t.included)
+            .map(t => t.source);
+        expect(traceSourcesIncluded).toContain('RAG Lore');
+        expect(traceSourcesIncluded).toContain('Active NPCs');
+    });
+
+    it('trace has included:true entry for Archive Recall when provided', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], userMsg,
+            undefined, undefined, undefined, archive
+        );
+        const traceSourcesIncluded = (result.trace ?? [])
+            .filter(t => t.included)
+            .map(t => t.source);
+        expect(traceSourcesIncluded).toContain('Archive Recall');
+    });
+});
+
+// ── Scenario 3: NPC spotlight ─────────────────────────────────────────────────
+describe('buildPayload — scenario 3: NPC spotlight', () => {
+    const highNpc = makeNPC({
+        id: 'npc_high',
+        name: 'Zorath',
+        drives: { coreWant: 'conquer the realm', sessionWant: 'recruit allies', sceneWant: 'intimidate the player' },
+        behavioralTriggers: [{ keyword: 'sword', shift: 'becomes aggressive' }],
+        hardBoundaries: ['never retreat', 'no mercy'],
+        softBoundaries: ['avoids fire'],
+        pressure: { ignored: 3, engaged: 1, lastDecayTurn: 0, history: [] },
+    });
+    const lowNpc = makeNPC({
+        id: 'npc_low',
+        name: 'Tara',
+    });
+
+    // userMessage mentions Zorath multiple times
+    const userMsg = 'Zorath steps forward. Zorath raises his sword. What does Zorath say?';
+
+    it('Active NPCs trace reason names the spotlit NPC (highest salience)', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], userMsg,
+            undefined, undefined, [highNpc, lowNpc]
+        );
+        const npcTrace = (result.trace ?? []).find(t => t.source === 'Active NPCs' && t.included);
+        expect(npcTrace).toBeDefined();
+        expect(npcTrace!.reason).toContain('Zorath');
+    });
+
+    it('spotlit NPC DRIVES block appears in NPC context output', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], userMsg,
+            undefined, undefined, [highNpc, lowNpc]
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('DRIVES:');
+    });
+
+    it('spotlit NPC TRIGGERS block appears in NPC context output', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], userMsg,
+            undefined, undefined, [highNpc, lowNpc]
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('TRIGGERS:');
+    });
+
+    it('spotlit NPC HARD LIMITS block appears in NPC context output', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], userMsg,
+            undefined, undefined, [highNpc, lowNpc]
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('HARD LIMITS:');
+    });
+
+    it('non-spotlit NPC does not have DRIVES block in output', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], userMsg,
+            undefined, undefined, [highNpc, lowNpc]
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        // Only one DRIVES: block should be present (for the spotlit NPC)
+        const driveCount = (allSystem.match(/DRIVES:/g) ?? []).length;
+        expect(driveCount).toBe(1);
+    });
+});
+
+// ── Scenario 4: Perceptual archive filter ─────────────────────────────────────
+describe('buildPayload — scenario 4: perceptual archive filter', () => {
+    const activeNpc = makeNPC({ id: 'active_npc', name: 'Oswin', archived: false });
+    const archivedNpc = makeNPC({ id: 'archived_npc', name: 'OldGhost', archived: true });
+
+    const witnessedScene = makeArchiveScene('001', 'Oswin saw the dragon fly over the tower.');
+    const unwitnessedScene = makeArchiveScene('002', 'A secret meeting no NPC witnessed.');
+
+    const archiveIndex: ArchiveIndexEntry[] = [
+        makeArchiveIndexEntry('001', ['active_npc']),   // witnessed by active NPC
+        makeArchiveIndexEntry('002', ['archived_npc']), // only witnessed by archived NPC
+    ];
+
+    it('trace shows perceptual filter removed unwitnessed scenes', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], 'What do you recall?',
+            undefined, undefined, [activeNpc, archivedNpc],
+            [witnessedScene, unwitnessedScene],
+            undefined, undefined, undefined, archiveIndex
+        );
+        const filterTrace = (result.trace ?? []).find(
+            t => t.source === 'Archive Recall' && t.included === false && t.reason.includes('Perceptual filter removed')
+        );
+        expect(filterTrace).toBeDefined();
+    });
+
+    it('unwitnessed scene content is absent from assembled messages', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], 'What do you recall?',
+            undefined, undefined, [activeNpc, archivedNpc],
+            [witnessedScene, unwitnessedScene],
+            undefined, undefined, undefined, archiveIndex
+        );
+        const allContent = result.messages
+            .map(m => (typeof m.content === 'string' ? m.content : ''))
+            .join('\n');
+        expect(allContent).not.toContain('A secret meeting no NPC witnessed.');
+    });
+
+    it('witnessed scene content IS present in assembled messages', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], 'What do you recall?',
+            undefined, undefined, [activeNpc, archivedNpc],
+            [witnessedScene, unwitnessedScene],
+            undefined, undefined, undefined, archiveIndex
+        );
+        const allContent = result.messages
+            .map(m => (typeof m.content === 'string' ? m.content : ''))
+            .join('\n');
+        expect(allContent).toContain('Oswin saw the dragon fly over the tower.');
+    });
+
+    it('scene with NO witnesses (broadcast) is always included', () => {
+        const broadcastScene = makeArchiveScene('003', 'The whole world heard the announcement.');
+        const broadcastIdx = makeArchiveIndexEntry('003', []); // empty witnesses = broadcast
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], 'What happened?',
+            undefined, undefined, [activeNpc],
+            [broadcastScene],
+            undefined, undefined, undefined, [broadcastIdx]
+        );
+        const allContent = result.messages
+            .map(m => (typeof m.content === 'string' ? m.content : ''))
+            .join('\n');
+        expect(allContent).toContain('The whole world heard the announcement.');
+    });
+});
+
+// ── Scenario 5: World-budget trim ─────────────────────────────────────────────
+describe('buildPayload — scenario 5: world-budget trim', () => {
+    it('trace has included:false entry with reason containing "Exceeds World budget" when budget is tiny', () => {
+        const smallSettings = {
+            ...baseSettings(),
+            contextLimit: 500,
+        } as unknown as AppSettings;
+
+        // Build several world blocks to overflow the tiny budget
+        const bigLore: LoreChunk[] = [
+            makeLoreChunk({
+                id: 'lc1', category: 'faction', header: 'Faction One',
+                content: 'A'.repeat(300), tokens: 100,
+            }),
+            makeLoreChunk({
+                id: 'lc2', category: 'location', header: 'Location Two',
+                content: 'B'.repeat(300), tokens: 100,
+            }),
+            makeLoreChunk({
+                id: 'lc3', category: 'event', header: 'Big Event',
+                content: 'C'.repeat(300), tokens: 100,
+            }),
+        ];
+
+        const archive: ArchiveScene[] = [
+            makeArchiveScene('001', 'D'.repeat(400)),
+        ];
+
+        const result = buildPayload(
+            smallSettings, baseContext(),
+            [], 'Hello',
+            undefined, bigLore, undefined, archive
+        );
+
+        const droppedTrace = (result.trace ?? []).find(
+            t => !t.included && typeof t.reason === 'string' && t.reason.includes('Exceeds World budget')
+        );
+        expect(droppedTrace).toBeDefined();
+    });
+});
+
+// ── Scenario 6: History fitting + ephemeral cleanup ───────────────────────────
+describe('buildPayload — scenario 6: history fitting and ephemeral cleanup', () => {
+    it('ephemeral non-last tool message content is blanked to a single space', () => {
+        // The code only blanks ephemeral tool messages that are NOT the lastToolIdx.
+        // So we need two tool messages: first ephemeral (non-last), second non-ephemeral (last).
+        const toolCallId1 = 'tcid_1a';
+        const toolCallId2 = 'tcid_1b';
+        const history: ChatMessage[] = [
+            makeMsg('user', 'Turn 1'),
+            makeMsg('assistant', 'Asst A', {
+                tool_calls: [{ id: toolCallId1, type: 'function', function: { name: 'roll_dice', arguments: '{}' } }],
+            }),
+            // ephemeral tool result — this is NOT the last tool message
+            makeMsg('tool', 'EPHEMERAL TOOL RESULT CONTENT', {
+                tool_call_id: toolCallId1,
+                name: 'roll_dice',
+                ephemeral: true,
+            }),
+            makeMsg('assistant', 'Asst B', {
+                tool_calls: [{ id: toolCallId2, type: 'function', function: { name: 'roll_dice', arguments: '{}' } }],
+            }),
+            // Non-ephemeral last tool message
+            makeMsg('tool', 'LAST TOOL RESULT', {
+                tool_call_id: toolCallId2,
+                name: 'roll_dice',
+                ephemeral: false,
+            }),
+            makeMsg('assistant', 'Final assistant'),
+            makeMsg('user', 'Last user'),
+        ];
+
+        const result = buildPayload(baseSettings(), baseContext(), history, 'Current message');
+        const allMsgs = result.messages;
+        const firstToolMsg = allMsgs.find(
+            m => m.role === 'tool' && m.tool_call_id === toolCallId1
+        );
+        // The first (ephemeral, non-last) tool message should be blanked to ' '
+        if (firstToolMsg) {
+            expect(firstToolMsg.content).toBe(' ');
+        }
+        // The original ephemeral content must not appear verbatim
+        const allContent = allMsgs.map(m => (typeof m.content === 'string' ? m.content : '')).join('\n');
+        expect(allContent).not.toContain('EPHEMERAL TOOL RESULT CONTENT');
+    });
+
+    it('Ephemeral Cleanup trace entry appears when ephemeral non-last tool messages are blanked', () => {
+        // Need TWO tool messages so the ephemeral one is not the last
+        const toolCallId1 = 'tcid_2a';
+        const toolCallId2 = 'tcid_2b';
+        const history: ChatMessage[] = [
+            makeMsg('user', 'Turn 1'),
+            makeMsg('assistant', 'Asst A', {
+                tool_calls: [{ id: toolCallId1, type: 'function', function: { name: 'roll_dice', arguments: '{}' } }],
+            }),
+            makeMsg('tool', 'BIG EPHEMERAL DATA HERE XXXX', {
+                tool_call_id: toolCallId1,
+                name: 'roll_dice',
+                ephemeral: true,
+            }),
+            makeMsg('assistant', 'Asst B', {
+                tool_calls: [{ id: toolCallId2, type: 'function', function: { name: 'roll_dice', arguments: '{}' } }],
+            }),
+            makeMsg('tool', 'LAST TOOL RESULT', {
+                tool_call_id: toolCallId2,
+                name: 'roll_dice',
+                ephemeral: false,
+            }),
+            makeMsg('assistant', 'Final assistant'),
+            makeMsg('user', 'Turn 2'),
+        ];
+
+        const result = buildPayload(baseSettings(), baseContext(), history, 'Turn 3');
+        const ephemeralTrace = (result.trace ?? []).find(t => t.source === 'Ephemeral Cleanup');
+        expect(ephemeralTrace).toBeDefined();
+    });
+
+    it('orphaned leading tool messages are stripped from fitted history', () => {
+        const history: ChatMessage[] = [
+            // Starts with a tool message (orphaned — no assistant with tool_calls before it in fitted window)
+            makeMsg('tool', 'Orphaned tool result', { tool_call_id: 'orphan_tc', name: 'roll_dice' }),
+            makeMsg('user', 'Next user message'),
+            makeMsg('assistant', 'Assistant reply'),
+        ];
+
+        const result = buildPayload(baseSettings(), baseContext(), history, 'Current message');
+        // The overall first message in messages is system; confirm no tool at position 0 of history slice
+        const firstFittedRole = result.messages.find(
+            m => m.role !== 'system'
+        )?.role;
+        // After orphan stripping, the first non-system message should NOT be 'tool'
+        expect(firstFittedRole).not.toBe('tool');
+    });
+});
+
+// ── Scenario 7: Scene-note depth splice ───────────────────────────────────────
+describe('buildPayload — scenario 7: scene note depth splice', () => {
+    it('scene note is spliced into history and trace has Scene Note (Depth) entry', () => {
+        const ctx = {
+            ...baseContext(),
+            sceneNoteActive: true,
+            sceneNote: 'Remember: Aldric is hiding in the shadows.',
+            sceneNoteDepth: 2,
+        } as GameContext;
+
+        const history: ChatMessage[] = [
+            makeMsg('user', 'Turn 1'),
+            makeMsg('assistant', 'GM reply 1'),
+            makeMsg('user', 'Turn 2'),
+            makeMsg('assistant', 'GM reply 2'),
+        ];
+
+        const result = buildPayload(baseSettings(), ctx, history, 'What happens next?');
+
+        // A system message with [SCENE NOTE should be in messages
+        const noteMsg = result.messages.find(
+            m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[SCENE NOTE')
+        );
+        expect(noteMsg).toBeDefined();
+
+        // Trace entry for Scene Note (Depth) should be present
+        const noteTrace = (result.trace ?? []).find(t => t.source === 'Scene Note (Depth)');
+        expect(noteTrace).toBeDefined();
+        expect(noteTrace!.included).toBe(true);
+    });
+
+    it('scene note falls back to end of history block when no history is provided', () => {
+        const ctx = {
+            ...baseContext(),
+            sceneNoteActive: true,
+            sceneNote: 'The tavern is on fire.',
+            sceneNoteDepth: 3,
+        } as GameContext;
+
+        const result = buildPayload(baseSettings(), ctx, [], 'What do I see?');
+
+        // With empty history, fallback is used
+        const fallbackTrace = (result.trace ?? []).find(t => t.source === 'Scene Note (Fallback)');
+        expect(fallbackTrace).toBeDefined();
+        expect(fallbackTrace!.included).toBe(true);
+
+        // The note message still appears
+        const noteMsg = result.messages.find(
+            m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[SCENE NOTE')
+        );
+        expect(noteMsg).toBeDefined();
+    });
+});
+
+// ── Scenario 8: Reasoning-model + tool-mode ───────────────────────────────────
+describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
+    it('thinking-block reminder text appears in stable content when model matches deepseek-r pattern', () => {
+        const reasoningSettings = {
+            ...baseSettings(),
+            activePresetId: 'preset_reasoning',
+            presets: [
+                {
+                    id: 'preset_reasoning',
+                    storyAI: { modelName: 'deepseek-r1-distill-llama-70b' },
+                },
+            ],
+        } as unknown as AppSettings;
+
+        const result = buildPayload(reasoningSettings, baseContext(), [], 'Hello');
+        const firstSystem = result.messages[0];
+        expect(typeof firstSystem.content).toBe('string');
+        expect(firstSystem.content as string).toContain('thinking');
+    });
+
+    it('thinking-block reminder appears for qwq model name pattern', () => {
+        const reasoningSettings = {
+            ...baseSettings(),
+            activePresetId: 'preset_qwq',
+            presets: [
+                {
+                    id: 'preset_qwq',
+                    storyAI: { modelName: 'QwQ-32B-Preview' },
+                },
+            ],
+        } as unknown as AppSettings;
+
+        const result = buildPayload(reasoningSettings, baseContext(), [], 'Hello');
+        const firstSystem = result.messages[0];
+        expect(firstSystem.content as string).toContain('thinking');
+    });
+
+    it('tool-mode swaps ACTION RESOLUTION to use roll_dice tool wording when diceFairnessActive is false', () => {
+        const ctx = {
+            ...baseContext(),
+            diceFairnessActive: false,
+            rulesRaw: DEFAULT_RULES,
+        } as GameContext;
+
+        const result = buildPayload(baseSettings(), ctx, [], 'I attack the guard');
+        const firstSystem = result.messages[0];
+        expect(firstSystem.content as string).toContain('roll_dice');
+    });
+
+    it('default (pool) mode does NOT inject roll_dice tool wording when diceFairnessActive is true', () => {
+        const ctx = {
+            ...baseContext(),
+            diceFairnessActive: true,
+            rulesRaw: DEFAULT_RULES,
+        } as GameContext;
+
+        const result = buildPayload(baseSettings(), ctx, [], 'I attack the guard');
+        const firstSystem = result.messages[0];
+        // The original ACTION RESOLUTION section should NOT contain the CALL the `roll_dice` tool phrasing
+        // (that's the tool-mode specific text)
+        expect(firstSystem.content as string).not.toContain('CALL the `roll_dice` tool BEFORE narrating');
+    });
+});
+
+// ── Scenario 9: Smart bookkeeping vs legacy ───────────────────────────────────
+describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
+    it('smart bookkeeping: [CHARACTER] block appears when smartBookkeepingActive and characterProfileData has a name', () => {
+        const ctx = {
+            ...baseContext(),
+            smartBookkeepingActive: true,
+            characterProfileData: {
+                name: 'Gareth',
+                race: 'Human',
+                class: 'Fighter',
+                level: 5,
+                hp: { current: 40, max: 50 },
+                stats: {},
+                skills: [],
+                abilities: [],
+                traits: [],
+                notes: '',
+            },
+            inventoryItems: [],
+        } as unknown as GameContext;
+
+        const result = buildPayload(baseSettings(), ctx, [], 'What do I have?');
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('[CHARACTER]');
+    });
+
+    it('smart bookkeeping: [INVENTORY] block appears when inventoryCategories provided and items exist', () => {
+        const ctx = {
+            ...baseContext(),
+            smartBookkeepingActive: true,
+            characterProfileData: {
+                name: 'Gareth',
+                race: 'Human',
+                class: 'Fighter',
+                level: 5,
+                hp: { current: 40, max: 50 },
+                stats: {},
+                skills: [],
+                abilities: [],
+                traits: [],
+                notes: '',
+            },
+            inventoryItems: [
+                {
+                    id: 'item1',
+                    name: 'Iron Sword',
+                    qty: 1,
+                    category: 'weapon' as const,
+                    keywords: ['sword'],
+                    equipped: true,
+                    lastUsedScene: '001',
+                    importance: 7,
+                    notes: '',
+                },
+            ],
+        } as unknown as GameContext;
+
+        const result = buildPayload(
+            baseSettings(), ctx,
+            [], 'What weapons do I have?',
+            undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined,
+            ['weapon', 'equipped']
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('[INVENTORY]');
+    });
+
+    it('smart bookkeeping: [PROFILE] block appears when profileFields provided', () => {
+        const ctx = {
+            ...baseContext(),
+            smartBookkeepingActive: true,
+            characterProfileData: {
+                name: 'Gareth',
+                race: 'Human',
+                class: 'Fighter',
+                level: 5,
+                hp: { current: 40, max: 50 },
+                stats: { str: 16 },
+                skills: ['Athletics'],
+                abilities: [],
+                traits: [],
+                notes: 'Veteran soldier',
+            },
+            inventoryItems: [],
+        } as unknown as GameContext;
+
+        const result = buildPayload(
+            baseSettings(), ctx,
+            [], 'What are my stats?',
+            undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined,
+            undefined, ['name', 'class', 'level']
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('[PROFILE]');
+    });
+
+    it('legacy: [CHARACTER PROFILE block appears with staleness tag when characterProfileActive and no smartBookkeeping', () => {
+        const ctx = {
+            ...baseContext(),
+            smartBookkeepingActive: false,
+            characterProfileActive: true,
+            characterProfile: 'Name: Gareth\nClass: Fighter\nLevel: 5',
+            characterProfileLastScene: '003',
+        } as unknown as GameContext;
+
+        const result = buildPayload(baseSettings(), ctx, [], 'Who am I?');
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('[CHARACTER PROFILE');
+        // should include the last scene reference
+        expect(allSystem).toContain('003');
+    });
+
+    it('legacy: staleness tag says NEVER AUTO-UPDATED when characterProfileLastScene is Never', () => {
+        const ctx = {
+            ...baseContext(),
+            smartBookkeepingActive: false,
+            characterProfileActive: true,
+            characterProfile: 'Name: Gareth\nClass: Fighter\nLevel: 5',
+            characterProfileLastScene: 'Never',
+        } as unknown as GameContext;
+
+        const result = buildPayload(baseSettings(), ctx, [], 'Who am I?');
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('NEVER AUTO-UPDATED');
     });
 });
