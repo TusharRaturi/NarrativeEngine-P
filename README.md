@@ -42,18 +42,18 @@ The `Example_Setup/` folder contains a complete ready-to-play campaign: **The Aw
 
 ### What's in the example
 
-| File | What it does |
+| File / Path | What it does |
 |---|---|
-| `Spirit_Card_World_Lore.md` | The world bible — continents, factions, locations, characters, rules. Paste this into the **Lore** section when creating your campaign. |
-| `Rulebook v3.2.md` | The GM's instruction set — output formatting, NPC behavior, dice resolution, event handling. Paste this into the **System Prompt** field in campaign settings. |
-| `starter_prompt.md` | The opening scene + walkthrough — tells the GM to guide character creation step-by-step before starting the story. Send this as your **first message** to the GM. |
+| `Example_Setup/Spirit Card World/Spirit_Card_World_Lore.md` | The world bible — continents, factions, locations, characters, rules. Paste this into the **World Info (Lore)** section when creating your campaign. |
+| `Example_Setup/AI_GM_OS_v3_4_App_Optimized.md` | **The Latest Ruleset (v3.4)** — the GM's instruction set including output formatting, halt protocol, perception rules, NPC autonomy mandates, dice/event handling. Paste this into the **System Prompt** field. |
+| `Example_Setup/Spirit Card World/Spirit_card_world_start_prompt.md` | The opening scene + walkthrough — tells the GM to guide character creation step-by-step before starting the story. Send this as your **first message** to the GM. |
 
 ### How to use it
 
 1. Create a new campaign
 2. Open the **World Info (Lore)** tab and paste the contents of `Spirit_Card_World_Lore.md`
-3. Open **Campaign Settings** and paste the contents of `Rulebook v3.2.md` into the System Prompt field
-4. Start a new chat and paste the contents of `starter_prompt.md` as your first message
+3. Open **Campaign Settings** and paste the contents of the latest ruleset `AI_GM_OS_v3_4_App_Optimized.md` into the **System Prompt** field
+4. Start a new chat and paste the contents of `Spirit_card_world_start_prompt.md` as your first message
 5. The GM will walk you through character creation and then drop you into the world
 
 ### Writing your own setup
@@ -191,12 +191,13 @@ The **Dice Fairness** system pre-rolls d20 pools each turn and injects them as s
 - Works with any OpenAI-compatible image API
 - Images are downloaded and stored locally
 
-### Your Data, Your Control
+### Your Data, Your Control & Complete Privacy
 
 - **Encrypted API key vault** — AES-256-GCM encryption, password-optional
 - **Machine-key mode** — no password needed, keys auto-unlock on your device
 - **Password mode** — PBKDF2 with 100K iterations for full lock-down
 - **Client-side encryption** — API keys are encrypted in your browser before they ever touch the server
+- **Fully Local Vector Search & Embeddings** — Even when utilizing cloud-based Story LLMs, all semantic memory searches and lore queries are run 100% locally. Powered by `@huggingface/transformers` (local ONNX models) and `sqlite-vec` inside `better-sqlite3`.
 - All campaign data is stored locally as files — no database, no cloud, no vendor lock-in
 - Export and import your vault for backups
 
