@@ -10,6 +10,7 @@ export type OpenAIMessage = {
     tool_calls?: unknown[];
     tool_call_id?: string;
     reasoning_content?: string;
+    cache_control?: { type: 'ephemeral' };
 };
 
 export async function sendMessage(

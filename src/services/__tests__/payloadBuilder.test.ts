@@ -915,3 +915,81 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
         expect(allSystem).toContain('NEVER AUTO-UPDATED');
     });
 });
+
+// ── Scenario 10: cache_control: ephemeral markers ──────────────────────────────
+describe('buildPayload — cache_control: ephemeral markers', () => {
+    it('stable content system message has cache_control: ephemeral', () => {
+        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const stableMsg = result.messages.find(
+            m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('ROLE: Impartial GM.')
+        );
+        expect(stableMsg).toBeDefined();
+        expect((stableMsg as any).cache_control).toEqual({ type: 'ephemeral' });
+    });
+
+    it('divergence content system message has cache_control: ephemeral when divergence is present', () => {
+        const divReg = makeDivergenceRegister('The bridge was destroyed in scene 001.');
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], 'What happened?',
+            undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, divReg
+        );
+        const divMsg = result.messages.find(
+            m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('The bridge was destroyed')
+        );
+        expect(divMsg).toBeDefined();
+        expect((divMsg as any).cache_control).toEqual({ type: 'ephemeral' });
+    });
+
+    it('world/volatile system message does NOT have cache_control', () => {
+        const lore: LoreChunk[] = [
+            makeLoreChunk({ id: 'lc1', category: 'faction', header: 'Guild', content: 'A guild.', tokens: 5 }),
+        ];
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], 'Hello',
+            undefined, lore
+        );
+        const worldMsg = result.messages.find(
+            m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[WORLD LORE')
+        );
+        expect(worldMsg).toBeDefined();
+        expect((worldMsg as any).cache_control).toBeUndefined();
+    });
+
+    it('GM REMINDER system message does NOT have cache_control', () => {
+        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello');
+        const reminderMsg = result.messages.find(
+            m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[GM REMINDER')
+        );
+        expect(reminderMsg).toBeDefined();
+        expect((reminderMsg as any).cache_control).toBeUndefined();
+    });
+
+    it('user message does NOT have cache_control', () => {
+        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello');
+        const userMsg = result.messages.find(m => m.role === 'user');
+        expect(userMsg).toBeDefined();
+        expect((userMsg as any).cache_control).toBeUndefined();
+    });
+
+    it('history system messages (scene notes) do NOT have cache_control', () => {
+        const ctx = {
+            ...baseContext(),
+            sceneNoteActive: true,
+            sceneNote: 'The shadows grow longer.',
+            sceneNoteDepth: 1,
+        } as GameContext;
+        const history: ChatMessage[] = [
+            makeMsg('user', 'Turn 1'),
+            makeMsg('assistant', 'GM reply'),
+        ];
+        const result = buildPayload(baseSettings(), ctx, history, 'What next?');
+        const sceneNoteMsg = result.messages.find(
+            m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[SCENE NOTE')
+        );
+        expect(sceneNoteMsg).toBeDefined();
+        expect((sceneNoteMsg as any).cache_control).toBeUndefined();
+    });
+});

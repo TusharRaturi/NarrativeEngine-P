@@ -2,6 +2,8 @@ import type { EndpointConfig, ProviderConfig, ApiFormat, SamplingConfig, Thinkin
 
 type AnyProvider = EndpointConfig | ProviderConfig;
 
+type ClaudeSystemBlock = { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } };
+
 const OPENAI_EFFORT_MAP: Record<ThinkingEffort, string | undefined> = {
     off: undefined, low: 'low', medium: 'medium', high: 'high', max: 'high'
 };
@@ -87,13 +89,13 @@ export function buildChatHeaders(provider: AnyProvider): Record<string, string> 
     return headers;
 }
 
-function transformClaudeMessages(messages: { role: string; content: string | null; name?: string; tool_calls?: unknown[]; tool_call_id?: string; reasoning_content?: string }[]): { system?: string; messages: { role: string; content: string | unknown[] }[] } {
-    const systemParts: string[] = [];
+function transformClaudeMessages(messages: { role: string; content: string | null; name?: string; tool_calls?: unknown[]; tool_call_id?: string; reasoning_content?: string; cache_control?: { type: 'ephemeral' } }[]): { system?: string | ClaudeSystemBlock[]; messages: { role: string; content: string | unknown[] }[] } {
+    const systemBlocks: { text: string; cache_control?: { type: 'ephemeral' } }[] = [];
     const transformed: { role: string; content: string | unknown[] }[] = [];
 
     for (const m of messages) {
         if (m.role === 'system') {
-            systemParts.push(m.content || '');
+            systemBlocks.push({ text: m.content || '', ...(m.cache_control ? { cache_control: m.cache_control } : {}) });
             continue;
         }
 
@@ -129,12 +131,23 @@ function transformClaudeMessages(messages: { role: string; content: string | nul
         transformed.push({ role: m.role, content: m.content || '' });
     }
 
-    const result: { system?: string; messages: { role: string; content: string | unknown[] }[] } = { messages: transformed };
-    if (systemParts.length > 0) result.system = systemParts.join('\n\n');
+    const result: { system?: string | ClaudeSystemBlock[]; messages: { role: string; content: string | unknown[] }[] } = { messages: transformed };
+    if (systemBlocks.length > 0) {
+        const hasCacheControl = systemBlocks.some(b => b.cache_control);
+        if (hasCacheControl) {
+            result.system = systemBlocks.map(b => ({
+                type: 'text' as const,
+                text: b.text,
+                ...(b.cache_control ? { cache_control: b.cache_control } : {}),
+            }));
+        } else {
+            result.system = systemBlocks.map(b => b.text).join('\n\n');
+        }
+    }
     return result;
 }
 
-function transformGeminiMessages(messages: { role: string; content: string | null; tool_calls?: unknown[]; tool_call_id?: string; name?: string; reasoning_content?: string }[]): { systemInstruction?: { parts: { text: string }[] }; contents: { role: string; parts: unknown[] }[] } {
+function transformGeminiMessages(messages: { role: string; content: string | null; tool_calls?: unknown[]; tool_call_id?: string; name?: string; reasoning_content?: string; cache_control?: { type: 'ephemeral' } }[]): { systemInstruction?: { parts: { text: string }[] }; contents: { role: string; parts: unknown[] }[] } {
     const systemParts: string[] = [];
     const contents: { role: string; parts: unknown[] }[] = [];
 
@@ -188,7 +201,7 @@ function transformGeminiTools(tools: unknown[]): unknown[] {
 
 export function buildChatBody(
     provider: AnyProvider,
-    messages: { role: string; content: string | null; name?: string; tool_calls?: unknown[]; tool_call_id?: string; reasoning_content?: string }[],
+    messages: { role: string; content: string | null; name?: string; tool_calls?: unknown[]; tool_call_id?: string; reasoning_content?: string; cache_control?: { type: 'ephemeral' } }[],
     options?: { stream?: boolean; max_tokens?: number; temperature?: number; tools?: unknown[]; sampling?: SamplingConfig; thinkingEffort?: ThinkingEffort }
 ): Record<string, unknown> {
     const format = getApiFormat(provider);
@@ -253,11 +266,12 @@ export function buildChatBody(
         return body;
     }
 
-    // OpenAI / Ollama / DeepSeek
+    // OpenAI / Ollama / DeepSeek — strip cache_control (Anthropic-specific)
     const isOllama = format === 'ollama';
+    const sanitizedMessages = messages.map(({ cache_control: _cc, ...rest }) => rest);
     const body: Record<string, unknown> = {
         model: provider.modelName,
-        messages,
+        messages: sanitizedMessages,
         stream,
     };
 

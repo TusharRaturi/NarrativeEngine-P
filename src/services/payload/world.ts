@@ -52,7 +52,7 @@ export function buildWorld(opts: {
     budgetWorld: number;
     isDebug: boolean;
     collector: TraceCollector;
-}): { worldContent: string; currentWorldTokens: number } {
+}): { worldContent: string; currentWorldTokens: number; divergenceContent: string; divergenceTokens: number } {
     const {
         history,
         userMessage,
@@ -76,6 +76,7 @@ export function buildWorld(opts: {
 
     // --- 3. Gather trimmable World Context (Medium Priority) ---
     const worldBlocks: { source: string; content: string; tokens: number; reason: string }[] = [];
+    let divergenceRegText = '';
 
     // Archive Recall
     if (archiveRecall && archiveRecall.length > 0) {
@@ -241,11 +242,14 @@ export function buildWorld(opts: {
         }
     }
 
-    // Divergence Register
+    // Divergence Register — extracted separately for cache_control: ephemeral
+    // Not added to worldBlocks; emitted as its own system message by payloadBuilder
     if (divergenceRegister && divergenceRegister.entries.length > 0) {
         const regText = renderRegisterForPayload(divergenceRegister, chapters, onStageNpcIds, npcLedger);
         if (regText) {
-            worldBlocks.push({ source: 'Established Facts', content: regText, tokens: countTokens(regText), reason: `Campaign facts (${divergenceRegister.entries.length} entries)` });
+            divergenceRegText = regText;
+            collector.addTrace({ source: 'Established Facts', classification: 'world_context', tokens: countTokens(regText), reason: `Campaign facts (${divergenceRegister.entries.length} entries)`, included: true, position: 'system_cacheable' });
+            collector.addSection({ label: 'Established Facts', role: 'system', tokens: countTokens(regText), content: regText, classification: 'world_context' });
         }
     }
 
@@ -267,5 +271,5 @@ export function buildWorld(opts: {
         }
     }
 
-    return { worldContent, currentWorldTokens };
+    return { worldContent, currentWorldTokens, divergenceContent: divergenceRegText, divergenceTokens: divergenceRegText ? countTokens(divergenceRegText) : 0 };
 }

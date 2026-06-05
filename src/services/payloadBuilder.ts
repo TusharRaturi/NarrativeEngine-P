@@ -35,13 +35,17 @@ export function buildPayload(
     const collector = createTraceCollector(isDebug);
     const { rulesBudget, budgetMap } = computeBudgets(limit, settings.rulesBudgetPct, !!deepContextSummary);
     const { stableContent, stableTokens } = buildStable({ settings, context, sceneNumber, relevantRules, rulesManifest, rulesBudget, collector });
-    const { worldContent, currentWorldTokens } = buildWorld({ history, userMessage, condensedUpToIndex, relevantLore, npcLedger, archiveRecall, recommendedNPCNames, semanticFactText, archiveIndex, timelineEvents, deepContextSummary, divergenceRegister, chapters, onStageNpcIds, loreRaw: context.loreRaw, budgetWorld: budgetMap.world, isDebug, collector });
+    const { worldContent, currentWorldTokens, divergenceContent, divergenceTokens } = buildWorld({ history, userMessage, condensedUpToIndex, relevantLore, npcLedger, archiveRecall, recommendedNPCNames, semanticFactText, archiveIndex, timelineEvents, deepContextSummary, divergenceRegister, chapters, onStageNpcIds, loreRaw: context.loreRaw, budgetWorld: budgetMap.world, isDebug, collector });
     const { volatileContent, volatileTokens } = buildVolatile({ context, inventoryCategories, profileFields, collector });
-    const fitted = buildHistory({ history, condensedUpToIndex, userMessage, limit, stableTokens, currentWorldTokens, volatileTokens, context, collector });
+    const fitted = buildHistory({ history, condensedUpToIndex, userMessage, limit, stableTokens: stableTokens + divergenceTokens, currentWorldTokens, volatileTokens, context, collector });
 
     // --- 8. Final Assembly ---
+    // Stable, divergence, and pinned blocks get cache_control: ephemeral for Anthropic prompt caching.
+    // These blocks change infrequently across turns, making them ideal cache hit candidates.
+    const cacheControl = { type: 'ephemeral' as const };
     const messages: OpenAIMessage[] = [];
-    if (stableContent) messages.push({ role: 'system', content: stableContent });
+    if (stableContent) messages.push({ role: 'system', content: stableContent, cache_control: cacheControl });
+    if (divergenceContent) messages.push({ role: 'system', content: divergenceContent, cache_control: cacheControl });
     if (worldContent || volatileContent) {
         messages.push({ role: 'system', content: [worldContent, volatileContent].filter(Boolean).join('\n\n') });
     }
