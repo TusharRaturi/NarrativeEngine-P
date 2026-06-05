@@ -331,7 +331,11 @@ async function runNPCTrack(
     npcLedger: import('../types').NPCEntry[],
     activeCampaignId: string
 ): Promise<void> {
-    const extractedNames = extractNPCNames(lastAssistantContent);
+    const excludeNames = npcLedger.flatMap(npc => {
+        const aliases = (npc.aliases || '').split(',').map(a => a.trim()).filter(Boolean);
+        return [npc.name, ...aliases];
+    });
+    const extractedNames = extractNPCNames(lastAssistantContent, excludeNames);
     if (extractedNames.length === 0) return;
 
     const freshProvider = state.getFreshProvider();
@@ -341,7 +345,7 @@ async function runNPCTrack(
 
     if (validatedNames.length === 0) return;
 
-    const { newNames, existingNpcs: existingNpcsToUpdate } = classifyNPCNames(validatedNames, npcLedger);
+    const { newNames, existingNpcs: existingNpcsToUpdate } = classifyNPCNames(validatedNames, npcLedger, excludeNames);
 
     const guardedAddNPC = (npc: Parameters<typeof callbacks.addNPC>[0]) => {
         const currentId = useAppStore.getState().activeCampaignId;
