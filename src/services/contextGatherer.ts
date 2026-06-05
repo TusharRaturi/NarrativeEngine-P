@@ -206,6 +206,7 @@ export async function gatherContext(
         : Promise.resolve();
 
     // ─── Phase 4A: Two-Stage Chapter Funnel Retrieval ───
+    const archiveRecallDepth = state.settings.archiveRecallDepth ?? 'standard';
     const archivePromise = (archiveIndex.length > 0 && activeCampaignId)
         ? (async () => {
             await Promise.all([semanticPromise, plannerPromise]);
@@ -220,7 +221,8 @@ export async function gatherContext(
                     undefined, semanticArchiveIds,
                     getDivergenceSceneIds(state.divergenceRegister || EMPTY_REGISTER),
                     excludeSceneIds,
-                    plannerSceneIds
+                    plannerSceneIds,
+                    archiveRecallDepth
                 );
                 archiveRecall = result;
                 return;
@@ -254,7 +256,8 @@ export async function gatherContext(
                         undefined, semanticArchiveIds,
                         getDivergenceSceneIds(state.divergenceRegister || EMPTY_REGISTER),
                         excludeSceneIds,
-                        plannerSceneIds
+                        plannerSceneIds,
+                        archiveRecallDepth
                     );
                     fetchArchiveScenes(activeCampaignId!, matchedIds, 3000)
                         .then(resolve)
@@ -272,7 +275,8 @@ export async function gatherContext(
                     undefined, semanticArchiveIds,
                     getDivergenceSceneIds(state.divergenceRegister || EMPTY_REGISTER),
                     excludeSceneIds,
-                    plannerSceneIds
+                    plannerSceneIds,
+                    archiveRecallDepth
                 );
             }
         })()
@@ -363,7 +367,8 @@ export async function gatherContext(
                 pinnedRanges, undefined, semanticArchiveIds,
                 getDivergenceSceneIds(state.divergenceRegister || EMPTY_REGISTER),
                 excludeSceneIds,
-                plannerSceneIds
+                plannerSceneIds,
+                archiveRecallDepth
             ).filter(id => !alreadyCoveredIds.has(id));
 
             if (scoredIds.length > 0) {

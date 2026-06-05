@@ -65,6 +65,7 @@ export type AppSettings = {
     verboseUtilityLogging?: boolean;
     enableArchivePlanner?: boolean;
     retrievalAlgorithm?: 'classic' | 'idf-rrf';
+    archiveRecallDepth?: 'lean' | 'standard' | 'deep';  // archive recall ceiling; default 'standard' (desktop). 'lean' = mobile parity (3/4/5)
 
     // Legacy fields kept for migration only
     providers?: ProviderConfig[];

@@ -95,6 +95,7 @@ export const defaultSettings: AppSettings = {
     utilityTimeoutSeconds: 45,
     enableArchivePlanner: false,
     retrievalAlgorithm: 'idf-rrf',
+    archiveRecallDepth: 'standard',
 };
 
 export function applyTheme(theme: 'light' | 'dark') {
@@ -127,6 +128,7 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
             verboseUtilityLogging: raw.verboseUtilityLogging as boolean,
             enableArchivePlanner: (raw.enableArchivePlanner as boolean) ?? false,
             retrievalAlgorithm: (raw.retrievalAlgorithm as 'classic' | 'idf-rrf') ?? 'idf-rrf',
+            archiveRecallDepth: (raw.archiveRecallDepth as 'lean' | 'standard' | 'deep') ?? 'standard',
         };
     }
 
@@ -182,6 +184,7 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         utilityTimeoutSeconds: 45,
         enableArchivePlanner: false,
         retrievalAlgorithm: 'idf-rrf',
+        archiveRecallDepth: 'standard',
     };
 }
 

@@ -2,89 +2,208 @@ import type { ArchiveIndexEntry, ArchiveScene, ChatMessage, NPCEntry } from '../
 import { countTokens } from './tokenizer';
 import { API_BASE as API } from '../lib/apiBase';
 import { safeSceneNum } from '../utils/helpers';
+import { fuseRRF } from './retrieval/lexicalFusion';
 
 /**
  * archiveMemory.ts
  *
- * T4 Memory — Index-based retrieval over lossless .archive.md content.
+ * T4 Memory — Index-based hybrid retrieval over lossless .archive.md content.
  *
- * Uses 3D scoring: recency bonus + intrinsic importance + keyword activation strength.
+ * Two independent rankers are fused via Reciprocal Rank Fusion (RRF):
+ *   1. an IDF-weighted keyword ranker (3D scoring: activation + recency/importance tiebreak)
+ *   2. the server's embedding ranker (cosine order, passed in as semanticCandidateIds)
+ *
+ * Keyword activations are down-weighted by IDF so common terms count less than rare,
+ * distinctive ones. The embedding ranker is a *signal*, not a hard filter — a scene that
+ * the keyword ranker finds but the embedding ranker misses can still surface (and vice
+ * versa). Divergence scenes are force-surfaced for narrative continuity.
  */
 
-// ─── 3D Scoring ───
+// ─── Recall depth (un-caged for desktop) ───
+//
+// mobileApp caps recall at 3/4/5 scenes — a phone token/CPU ration. mainApp is desktop +
+// server-backed and can recall deeper, so the consensus ceilings are raised. The shape
+// (more ranker agreement → more scenes) is preserved from mobileApp; only the ceiling moves.
+export type RecallDepth = 'lean' | 'standard' | 'deep';
+
+const DEPTH_TIERS: Record<RecallDepth, { high: number; mid: number; low: number }> = {
+    lean: { high: 5, mid: 4, low: 3 },        // mobile parity
+    standard: { high: 10, mid: 7, low: 5 },   // desktop default
+    deep: { high: 12, mid: 9, low: 7 },
+};
+
+// Planner-selected scenes get an additive relevance nudge, scaled to IDF magnitude (~1-6),
+// not the old flat +3.5 which would have swamped the keyword score.
+const PLANNER_RELEVANCE_BOOST = 2.0;
+
+// ─── IDF cache (signature-gated) ───
+//
+// IDF over the archive only changes when the archive itself changes. The signature is cheap
+// to compute and distinguishes "same index" from "index changed". Note: there is no
+// campaignId in scope here — two campaigns with identical length + first/last sceneId are
+// disambiguated only by lastTimestamp, which is good enough in practice.
+let _idfCache: { sig: string; idf: Record<string, number> } | null = null;
+
+function indexSignature(index: ArchiveIndexEntry[]): string {
+    if (index.length === 0) return '';
+    const first = index[0].sceneId;
+    const last = index[index.length - 1].sceneId;
+    const tsLast = index[index.length - 1].timestamp;
+    return `${index.length}:${first}:${last}:${tsLast}`;
+}
+
+export function computeArchiveIdf(index: ArchiveIndexEntry[]): Record<string, number> {
+    const sig = indexSignature(index);
+    if (_idfCache && _idfCache.sig === sig) return _idfCache.idf;
+
+    const N = index.length;
+    const df: Record<string, number> = {};
+
+    for (const entry of index) {
+        const seen = new Set<string>();
+        const kwStrengths = entry.keywordStrengths ?? {};
+        const npcStrengths = entry.npcStrengths ?? {};
+        if (Object.keys(kwStrengths).length > 0 || Object.keys(npcStrengths).length > 0) {
+            for (const kw of Object.keys(kwStrengths)) {
+                const k = kw.toLowerCase();
+                if (!seen.has(k)) { seen.add(k); df[k] = (df[k] || 0) + 1; }
+            }
+            for (const npc of Object.keys(npcStrengths)) {
+                const k = npc.toLowerCase();
+                if (!seen.has(k)) { seen.add(k); df[k] = (df[k] || 0) + 1; }
+            }
+        } else {
+            for (const kw of entry.keywords) {
+                const k = kw.toLowerCase();
+                if (!seen.has(k)) { seen.add(k); df[k] = (df[k] || 0) + 1; }
+            }
+            for (const npc of entry.npcsMentioned) {
+                const k = npc.toLowerCase();
+                if (!seen.has(k)) { seen.add(k); df[k] = (df[k] || 0) + 1; }
+            }
+        }
+    }
+
+    const idf: Record<string, number> = {};
+    for (const [term, count] of Object.entries(df)) {
+        idf[term] = Math.log(1 + (N - count + 0.5) / (count + 0.5));
+    }
+
+    _idfCache = { sig, idf };
+    return idf;
+}
+
+export function clearArchiveIdfCache(): void {
+    _idfCache = null;
+}
+
+// ─── Keyword relevance scoring ───
+//
+// Returns { keywordRelevance, recency, importance }. Only `keywordRelevance` drives the
+// keyword *rank* (which feeds RRF); recency/importance are demoted to small tiebreakers.
+// This split is mandatory: RRF consumes ordinal rank, so a flat importance term added to
+// every scene (the old `+1.0×importance`) would make the keyword list importance-sorted and
+// the fusion meaningless.
+type ScoreResult = {
+    keywordRelevance: number;
+    recency: number;
+    importance: number;
+};
 
 function scoreEntry(
     entry: ArchiveIndexEntry,
     contextText: string,
     contextActivations: Record<string, number>,
     totalScenes: number,
+    idf: Record<string, number>,
     npcPerspective?: string,
-    divergenceSceneIds?: Set<string>
-): number {
-    // D1: Recency bonus (always positive, logarithmic — never zero)
+): ScoreResult {
+    // Recency (always positive, logarithmic — never zero). Tiebreak only.
     const sceneNum = safeSceneNum(entry.sceneId);
     const turnsSince = totalScenes - sceneNum;
-    const recencyBonus = 1 / (1 + Math.log(1 + Math.max(0, turnsSince)));
+    const recency = 1 / (1 + Math.log(1 + Math.max(0, turnsSince)));
 
-    // D2: Intrinsic importance (permanent, no decay)
+    // Intrinsic importance (permanent, no decay). Tiebreak only.
     const importance = entry.importance ?? 5;
 
-    // D3: Activation strength (keyword strength matrix dot product)
+    // Activation strength: IDF-weighted keyword-strength-matrix dot product.
     let activation = 0;
     const kwStrengths = entry.keywordStrengths ?? {};
     for (const [keyword, strength] of Object.entries(kwStrengths)) {
-        if (contextActivations[keyword]) {
-            activation += contextActivations[keyword] * strength;
-        }
+        const a = contextActivations[keyword];
+        if (a) activation += a * strength * (idf[keyword] ?? 1);
     }
     const npcStrengths = entry.npcStrengths ?? {};
     for (const [npc, strength] of Object.entries(npcStrengths)) {
-        if (contextActivations[npc]) {
-            activation += contextActivations[npc] * strength * 1.5;
-        }
+        const a = contextActivations[npc];
+        if (a) activation += a * strength * 1.5 * (idf[npc] ?? 1);
     }
 
-    // Fallback: legacy keyword matching for old entries without strengths
+    // Fallback: legacy keyword matching for old entries without strength matrices.
     if (Object.keys(kwStrengths).length === 0 && Object.keys(npcStrengths).length === 0) {
         for (const kw of entry.keywords) {
-            if (contextText.includes(kw)) {
+            const k = kw.toLowerCase();
+            if (contextText.includes(k)) {
                 const exactMatch = new RegExp(`\\b${kw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i');
-                activation += exactMatch.test(contextText) ? 2 : 0.5;
+                activation += (exactMatch.test(contextText) ? 2 : 0.5) * (idf[k] ?? 1);
             }
         }
         for (const npc of entry.npcsMentioned) {
-            if (contextText.includes(npc.toLowerCase())) activation += 3;
+            const k = npc.toLowerCase();
+            if (contextText.includes(k)) activation += 3 * (idf[k] ?? 1);
         }
     }
 
-    // Weighted additive: (0.5 × recency) + (1.0 × importance) + (2.0 × activation)
-    let score = (0.5 * recencyBonus) + (1.0 * importance) + (2.0 * activation);
+    let keywordRelevance = 2.0 * activation;
 
-    // POV-aware boost/penalty
-    if (npcPerspective) {
+    // POV-aware boost/penalty (mainApp-specific signal, folded into relevance).
+    if (npcPerspective && keywordRelevance > 0) {
         const witnesses = entry.witnesses ?? [];
-        const wasWitness = witnesses.some(w =>
-            w.toLowerCase() === npcPerspective.toLowerCase()
-        );
-        const wasMentioned = entry.npcsMentioned.some(m =>
-            m.toLowerCase() === npcPerspective.toLowerCase()
-        );
+        const wasWitness = witnesses.some(w => w.toLowerCase() === npcPerspective.toLowerCase());
+        const wasMentioned = entry.npcsMentioned.some(m => m.toLowerCase() === npcPerspective.toLowerCase());
 
-        if (wasWitness) {
-            score *= 1.5;
-        } else if (wasMentioned) {
-            score *= 0.8;
-        } else if (witnesses.length > 0) {
-            score *= 0.3;
-        }
+        if (wasWitness) keywordRelevance *= 1.5;
+        else if (wasMentioned) keywordRelevance *= 0.8;
+        else if (witnesses.length > 0) keywordRelevance *= 0.3;
     }
 
-    // D4: Divergence boost — scenes that contain divergence entries are critical for consistency
-    if (divergenceSceneIds && divergenceSceneIds.has(entry.sceneId)) {
-        score += 5.0;
+    // Divergence is intentionally NOT boosted here — it is force-surfaced post-fusion in
+    // retrieveArchiveMemory. Boosting it here too would double-count it.
+    return { keywordRelevance, recency, importance };
+}
+
+/**
+ * Consensus-based dynamic max, sized for desktop. More agreement between the keyword and
+ * embedding rankers → more scenes returned. This is only an upper bound — the actual count
+ * is min(ceiling, scenes that actually matched), so a high ceiling never pads with noise.
+ */
+function computeDynamicMax(
+    keywordRanked: string[],
+    embeddingRanked: string[],
+    depth: RecallDepth,
+    topKeywordRelevance: number,
+    maxScenes?: number,
+): number {
+    if (maxScenes !== undefined) return maxScenes;
+    const tiers = DEPTH_TIERS[depth];
+
+    // Keyword-only path (no embedding ranker available): size by keyword strength so we don't
+    // regress to the floor. Mirrors mainApp's pre-fusion magnitude heuristic, mapped to the
+    // depth's raised tiers.
+    if (embeddingRanked.length === 0) {
+        if (topKeywordRelevance > 15) return tiers.high;
+        if (topKeywordRelevance > 8) return tiers.mid;
+        return tiers.low;
     }
 
-    return score;
+    const keywordSet = new Set(keywordRanked);
+    let consensus = 0;
+    for (const id of embeddingRanked) {
+        if (keywordSet.has(id)) consensus++;
+    }
+    if (consensus >= 3) return tiers.high;
+    if (consensus >= 1) return tiers.mid;
+    return tiers.low;
 }
 
 /**
@@ -231,8 +350,9 @@ export function applyEventBoost(
 }
 
 /**
- * Search the archive index using 3D scoring, return matching scene IDs
- * ranked by score (best first).
+ * Search the archive index with hybrid retrieval: an IDF-weighted keyword ranker fused with
+ * the server's embedding ranker via RRF. Divergence scenes are force-surfaced. Returns the
+ * matched scene IDs in fused (front-loaded) order, best first.
  */
 export function retrieveArchiveMemory(
     index: ArchiveIndexEntry[],
@@ -246,7 +366,8 @@ export function retrieveArchiveMemory(
     semanticCandidateIds?: string[],
     divergenceSceneIds?: Set<string>,
     excludeSceneIds?: Set<string>,
-    plannerSceneIds?: string[]
+    plannerSceneIds?: string[],
+    recallDepth: RecallDepth = 'standard',
 ): string[] {
     if (!index || index.length === 0) {
         console.log('[Archive Retrieval] Index is empty — no recall.');
@@ -261,7 +382,7 @@ export function retrieveArchiveMemory(
     let contextActivations = extractContextActivations(userMessage, recentMessages, npcLedger);
     contextActivations = expandActivationsWithFacts(contextActivations, semanticFacts);
 
-    // NEW: Filter index to only scenes within provided scene ranges (if any)
+    // Filter to scenes within provided scene ranges (if any).
     let scopedIndex = index;
     if (sceneRanges && sceneRanges.length > 0) {
         scopedIndex = index.filter(entry => {
@@ -274,11 +395,9 @@ export function retrieveArchiveMemory(
         });
     }
 
-    if (semanticCandidateIds && semanticCandidateIds.length > 0) {
-        const candidateSet = new Set(semanticCandidateIds);
-        scopedIndex = scopedIndex.filter(entry => candidateSet.has(entry.sceneId));
-    }
-
+    // NOTE: the old `semanticCandidateIds` hard-filter is intentionally removed. The embedding
+    // ranker is now a fusion signal, not a gate (see file header). Excluded scenes are still
+    // filtered out below, and the embedding ranker is scope-filtered before fusion.
     if (excludeSceneIds && excludeSceneIds.size > 0) {
         const before = scopedIndex.length;
         scopedIndex = scopedIndex.filter(entry => !excludeSceneIds.has(entry.sceneId));
@@ -287,35 +406,72 @@ export function retrieveArchiveMemory(
         }
     }
 
+    const idf = computeArchiveIdf(index);
     const totalScenes = scopedIndex.length;
     const eventBoosts = applyEventBoost(scopedIndex, userMessage, recentMessages);
+    const plannerSet = plannerSceneIds && plannerSceneIds.length > 0 ? new Set(plannerSceneIds) : null;
+
+    // ─── Keyword ranker (IDF-weighted, with mainApp signals folded into relevance) ───
     const scored = scopedIndex.map(entry => {
-        let score = scoreEntry(entry, contextText, contextActivations, totalScenes, npcPerspective, divergenceSceneIds);
-        const boost = eventBoosts.get(entry.sceneId) ?? 0;
-        if (score > 0 && boost > 0) {
-            score += boost;
-        }
-        if (plannerSceneIds && plannerSceneIds.includes(entry.sceneId)) {
-            score += 3.5;
-        }
+        const { keywordRelevance, recency, importance } = scoreEntry(
+            entry, contextText, contextActivations, totalScenes, idf, npcPerspective,
+        );
+        let relevance = keywordRelevance;
+        relevance += eventBoosts.get(entry.sceneId) ?? 0;
+        if (plannerSet?.has(entry.sceneId)) relevance += PLANNER_RELEVANCE_BOOST;
         return {
             sceneId: entry.sceneId,
-            score,
+            relevance,
+            tiebreak: (0.1 * recency) + (0.05 * importance),
         };
     });
 
-    const sorted = scored.filter(s => s.score > 0).sort((a, b) => b.score - a.score);
-    const topScore = sorted[0]?.score ?? 0;
-    const dynamicMax = maxScenes ?? (topScore > 15 ? 5 : topScore > 8 ? 4 : 3);
-    const candidates = sorted.slice(0, dynamicMax);
+    const keywordRelevant = scored
+        .filter(s => s.relevance > 0)
+        .sort((a, b) => (b.relevance + b.tiebreak) - (a.relevance + a.tiebreak));
+    const keywordRanked = keywordRelevant.map(s => s.sceneId);
+    const topKeywordRelevance = keywordRelevant[0]?.relevance ?? 0;
+
+    // ─── Embedding ranker (cosine order from server), scope-filtered ───
+    // Guard: filter to the post-exclude, post-range scoped scenes so excluded / out-of-range
+    // scenes cannot leak back in through the embedding ranker.
+    const scopedSceneIds = new Set(scopedIndex.map(e => e.sceneId));
+    const embeddingRanked = (semanticCandidateIds ?? []).filter(id => scopedSceneIds.has(id));
+
+    // ─── RRF fusion ───
+    const fused = fuseRRF(keywordRanked, embeddingRanked);
+
+    // ─── Divergence front-loading ───
+    // Divergence scenes (where the story left canon) must surface for continuity even when
+    // they don't match the current turn's keywords or embeddings. Matched ones keep their
+    // fused order; unmatched ones are injected after, by recency.
+    let ordered = fused;
+    if (divergenceSceneIds && divergenceSceneIds.size > 0) {
+        const fusedSet = new Set(fused);
+        const divInScope = scopedIndex
+            .map(e => e.sceneId)
+            .filter(id => divergenceSceneIds.has(id));
+        if (divInScope.length > 0) {
+            const divSet = new Set(divInScope);
+            const matchedDiv = fused.filter(id => divSet.has(id));
+            const unmatchedDiv = divInScope
+                .filter(id => !fusedSet.has(id))
+                .sort((a, b) => safeSceneNum(b) - safeSceneNum(a));
+            const rest = fused.filter(id => !divSet.has(id));
+            ordered = [...matchedDiv, ...unmatchedDiv, ...rest];
+        }
+    }
+
+    const dynamicMax = computeDynamicMax(keywordRanked, embeddingRanked, recallDepth, topKeywordRelevance, maxScenes);
+    const result = ordered.slice(0, dynamicMax);
 
     console.log(
-        `[Archive Retrieval] 3D scored ${index.length} entries. ` +
-        `${candidates.length} matched (max ${dynamicMax}). ` +
-        `Top: [${candidates.map(c => `${c.sceneId}:${c.score.toFixed(1)}`).join(', ')}]`
+        `[Archive Retrieval] Hybrid over ${index.length} entries: ` +
+        `${keywordRanked.length} keyword, ${embeddingRanked.length} embedding hits ` +
+        `(depth=${recallDepth}, max ${dynamicMax}). Top: [${result.join(', ')}]`
     );
 
-    return candidates.map(c => c.sceneId);
+    return result;
 }
 
 /**
@@ -388,9 +544,10 @@ export async function recallArchiveScenes(
     semanticCandidateIds?: string[],
     divergenceSceneIds?: Set<string>,
     excludeSceneIds?: Set<string>,
-    plannerSceneIds?: string[]
+    plannerSceneIds?: string[],
+    recallDepth: RecallDepth = 'standard',
 ): Promise<ArchiveScene[]> {
-    const matchedIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, npcPerspective, semanticCandidateIds, divergenceSceneIds, excludeSceneIds, plannerSceneIds);
+    const matchedIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, npcPerspective, semanticCandidateIds, divergenceSceneIds, excludeSceneIds, plannerSceneIds, recallDepth);
     if (matchedIds.length === 0) return [];
     return fetchArchiveScenes(campaignId, matchedIds, tokenBudget);
 }
