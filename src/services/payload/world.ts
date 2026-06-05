@@ -1,10 +1,29 @@
-import type { ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, TimelineEvent, DivergenceRegister, ArchiveChapter } from '../../types';
+import type { ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, TimelineEvent, DivergenceRegister, ArchiveChapter, SceneEvent } from '../../types';
 import { countTokens } from '../tokenizer';
 import { buildBehaviorDirective, buildDriftAlert, buildKnowledgeBoundary } from '../npcBehaviorDirective';
 import { minifyLoreChunk, minifyNPC } from '../contextMinifier';
 import { resolveTimeline, formatResolvedForContext } from '../timelineResolver';
 import { renderRegisterForPayload } from '../divergenceRegister';
 import type { TraceCollector } from './traceCollector';
+
+const RECENT_SCENE_WINDOW = 3;      // mobile used 2; desktop can see a touch deeper
+const SCENE_EVENTS_TOKEN_BUDGET = 350; // mobile rationed ~200; desktop has headroom
+
+function renderSceneEvents(events: SceneEvent[]): string {
+    if (!events || events.length === 0) return '';
+    return events
+        .slice()
+        .sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0))
+        .map(e => {
+            const parts = [`[${e.eventType}] ${e.text}`];
+            if (e.cause && e.result) parts.push(`(${e.cause} → ${e.result})`);
+            else if (e.cause) parts.push(`(cause: ${e.cause})`);
+            else if (e.result) parts.push(`(result: ${e.result})`);
+            return parts.join(' ');
+        })
+        .join('\n');
+}
+
 
 function computeNPCSalience(npc: NPCEntry, scanText: string): number {
     let score = 0;
@@ -114,6 +133,41 @@ export function buildWorld(opts: {
         if (filteredRecall.length > 0) {
             const text = `[ARCHIVE RECALL — VERBATIM PAST SCENES]\n${filteredRecall.map(s => `[SCENE #${s.sceneId}]\n${s.content}`).join('\n\n')}\n[END ARCHIVE RECALL]`;
             worldBlocks.push({ source: 'Archive Recall', content: text, tokens: countTokens(text), reason: `Verbatim history (${filteredRecall.length} scenes)` });
+        }
+
+        // Recent Scene Events block rendering
+        const recentScenes = archiveRecall.slice(-RECENT_SCENE_WINDOW);
+        const allEvents: SceneEvent[] = [];
+        for (const scene of recentScenes) {
+            const entry = archiveIndex?.find(e => e.sceneId === scene.sceneId);
+            if (entry?.events) {
+                allEvents.push(...entry.events);
+            }
+        }
+        if (allEvents.length > 0) {
+            const sortedEvents = allEvents
+                .slice()
+                .sort((a, b) => (b.importance ?? 0) - (a.importance ?? 0));
+
+            const includedEvents: SceneEvent[] = [];
+            for (const event of sortedEvents) {
+                const tempText = renderSceneEvents([...includedEvents, event]);
+                if (countTokens(tempText) <= SCENE_EVENTS_TOKEN_BUDGET) {
+                    includedEvents.push(event);
+                } else {
+                    break;
+                }
+            }
+
+            if (includedEvents.length > 0) {
+                const eventsText = renderSceneEvents(includedEvents);
+                worldBlocks.push({
+                    source: 'Recent Scene Events',
+                    content: eventsText,
+                    tokens: countTokens(eventsText),
+                    reason: `${includedEvents.length} events from last ${RECENT_SCENE_WINDOW} scene(s)`,
+                });
+            }
         }
     }
 

@@ -993,3 +993,145 @@ describe('buildPayload — cache_control: ephemeral markers', () => {
         expect((sceneNoteMsg as any).cache_control).toBeUndefined();
     });
 });
+
+// ── Scenario 11: Recent Scene Events rendering ──────────────────────────────
+describe('buildPayload — Scenario 11: Recent Scene Events rendering', () => {
+    it('Recent Scene Events block is absent when there are no events in the recent scenes', () => {
+        const archive = [makeArchiveScene('001', 'Scene content')];
+        const archiveIndex = [makeArchiveIndexEntry('001', [])];
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], 'Hello',
+            undefined, undefined, undefined, archive,
+            undefined, undefined, undefined, archiveIndex
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).not.toContain('Recent Scene Events');
+    });
+
+    it('Recent Scene Events block is present when recent scenes have events', () => {
+        const archive = [makeArchiveScene('001', 'Scene content')];
+        const archiveIndex: ArchiveIndexEntry[] = [{
+            sceneId: '001',
+            timestamp: Date.now(),
+            keywords: [],
+            npcsMentioned: [],
+            witnesses: [],
+            userSnippet: '',
+            events: [
+                { eventType: 'combat', importance: 5, text: 'Fought goblins', cause: 'ambush', result: 'won' }
+            ]
+        }];
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], 'Hello',
+            undefined, undefined, undefined, archive,
+            undefined, undefined, undefined, archiveIndex
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('[combat] Fought goblins (ambush → won)');
+    });
+
+    it('Recent Scene Events are sorted by importance descending in output', () => {
+        const archive = [makeArchiveScene('001', 'Scene content')];
+        const archiveIndex: ArchiveIndexEntry[] = [{
+            sceneId: '001',
+            timestamp: Date.now(),
+            keywords: [],
+            npcsMentioned: [],
+            witnesses: [],
+            userSnippet: '',
+            events: [
+                { eventType: 'combat', importance: 3, text: 'Low importance event' },
+                { eventType: 'discovery', importance: 8, text: 'High importance event' },
+                { eventType: 'item_acquired', importance: 5, text: 'Medium importance event' }
+            ]
+        }];
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], 'Hello',
+            undefined, undefined, undefined, archive,
+            undefined, undefined, undefined, archiveIndex
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        const firstIdx = allSystem.indexOf('High importance event');
+        const secondIdx = allSystem.indexOf('Medium importance event');
+        const thirdIdx = allSystem.indexOf('Low importance event');
+        expect(firstIdx).toBeLessThan(secondIdx);
+        expect(secondIdx).toBeLessThan(thirdIdx);
+    });
+
+    it('correctly renders cause/result combinations (cause only, result only, both, none)', () => {
+        const archive = [makeArchiveScene('001', 'Scene content')];
+        const archiveIndex: ArchiveIndexEntry[] = [{
+            sceneId: '001',
+            timestamp: Date.now(),
+            keywords: [],
+            npcsMentioned: [],
+            witnesses: [],
+            userSnippet: '',
+            events: [
+                { eventType: 'combat', importance: 8, text: 'Both present', cause: 'ambush', result: 'won' },
+                { eventType: 'combat', importance: 7, text: 'Cause only', cause: 'ambush' },
+                { eventType: 'combat', importance: 6, text: 'Result only', result: 'won' },
+                { eventType: 'combat', importance: 5, text: 'Neither' }
+            ]
+        }];
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], 'Hello',
+            undefined, undefined, undefined, archive,
+            undefined, undefined, undefined, archiveIndex
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        expect(allSystem).toContain('[combat] Both present (ambush → won)');
+        expect(allSystem).toContain('[combat] Cause only (cause: ambush)');
+        expect(allSystem).toContain('[combat] Result only (result: won)');
+        expect(allSystem).toContain('[combat] Neither');
+        expect(allSystem).not.toContain('importance:');
+    });
+
+    it('respects token budget by dropping lowest-importance events', () => {
+        const archive = [makeArchiveScene('001', 'Scene content')];
+        const events = Array.from({ length: 10 }, (_, i) => ({
+            eventType: 'combat' as const,
+            importance: i + 1, // 1 to 10
+            text: 'Long event description '.repeat(20) + ` index ${i}` // ~40 tokens each
+        }));
+        const archiveIndex: ArchiveIndexEntry[] = [{
+            sceneId: '001',
+            timestamp: Date.now(),
+            keywords: [],
+            npcsMentioned: [],
+            witnesses: [],
+            userSnippet: '',
+            events
+        }];
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], 'Hello',
+            undefined, undefined, undefined, archive,
+            undefined, undefined, undefined, archiveIndex
+        );
+        const allSystem = result.messages
+            .filter(m => m.role === 'system')
+            .map(m => m.content as string)
+            .join('\n');
+        
+        expect(allSystem).toContain('index 9');
+        expect(allSystem).toContain('index 8');
+        expect(allSystem).not.toContain('index 0');
+    });
+});
