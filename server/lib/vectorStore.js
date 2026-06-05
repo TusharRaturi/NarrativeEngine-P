@@ -12,6 +12,86 @@ const VEC_DIMS_KEY = 'embeddingDims';
 // excluded from recall and flagged for re-indexing.
 export const EMBEDDING_VERSION = 1;
 
+// ─── MMR diversity reranking (Phase G) ──────────────────────────────────────
+// Ported from mobileApp/src/services/embedding/vectorSearch.ts. mobileApp runs
+// this client-side because its vectors live in IndexedDB; mainApp's vectors
+// live here on the server, so MMR belongs here, where the data is.
+
+/**
+ * Balance between query-relevance (1.0) and diversity (0.0).
+ * 0.7 = strongly relevance-leaning, still penalises near-duplicates.
+ * (Carbonell & Goldstein 1998 standard.)
+ */
+const MMR_LAMBDA = 0.7;
+
+/**
+ * Minimum pool size before MMR is worth running.
+ * Below this the diversity benefit is negligible and we skip for speed.
+ */
+const MMR_MIN_POOL = 4;
+
+export function cosineSimilarity(a, b) {
+    let dot = 0, normA = 0, normB = 0;
+    for (let i = 0; i < a.length; i++) {
+        dot += a[i] * b[i];
+        normA += a[i] * a[i];
+        normB += b[i] * b[i];
+    }
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
+}
+
+/**
+ * Greedy Maximal Marginal Relevance selection.
+ * Picks `topK` items from `pool` balancing query-relevance against similarity
+ * to already-selected items, using `lambda` to weight the trade-off.
+ *
+ * `pool` entries are `{ id, score, vector }`. The returned hits are
+ * `{ id, score }` with the vector stripped. Always seeds with the
+ * highest-relevance candidate, so the top-1 hit is never displaced by MMR.
+ */
+export function mmrSelect(pool, topK, lambda = MMR_LAMBDA) {
+    if (pool.length <= topK) return pool.map(({ id, score }) => ({ id, score }));
+
+    const selected = [];
+    const remaining = [...pool];
+
+    // Seed with the highest-relevance candidate
+    remaining.sort((a, b) => b.score - a.score);
+    selected.push(remaining.shift());
+
+    while (selected.length < topK && remaining.length > 0) {
+        let bestIdx = -1;
+        let bestMmr = -Infinity;
+
+        for (let i = 0; i < remaining.length; i++) {
+            const candidate = remaining[i];
+            // Max similarity to any already-selected item
+            let maxSim = 0;
+            for (const sel of selected) {
+                const sim = cosineSimilarity(candidate.vector, sel.vector);
+                if (sim > maxSim) maxSim = sim;
+            }
+            const mmr = lambda * candidate.score - (1 - lambda) * maxSim;
+            if (mmr > bestMmr) {
+                bestMmr = mmr;
+                bestIdx = i;
+            }
+        }
+
+        if (bestIdx === -1) break;
+        selected.push(remaining.splice(bestIdx, 1)[0]);
+    }
+
+    return selected.map(({ id, score }) => ({ id, score }));
+}
+
+/** Decode a sqlite-vec embedding column (a Node Buffer of float32 LE) into a Float32Array. */
+function blobToFloat32(blob) {
+    if (!blob) return null;
+    // `new Uint8Array(buffer)` copies into a fresh, 4-byte-aligned ArrayBuffer.
+    return new Float32Array(new Uint8Array(blob).buffer);
+}
+
 let db = null;
 let currentDims = null;
 
@@ -113,17 +193,27 @@ export const storeArchiveEmbedding = createStoreFn('archive_vss', 'scene_id', 's
 export const storeLoreEmbedding = createStoreFn('lore_vss', 'lore_id', 'lore');
 export const storeRulesEmbedding = createStoreFn('rules_vss', 'rule_id', 'rule');
 
-function createSearchFn(table, idCol, resultKey, itemType) {
-    return (campaignId, queryEmbedding, limit) => {
+// `applyMmr` is fixed per search type at construction time. archive + lore are
+// diversified (near-duplicate scenes/lore are redundant); rules are NOT — rule
+// chunks aren't redundant, and diversity-reranking could evict the one rule a
+// turn needs in favour of a "more different" but less relevant one. searchRules
+// is built with applyMmr=false and ignores the `diversity` flag entirely.
+function createSearchFn(table, idCol, resultKey, itemType, applyMmr) {
+    return (campaignId, queryEmbedding, limit, diversity = true) => {
         if (!db) return [];
+        const useMmr = applyMmr && diversity !== false;
+        // Pull a wider candidate pool than the final limit so MMR has room to
+        // diversify, then return `limit` after reranking.
+        const poolSize = useMmr ? Math.max(limit, MMR_MIN_POOL, limit * 3) : limit;
+        const cols = useMmr ? `${idCol}, distance, embedding` : `${idCol}, distance`;
         try {
             const rows = db.prepare(`
-                SELECT ${idCol}, distance
+                SELECT ${cols}
                 FROM ${table}
                 WHERE embedding MATCH ? AND campaign_id = ?
                 ORDER BY distance
                 LIMIT ?
-            `).all(queryEmbedding, campaignId, limit);
+            `).all(queryEmbedding, campaignId, poolSize);
             // Filter out stale embeddings (version mismatch) and unversioned embeddings (no meta entry)
             const currentVersion = EMBEDDING_VERSION;
             const staleIds = new Set();
@@ -142,18 +232,31 @@ function createSearchFn(table, idCol, resultKey, itemType) {
                     if (!metaIds.has(id)) staleIds.add(id);
                 }
             }
-            return rows
-                .filter(r => !staleIds.has(r[idCol]))
-                .map(r => ({ [resultKey]: r[idCol], distance: r.distance }));
+
+            // rows arrive sorted by distance ascending (most relevant first).
+            const fresh = rows.filter(r => !staleIds.has(r[idCol]));
+
+            if (useMmr && fresh.length >= MMR_MIN_POOL && fresh.length > limit) {
+                // sqlite-vec cosine distance = 1 - cosine similarity.
+                const pool = fresh.map(r => ({
+                    id: r[idCol],
+                    score: 1 - r.distance,
+                    vector: blobToFloat32(r.embedding),
+                }));
+                return mmrSelect(pool, limit).map(h => ({ [resultKey]: h.id, distance: 1 - h.score }));
+            }
+
+            return fresh.slice(0, limit).map(r => ({ [resultKey]: r[idCol], distance: r.distance }));
         } catch (err) {
             console.error(`[VectorStore] ${table} search failed:`, err.message);
             return [];
         }
     };
 }
-export const searchArchive = createSearchFn('archive_vss', 'scene_id', 'sceneId', 'scene');
-export const searchLore = createSearchFn('lore_vss', 'lore_id', 'loreId', 'lore');
-export const searchRules = createSearchFn('rules_vss', 'rule_id', 'ruleId', 'rule');
+export const searchArchive = createSearchFn('archive_vss', 'scene_id', 'sceneId', 'scene', true);
+export const searchLore = createSearchFn('lore_vss', 'lore_id', 'loreId', 'lore', true);
+// Rules are deliberately never diversified — see comment above createSearchFn.
+export const searchRules = createSearchFn('rules_vss', 'rule_id', 'ruleId', 'rule', false);
 
 export function deleteArchiveEmbedding(campaignId, sceneId) {
     if (!db) return;

@@ -407,13 +407,13 @@ export function createArchiveRouter() {
     }));
 
     router.post('/api/campaigns/:id/archive/semantic-candidates', wrapAsync(async (req, res) => {
-        const { query, queries, limit } = req.body;
+        const { query, queries, limit, diversity = true } = req.body;
         if (queries && Array.isArray(queries) && queries.length > 0) {
             const allSceneIds = new Set();
             for (const q of queries) {
                 if (!q?.trim()) continue;
                 const embedding = await embedText(q);
-                const results = searchArchive(req.params.id, embedding, limit || 20);
+                const results = searchArchive(req.params.id, embedding, limit || 20, diversity);
                 for (const r of results) allSceneIds.add(r.sceneId);
             }
             console.log(`[VectorStore] archive candidates for ${queries.length} queries: [${[...allSceneIds].join(', ')}]`);
@@ -421,20 +421,20 @@ export function createArchiveRouter() {
         } else {
             if (!query?.trim()) return res.json({ sceneIds: [] });
             const embedding = await embedText(query);
-            const results = searchArchive(req.params.id, embedding, limit || 20);
+            const results = searchArchive(req.params.id, embedding, limit || 20, diversity);
             console.log(`[VectorStore] archive candidates for "${query.slice(0, 50)}": [${results.map(r => r.sceneId).join(', ')}]`);
             res.json({ sceneIds: results.map(r => r.sceneId) });
         }
     }));
 
     router.post('/api/campaigns/:id/lore/semantic-candidates', wrapAsync(async (req, res) => {
-        const { query, queries, limit } = req.body;
+        const { query, queries, limit, diversity = true } = req.body;
         if (queries && Array.isArray(queries) && queries.length > 0) {
             const allLoreIds = new Set();
             for (const q of queries) {
                 if (!q?.trim()) continue;
                 const embedding = await embedText(q);
-                const results = searchLore(req.params.id, embedding, limit || 15);
+                const results = searchLore(req.params.id, embedding, limit || 15, diversity);
                 for (const r of results) allLoreIds.add(r.loreId);
             }
             console.log(`[VectorStore] lore candidates for ${queries.length} queries: [${[...allLoreIds].join(', ')}]`);
@@ -442,7 +442,7 @@ export function createArchiveRouter() {
         } else {
             if (!query?.trim()) return res.json({ loreIds: [] });
             const embedding = await embedText(query);
-            const results = searchLore(req.params.id, embedding, limit || 15);
+            const results = searchLore(req.params.id, embedding, limit || 15, diversity);
             console.log(`[VectorStore] lore candidates for "${query.slice(0, 50)}": [${results.map(r => r.loreId).join(', ')}]`);
             res.json({ loreIds: results.map(r => r.loreId) });
         }
