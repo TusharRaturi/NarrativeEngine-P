@@ -64,6 +64,7 @@ export type AppSettings = {
     utilityTimeoutSeconds?: number;        // soft deadline for utility AI calls (default 45)
     verboseUtilityLogging?: boolean;
     enableArchivePlanner?: boolean;
+    retrievalAlgorithm?: 'classic' | 'idf-rrf';
 
     // Legacy fields kept for migration only
     providers?: ProviderConfig[];

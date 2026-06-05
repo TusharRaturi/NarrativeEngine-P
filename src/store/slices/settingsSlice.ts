@@ -94,6 +94,7 @@ export const defaultSettings: AppSettings = {
     autoGenerateRuleKeywords: true,
     utilityTimeoutSeconds: 45,
     enableArchivePlanner: false,
+    retrievalAlgorithm: 'idf-rrf',
 };
 
 export function applyTheme(theme: 'light' | 'dark') {
@@ -125,6 +126,7 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
             utilityTimeoutSeconds: (raw.utilityTimeoutSeconds as number) ?? 45,
             verboseUtilityLogging: raw.verboseUtilityLogging as boolean,
             enableArchivePlanner: (raw.enableArchivePlanner as boolean) ?? false,
+            retrievalAlgorithm: (raw.retrievalAlgorithm as 'classic' | 'idf-rrf') ?? 'idf-rrf',
         };
     }
 
@@ -179,6 +181,7 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         autoGenerateRuleKeywords: true,
         utilityTimeoutSeconds: 45,
         enableArchivePlanner: false,
+        retrievalAlgorithm: 'idf-rrf',
     };
 }
 

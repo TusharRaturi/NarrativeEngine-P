@@ -305,7 +305,7 @@ export async function gatherContext(
     const lorePromise = (async () => {
         await semanticPromise;
         return loreChunks.length > 0
-            ? retrieveRelevantLore(loreChunks, context.canonState, context.headerIndex, input, 1200, messages, semanticLoreIds)
+            ? retrieveRelevantLore(loreChunks, context.canonState, context.headerIndex, input, 1200, messages, semanticLoreIds, state.settings.retrievalAlgorithm ?? 'idf-rrf')
             : undefined;
     })();
 
@@ -325,7 +325,8 @@ export async function gatherContext(
                 input,
                 rulesBudget,
                 candidateMessages,
-                semanticRuleIds
+                semanticRuleIds,
+                state.settings.retrievalAlgorithm ?? 'idf-rrf'
             )
             : { selected: [], manifest: '' };
     })();

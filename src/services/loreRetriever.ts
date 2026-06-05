@@ -1,4 +1,5 @@
 import type { LoreChunk, ChatMessage } from '../types';
+import { computeIdf, fuseRRF } from './retrieval/lexicalFusion';
 
 // ─── Regex Cache ──────────────────────────────────────────────────────────
 const regexCache = new Map<string, RegExp>();
@@ -63,18 +64,24 @@ function categoryBoost(category: string, scanText: string): number {
     return 0;
 }
 
-// ─── Main Retrieval (Semantic-First) ──────────────────────────────────────
-export function retrieveRelevantLore(
+// ─── IDF-weighted scoring helper ──────────────────────────────────────────
+function categoryBoostIdf(category: string, scanText: string): number {
+    if (category === 'power_system' && (scanText.includes('combat') || scanText.includes('attack') || scanText.includes('damage') || scanText.includes('cast'))) return 1.5;
+    if (category === 'faction' && (scanText.includes('politics') || scanText.includes('war') || scanText.includes('guild') || scanText.includes('order'))) return 1.5;
+    if (category === 'economy' && (scanText.includes('buy') || scanText.includes('sell') || scanText.includes('cost') || scanText.includes('gold') || scanText.includes('money'))) return 1.5;
+    return 0;
+}
+
+// ─── Classic algorithm (original) ──────────────────────────────────────────
+function retrieveRelevantLoreClassic(
     chunks: LoreChunk[],
     _canonState: string,
     _headerIndex: string,
     userMessage: string,
-    tokenBudget = 1200,
-    recentMessages?: ChatMessage[],
-    semanticCandidateIds?: string[],
+    tokenBudget: number,
+    recentMessages: ChatMessage[],
+    semanticCandidateIds: string[] | undefined,
 ): LoreChunk[] {
-    if (chunks.length === 0) return [];
-
     const results: LoreChunk[] = [];
     const includedSet = new Set<string>();
     let usedTokens = 0;
@@ -89,7 +96,7 @@ export function retrieveRelevantLore(
 
     const semanticSet = new Set(semanticCandidateIds ?? []);
 
-    const history = recentMessages || [];
+    const history = recentMessages;
     const defaultDepth = 2;
 
     const textByDepth = new Map<number, string>();
@@ -112,11 +119,9 @@ export function retrieveRelevantLore(
         const depth = chunk.scanDepth || defaultDepth;
         const scanText = getScanText(depth);
 
-        // RAG Mode vector: skip keyword scoring phase
         const skipKeyword = chunk.ragMode === 'vector';
         const kwHits = skipKeyword ? 0 : countKeywordHits(keywords, scanText);
 
-        // Strict secondary keyword AND-gate filtering
         if (kwHits > 0) {
             const secondaryKws = chunk.secondaryKeywords || [];
             if (secondaryKws.length > 0) {
@@ -125,11 +130,10 @@ export function retrieveRelevantLore(
                     regex.lastIndex = 0;
                     return regex.test(scanText);
                 });
-                if (!secondaryMatch) continue; // AND-gate not satisfied — skip keyword match
+                if (!secondaryMatch) continue;
             }
         }
 
-        // RAG Mode keyword: skip semantic boost phase
         const skipSemantic = chunk.ragMode === 'keyword';
         const isSemanticHit = isSemantic && !skipSemantic;
 
@@ -179,6 +183,182 @@ export function retrieveRelevantLore(
     }
 
     return results;
+}
+
+// ─── IDF+RRF algorithm ────────────────────────────────────────────────────
+function retrieveRelevantLoreIdfRrf(
+    chunks: LoreChunk[],
+    userMessage: string,
+    tokenBudget: number,
+    recentMessages: ChatMessage[],
+    semanticCandidateIds: string[] | undefined,
+): LoreChunk[] {
+    const results: LoreChunk[] = [];
+    const includedSet = new Set<string>();
+    let usedTokens = 0;
+
+    for (const chunk of chunks) {
+        if (chunk.alwaysInclude || chunk.ragMode === 'always') {
+            results.push(chunk);
+            includedSet.add(chunk.id);
+            usedTokens += chunk.tokens;
+        }
+    }
+
+    const history = recentMessages;
+    const defaultDepth = 2;
+
+    const textByDepth = new Map<number, string>();
+    const getScanText = (depth: number): string => {
+        if (!textByDepth.has(depth)) {
+            const slice = history.length > depth ? history.slice(-depth) : history;
+            textByDepth.set(depth, slice.map(m => (m.content || '').toLowerCase()).join(' ') + ' ' + userMessage.toLowerCase());
+        }
+        return textByDepth.get(depth)!;
+    };
+    getScanText(defaultDepth);
+
+    const idf = computeIdf(chunks.map(c => c.triggerKeywords ?? []));
+    const chunkById = new Map(chunks.map(c => [c.id, c]));
+    const semanticSet = new Set(semanticCandidateIds ?? []);
+
+    // Pass 1: keyword ranking (IDF-weighted)
+    const keywordScored: { chunk: LoreChunk; score: number }[] = [];
+
+    for (const chunk of chunks) {
+        if (includedSet.has(chunk.id)) continue;
+
+        const isKeywordMode = chunk.ragMode !== 'vector';
+        const isVectorMode = chunk.ragMode !== 'keyword';
+
+        const depth = chunk.scanDepth || defaultDepth;
+        const scanText = getScanText(depth);
+        const keywords = chunk.triggerKeywords || [];
+
+        let idfScore = 0;
+        for (const kw of keywords) {
+            const lower = kw.toLowerCase();
+            const regex = getKeywordRegex(kw);
+            regex.lastIndex = 0;
+            if (regex.test(scanText)) {
+                idfScore += idf[lower] ?? 1;
+            }
+        }
+
+        // Vector-only chunks with keyword overlap but no semantic hit get reduced weight
+        if (idfScore > 0 && !isKeywordMode) {
+            if (!semanticSet.has(chunk.id)) {
+                idfScore *= 0.5;
+            }
+        }
+
+        if (isKeywordMode && idfScore > 0) {
+            const secondaryKws = chunk.secondaryKeywords || [];
+            if (secondaryKws.length > 0) {
+                const secondaryMatch = secondaryKws.some(kw => {
+                    const regex = getKeywordRegex(kw);
+                    regex.lastIndex = 0;
+                    return regex.test(scanText);
+                });
+                if (!secondaryMatch) continue;
+            }
+
+            idfScore += (chunk.priority || 5) * 0.1;
+        }
+
+        if (idfScore > 0) {
+            idfScore += categoryBoostIdf(chunk.category, scanText);
+            keywordScored.push({ chunk, score: idfScore });
+        }
+    }
+
+    keywordScored.sort((a, b) => b.score - a.score);
+    const keywordRanked = keywordScored.map(s => s.chunk.id);
+
+    // Pass 2: embedding ranking (already cosine-ranked)
+    const embeddingRanked = (semanticCandidateIds ?? []).filter(id => {
+        const c = chunkById.get(id);
+        return c && c.ragMode !== 'keyword';
+    });
+
+    // Pass 3: RRF fusion
+    const fused = fuseRRF(keywordRanked, embeddingRanked);
+
+    // Pass 4: fill token budget in fused order, then group competition, then linked entities
+    const fusedChunks = fused
+        .map(id => chunkById.get(id))
+        .filter((c): c is LoreChunk => c !== undefined && !includedSet.has(c.id));
+
+    const scoredForGroup = fusedChunks.map(c => {
+        const kwRank = keywordRanked.indexOf(c.id);
+        const embRank = embeddingRanked.indexOf(c.id);
+        let score = 0;
+        if (kwRank !== -1) score += 1 / (60 + kwRank + 1);
+        if (embRank !== -1) score += 1 / (60 + embRank + 1);
+        return { chunk: c, score };
+    });
+
+    const grouped = applyGroupCompetition(scoredForGroup);
+    grouped.sort((a, b) => b.score - a.score);
+
+    for (const { chunk } of grouped) {
+        if (includedSet.has(chunk.id)) continue;
+        if (usedTokens + chunk.tokens > tokenBudget) continue;
+        results.push(chunk);
+        includedSet.add(chunk.id);
+        usedTokens += chunk.tokens;
+    }
+
+    // Linked entities cross-pull
+    if (usedTokens < tokenBudget) {
+        const linkedNames = new Set<string>();
+        for (const chunk of results) {
+            (chunk.linkedEntities || []).forEach(e => linkedNames.add(e.toLowerCase()));
+        }
+
+        if (linkedNames.size > 0) {
+            const remaining = chunks.filter(c => !includedSet.has(c.id)).sort((a, b) => (b.priority || 5) - (a.priority || 5));
+            for (const chunk of remaining) {
+                const headerLower = chunk.header.toLowerCase();
+                const isLinked = Array.from(linkedNames).some(name => headerLower.includes(name));
+                if (isLinked && usedTokens + chunk.tokens <= tokenBudget) {
+                    results.push(chunk);
+                    includedSet.add(chunk.id);
+                    usedTokens += chunk.tokens;
+                }
+            }
+        }
+    }
+
+    return results;
+}
+
+// ─── Main Retrieval Entry Point ────────────────────────────────────────────
+export function retrieveRelevantLore(
+    chunks: LoreChunk[],
+    _canonState: string,
+    _headerIndex: string,
+    userMessage: string,
+    tokenBudget = 1200,
+    recentMessages?: ChatMessage[],
+    semanticCandidateIds?: string[],
+    algorithm: 'classic' | 'idf-rrf' = 'idf-rrf',
+): LoreChunk[] {
+    if (chunks.length === 0) return [];
+
+    const messages = recentMessages ?? [];
+
+    if (algorithm === 'classic') {
+        return retrieveRelevantLoreClassic(
+            chunks, _canonState, _headerIndex, userMessage,
+            tokenBudget, messages, semanticCandidateIds,
+        );
+    }
+
+    return retrieveRelevantLoreIdfRrf(
+        chunks, userMessage, tokenBudget,
+        messages, semanticCandidateIds,
+    );
 }
 
 // ─── Query-based search (LLM tool call) ───────────────────────────────────
