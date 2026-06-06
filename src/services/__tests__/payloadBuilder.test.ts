@@ -1135,3 +1135,95 @@ describe('buildPayload — Scenario 11: Recent Scene Events rendering', () => {
         expect(allSystem).not.toContain('index 0');
     });
 });
+
+// ── Scenario 12: volatile notebook budget (regression — dead budget bug) ────────
+describe('buildPayload — volatile notebook budget', () => {
+    it('trims an oversized notebook so the volatile block respects its budget', () => {
+        // budgetMap.volatile = floor((limit - rulesBudget) * 0.10). With a small limit the
+        // notebook (the only unbounded volatile source) must be trimmed, not emitted wholesale.
+        const smallSettings = { ...baseSettings(), contextLimit: 600 } as unknown as AppSettings;
+        const ctx = baseContext();
+        ctx.notebookActive = true;
+        ctx.notebook = Array.from({ length: 50 }, (_, i) => ({
+            id: `n${i}`,
+            text: `Notebook entry number ${i} with some filler words to consume tokens here.`,
+            timestamp: 1_000 + i,
+        }));
+
+        const result = buildPayload(smallSettings, ctx, [], 'Hello');
+
+        const notebookMsg = result.messages.find(
+            m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[SCENE NOTEBOOK')
+        );
+        // A trim trace must be recorded proving the budget was enforced.
+        const trimTrace = (result.trace ?? []).find(
+            t => t.source === 'Scene Notebook' && !t.included && typeof t.reason === 'string' && t.reason.includes('Trimmed')
+        );
+        expect(trimTrace).toBeDefined();
+        // The newest entries are kept; the oldest are dropped.
+        if (notebookMsg) {
+            expect(notebookMsg.content as string).toContain('entry number 49');
+            expect(notebookMsg.content as string).not.toContain('entry number 0 ');
+        }
+    });
+
+    it('emits the full notebook unchanged when it fits the budget (characterization)', () => {
+        const ctx = baseContext();
+        ctx.notebookActive = true;
+        ctx.notebook = [
+            { id: 'n1', text: 'A short note.', timestamp: 2 },
+            { id: 'n2', text: 'Another short note.', timestamp: 1 },
+        ];
+        const result = buildPayload(baseSettings(), ctx, [], 'Hello');
+        const notebookMsg = result.messages.find(
+            m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[SCENE NOTEBOOK')
+        );
+        expect(notebookMsg).toBeDefined();
+        expect(notebookMsg!.content as string).toContain('A short note.');
+        expect(notebookMsg!.content as string).toContain('Another short note.');
+        // No trim trace when everything fits.
+        const trimTrace = (result.trace ?? []).find(
+            t => t.source === 'Scene Notebook' && !t.included
+        );
+        expect(trimTrace).toBeUndefined();
+    });
+});
+
+// ── Scenario 13: divergence reserved in world budget (regression) ───────────────
+describe('buildPayload — divergence reserved in world budget', () => {
+    it('drops more world blocks when divergence consumes part of the world budget', () => {
+        const smallSettings = { ...baseSettings(), contextLimit: 700 } as unknown as AppSettings;
+        const lore: LoreChunk[] = [
+            makeLoreChunk({ id: 'lc1', category: 'faction', header: 'Faction One', content: 'A'.repeat(300), tokens: 60 }),
+            makeLoreChunk({ id: 'lc2', category: 'location', header: 'Location Two', content: 'B'.repeat(300), tokens: 60 }),
+        ];
+
+        // A large divergence register that eats into the world allocation.
+        const bigDiv = makeDivergenceRegister('The capital fell. '.repeat(80));
+
+        const withDiv = buildPayload(
+            smallSettings, baseContext(), [], 'Hello',
+            undefined, lore, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, bigDiv
+        );
+        const withoutDiv = buildPayload(
+            smallSettings, baseContext(), [], 'Hello',
+            undefined, lore
+        );
+
+        const droppedWith = (withDiv.trace ?? []).filter(
+            t => !t.included && typeof t.reason === 'string' && t.reason.includes('World budget')
+        ).length;
+        const droppedWithout = (withoutDiv.trace ?? []).filter(
+            t => !t.included && typeof t.reason === 'string' && t.reason.includes('World budget')
+        ).length;
+
+        // Reserving divergence tokens means at least as many world blocks are dropped as without it.
+        expect(droppedWith).toBeGreaterThanOrEqual(droppedWithout);
+        // And the drop reason now mentions the divergence reserve.
+        const reserveTrace = (withDiv.trace ?? []).find(
+            t => !t.included && typeof t.reason === 'string' && t.reason.includes('divergence reserve')
+        );
+        expect(reserveTrace).toBeDefined();
+    });
+});

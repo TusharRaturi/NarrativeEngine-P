@@ -40,9 +40,10 @@ export function buildStable(opts: {
     relevantRules?: LoreChunk[];
     rulesManifest?: string;
     rulesBudget: number;
+    budgetStable: number;
     collector: TraceCollector;
 }): { stableContent: string; stableTokens: number } {
-    const { settings, context, sceneNumber, relevantRules, rulesManifest, rulesBudget, collector } = opts;
+    const { settings, context, sceneNumber, relevantRules, rulesManifest, rulesBudget, budgetStable, collector } = opts;
 
     const stableParts: string[] = [];
     if (sceneNumber) stableParts.push(`[CURRENT SCENE: #${sceneNumber}]\n[ENGINE: Scene header is auto-injected. Do NOT write "Scene #${sceneNumber}" yourself. Start your response with the date/location/NPCs line directly.]`);
@@ -93,6 +94,12 @@ export function buildStable(opts: {
 
     const stableContent = stableParts.join('\n\n');
     const stableTokens = countTokens(stableContent);
+    // Stable holds essential, non-droppable campaign state (rules already capped by rulesBudget; canon,
+    // header, starter cause amnesia if silently truncated mid-turn). Rather than drop it, surface a
+    // budget-overrun warning in the trace so an oversized preamble is visible in debug mode.
+    if (budgetStable > 0 && stableTokens > budgetStable) {
+        collector.addTrace({ source: 'Stable Preamble', classification: 'stable_truth', tokens: stableTokens, reason: `Over stable budget (${stableTokens} t > ${budgetStable} t) — kept (essential state, not trimmable)`, included: true, position: 'system_static' });
+    }
     collector.addTrace({ source: 'Stable Preamble', classification: 'stable_truth', tokens: stableTokens, reason: 'Preamble & Core state', included: true, position: 'system_static' });
     collector.addSection({ label: 'Stable Preamble', role: 'system', tokens: stableTokens, content: stableContent, classification: 'stable_truth' });
 

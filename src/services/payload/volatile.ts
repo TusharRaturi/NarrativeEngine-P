@@ -7,9 +7,10 @@ export function buildVolatile(opts: {
     context: GameContext;
     inventoryCategories?: (InventoryItemCategory | 'equipped')[];
     profileFields?: string[];
+    budgetVolatile: number;
     collector: TraceCollector;
 }): { volatileContent: string; volatileTokens: number } {
-    const { context, inventoryCategories, profileFields, collector } = opts;
+    const { context, inventoryCategories, profileFields, budgetVolatile, collector } = opts;
 
     // --- 5. Volatile State (Profile, Inventory) — Smart Injection ---
     const volatileParts: string[] = [];
@@ -52,11 +53,33 @@ ${profBlock}`);
         volatileParts.push(`[PLAYER INVENTORY — ${inventorySceneTag}]\n${context.inventory}`);
     }
     if (context.notebookActive && context.notebook && context.notebook.length > 0) {
-        const noteLines = context.notebook
+        // Notebook is the only unbounded volatile source. Reserve whatever budget remains after the
+        // higher-priority character/inventory/profile parts and admit newest-first entries until full,
+        // so a large notebook can't silently overrun the context window.
+        const usedTokens = countTokens(volatileParts.join('\n\n'));
+        const notebookBudget = budgetVolatile > 0 ? Math.max(0, budgetVolatile - usedTokens) : Infinity;
+        const sorted = context.notebook
+            .slice()
             .sort((a, b) => b.timestamp - a.timestamp)
-            .slice(0, 50)
-            .map(n => `▸ ${n.text}`);
-        volatileParts.push(`[SCENE NOTEBOOK — Volatile Working Memory]\n${noteLines.join('\n')}\n[END NOTEBOOK]`);
+            .slice(0, 50);
+        const wrap = (lines: string[]) => `[SCENE NOTEBOOK — Volatile Working Memory]\n${lines.join('\n')}\n[END NOTEBOOK]`;
+        const acceptedLines: string[] = [];
+        let droppedNotes = 0;
+        for (const n of sorted) {
+            const candidate = [...acceptedLines, `▸ ${n.text}`];
+            if (notebookBudget === Infinity || countTokens(wrap(candidate)) <= notebookBudget) {
+                acceptedLines.push(`▸ ${n.text}`);
+            } else {
+                droppedNotes = sorted.length - acceptedLines.length;
+                break;
+            }
+        }
+        if (acceptedLines.length > 0) {
+            volatileParts.push(wrap(acceptedLines));
+        }
+        if (droppedNotes > 0) {
+            collector.addTrace({ source: 'Scene Notebook', classification: 'volatile_state', tokens: 0, reason: `Trimmed ${droppedNotes} notebook entr${droppedNotes === 1 ? 'y' : 'ies'} to fit volatile budget (${budgetVolatile} t)`, included: false, position: 'system_dynamic' });
+        }
     }
 
     const volatileContent = volatileParts.join('\n\n');
