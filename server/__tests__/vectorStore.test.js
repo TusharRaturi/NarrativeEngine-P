@@ -95,6 +95,19 @@ describe('mmrSelect', () => {
             expect(h).toHaveProperty('score');
         }
     });
+
+    it('does not throw on null-vector rows (corrupt embedding blob) and excludes them', () => {
+        const withNull = [
+            ...POOL,
+            { id: 'bad1', score: 0.99, vector: null },
+            { id: 'bad2', score: 0.50, vector: undefined },
+        ];
+        let ids;
+        expect(() => { ids = vs.mmrSelect(withNull, 4).map(h => h.id); }).not.toThrow();
+        expect(ids).not.toContain('bad1');
+        expect(ids).not.toContain('bad2');
+        expect(ids[0]).toBe('s1'); // valid relevance order preserved
+    });
 });
 
 // ─── integration: search functions over a real sqlite-vec DB ────────────────

@@ -50,6 +50,9 @@ export function cosineSimilarity(a, b) {
  * highest-relevance candidate, so the top-1 hit is never displaced by MMR.
  */
 export function mmrSelect(pool, topK, lambda = MMR_LAMBDA) {
+    // Defense-in-depth: a missing/corrupt embedding blob yields a null vector, and
+    // cosineSimilarity(null, ...) would throw. Drop those before any pairwise scoring.
+    pool = pool.filter(p => p && p.vector);
     if (pool.length <= topK) return pool.map(({ id, score }) => ({ id, score }));
 
     const selected = [];
@@ -238,12 +241,17 @@ function createSearchFn(table, idCol, resultKey, itemType, applyMmr) {
 
             if (useMmr && fresh.length >= MMR_MIN_POOL && fresh.length > limit) {
                 // sqlite-vec cosine distance = 1 - cosine similarity.
-                const pool = fresh.map(r => ({
-                    id: r[idCol],
-                    score: 1 - r.distance,
-                    vector: blobToFloat32(r.embedding),
-                }));
-                return mmrSelect(pool, limit).map(h => ({ [resultKey]: h.id, distance: 1 - h.score }));
+                const pool = fresh
+                    .map(r => ({
+                        id: r[idCol],
+                        score: 1 - r.distance,
+                        vector: blobToFloat32(r.embedding),
+                    }))
+                    .filter(p => p.vector); // drop rows with missing/corrupt embedding blobs; cosineSimilarity(null,...) would throw
+                if (pool.length > 0) {
+                    return mmrSelect(pool, limit).map(h => ({ [resultKey]: h.id, distance: 1 - h.score }));
+                }
+                // else: every fresh row lacked a usable vector — fall through to the plain slice below
             }
 
             return fresh.slice(0, limit).map(r => ({ [resultKey]: r[idCol], distance: r.distance }));
