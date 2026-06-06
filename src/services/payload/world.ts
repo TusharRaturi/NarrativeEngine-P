@@ -96,6 +96,7 @@ export function buildWorld(opts: {
     // --- 3. Gather trimmable World Context (Medium Priority) ---
     const worldBlocks: { source: string; content: string; tokens: number; reason: string }[] = [];
     let divergenceRegText = '';
+    let divergenceTokens = 0;
 
     // Archive Recall
     if (archiveRecall && archiveRecall.length > 0) {
@@ -237,7 +238,7 @@ export function buildWorld(opts: {
                 const allNames = [npc.name.toLowerCase(), ...aliases];
                 return allNames.some(n => recommendedSet.has(n));
             });
-            console.log(`[PayloadBuilder] NPC selection via UtilityAI recommender: ${activeNPCs.length} active.`);
+            console.debug(`[PayloadBuilder] NPC selection via UtilityAI recommender: ${activeNPCs.length} active.`);
         } else {
             // ── Legacy substring scan mode ──
             const scanHistory = history.slice(-10).map(m => m.content || '').join(' ') + ' ' + userMessage;
@@ -302,8 +303,9 @@ export function buildWorld(opts: {
         const regText = renderRegisterForPayload(divergenceRegister, chapters, onStageNpcIds, npcLedger);
         if (regText) {
             divergenceRegText = regText;
-            collector.addTrace({ source: 'Established Facts', classification: 'world_context', tokens: countTokens(regText), reason: `Campaign facts (${divergenceRegister.entries.length} entries)`, included: true, position: 'system_cacheable' });
-            collector.addSection({ label: 'Established Facts', role: 'system', tokens: countTokens(regText), content: regText, classification: 'world_context' });
+            divergenceTokens = countTokens(regText);
+            collector.addTrace({ source: 'Established Facts', classification: 'world_context', tokens: divergenceTokens, reason: `Campaign facts (${divergenceRegister.entries.length} entries)`, included: true, position: 'system_cacheable' });
+            collector.addSection({ label: 'Established Facts', role: 'system', tokens: divergenceTokens, content: regText, classification: 'world_context' });
         }
     }
 
@@ -312,18 +314,22 @@ export function buildWorld(opts: {
     }
 
     // --- 4. Budget & Trim World Context ---
+    // Divergence is emitted as its own (high-priority, cacheable) system message but draws from
+    // the same world allocation, so reserve its tokens up front rather than letting the trimmable
+    // blocks consume the full budget and overrun once divergence is added back in payloadBuilder.
+    const trimBudget = Math.max(0, budgetWorld - divergenceTokens);
     let worldContent = '';
     let currentWorldTokens = 0;
     for (const block of worldBlocks) {
-        if (currentWorldTokens + block.tokens <= budgetWorld) {
+        if (currentWorldTokens + block.tokens <= trimBudget) {
             worldContent += (worldContent ? '\n\n' : '') + block.content;
             currentWorldTokens += block.tokens;
             collector.addTrace({ source: block.source, classification: 'world_context', tokens: block.tokens, reason: block.reason, included: true, position: 'system_dynamic' });
             collector.addSection({ label: block.source, role: 'system', tokens: block.tokens, content: block.content, classification: 'world_context' });
         } else {
-            collector.addTrace({ source: block.source, classification: 'world_context', tokens: block.tokens, reason: `Dropped: Exceeds World budget (${budgetWorld} t)`, included: false, position: 'system_dynamic' });
+            collector.addTrace({ source: block.source, classification: 'world_context', tokens: block.tokens, reason: `Dropped: Exceeds World budget (${trimBudget} t after ${divergenceTokens} t divergence reserve)`, included: false, position: 'system_dynamic' });
         }
     }
 
-    return { worldContent, currentWorldTokens, divergenceContent: divergenceRegText, divergenceTokens: divergenceRegText ? countTokens(divergenceRegText) : 0 };
+    return { worldContent, currentWorldTokens, divergenceContent: divergenceRegText, divergenceTokens };
 }
