@@ -36,24 +36,24 @@ const DEPTH_TIERS: Record<RecallDepth, { high: number; mid: number; low: number 
 // not the old flat +3.5 which would have swamped the keyword score.
 const PLANNER_RELEVANCE_BOOST = 2.0;
 
-// ─── IDF cache (signature-gated) ───
+// ─── IDF cache (signature-gated, campaign-scoped) ───
 //
 // IDF over the archive only changes when the archive itself changes. The signature is cheap
-// to compute and distinguishes "same index" from "index changed". Note: there is no
-// campaignId in scope here — two campaigns with identical length + first/last sceneId are
-// disambiguated only by lastTimestamp, which is good enough in practice.
+// to compute and distinguishes "same index" from "index changed". The optional campaignId is
+// folded into the signature so two campaigns can never share a stale IDF table even if they
+// have identical length + first/last sceneId + timestamp.
 let _idfCache: { sig: string; idf: Record<string, number> } | null = null;
 
-function indexSignature(index: ArchiveIndexEntry[]): string {
-    if (index.length === 0) return '';
+function indexSignature(index: ArchiveIndexEntry[], campaignId?: string): string {
+    if (index.length === 0) return campaignId ? `${campaignId}:empty` : '';
     const first = index[0].sceneId;
     const last = index[index.length - 1].sceneId;
     const tsLast = index[index.length - 1].timestamp;
-    return `${index.length}:${first}:${last}:${tsLast}`;
+    return `${campaignId ?? ''}:${index.length}:${first}:${last}:${tsLast}`;
 }
 
-export function computeArchiveIdf(index: ArchiveIndexEntry[]): Record<string, number> {
-    const sig = indexSignature(index);
+export function computeArchiveIdf(index: ArchiveIndexEntry[], campaignId?: string): Record<string, number> {
+    const sig = indexSignature(index, campaignId);
     if (_idfCache && _idfCache.sig === sig) return _idfCache.idf;
 
     const N = index.length;
@@ -368,6 +368,7 @@ export function retrieveArchiveMemory(
     excludeSceneIds?: Set<string>,
     plannerSceneIds?: string[],
     recallDepth: RecallDepth = 'standard',
+    campaignId?: string,
 ): string[] {
     if (!index || index.length === 0) {
         console.log('[Archive Retrieval] Index is empty — no recall.');
@@ -406,7 +407,7 @@ export function retrieveArchiveMemory(
         }
     }
 
-    const idf = computeArchiveIdf(index);
+    const idf = computeArchiveIdf(index, campaignId);
     const totalScenes = scopedIndex.length;
     const eventBoosts = applyEventBoost(scopedIndex, userMessage, recentMessages);
     const plannerSet = plannerSceneIds && plannerSceneIds.length > 0 ? new Set(plannerSceneIds) : null;
@@ -547,7 +548,7 @@ export async function recallArchiveScenes(
     plannerSceneIds?: string[],
     recallDepth: RecallDepth = 'standard',
 ): Promise<ArchiveScene[]> {
-    const matchedIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, npcPerspective, semanticCandidateIds, divergenceSceneIds, excludeSceneIds, plannerSceneIds, recallDepth);
+    const matchedIds = retrieveArchiveMemory(index, userMessage, recentMessages, npcLedger, undefined, semanticFacts, undefined, npcPerspective, semanticCandidateIds, divergenceSceneIds, excludeSceneIds, plannerSceneIds, recallDepth, campaignId);
     if (matchedIds.length === 0) return [];
     return fetchArchiveScenes(campaignId, matchedIds, tokenBudget);
 }

@@ -1,22 +1,6 @@
 import type { LoreChunk, ChatMessage } from '../types';
 import { computeIdf, fuseRRF } from './retrieval/lexicalFusion';
-
-// ─── Regex Cache ──────────────────────────────────────────────────────────
-const regexCache = new Map<string, RegExp>();
-
-function getKeywordRegex(keyword: string): RegExp {
-    let regex = regexCache.get(keyword);
-    if (!regex) {
-        const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        try {
-            regex = new RegExp(`\\b${escaped}\\b`, 'gi');
-        } catch {
-            regex = new RegExp(escaped, 'gi');
-        }
-        regexCache.set(keyword, regex);
-    }
-    return regex;
-}
+import { getCachedKeywordRegex as getKeywordRegex, makeScanTextGetter } from './retrieval/retrievalCore';
 
 // ─── Group Competition ────────────────────────────────────────────────────
 function applyGroupCompetition(
@@ -99,14 +83,7 @@ function retrieveRelevantLoreClassic(
     const history = recentMessages;
     const defaultDepth = 2;
 
-    const textByDepth = new Map<number, string>();
-    function getScanText(depth: number): string {
-        if (!textByDepth.has(depth)) {
-            const slice = history.length > depth ? history.slice(-depth) : history;
-            textByDepth.set(depth, slice.map(m => (m.content || '').toLowerCase()).join(' ') + ' ' + userMessage.toLowerCase());
-        }
-        return textByDepth.get(depth)!;
-    }
+    const getScanText = makeScanTextGetter(history, userMessage);
     getScanText(defaultDepth);
 
     const scored: { chunk: LoreChunk; score: number }[] = [];
@@ -208,14 +185,7 @@ function retrieveRelevantLoreIdfRrf(
     const history = recentMessages;
     const defaultDepth = 2;
 
-    const textByDepth = new Map<number, string>();
-    const getScanText = (depth: number): string => {
-        if (!textByDepth.has(depth)) {
-            const slice = history.length > depth ? history.slice(-depth) : history;
-            textByDepth.set(depth, slice.map(m => (m.content || '').toLowerCase()).join(' ') + ' ' + userMessage.toLowerCase());
-        }
-        return textByDepth.get(depth)!;
-    };
+    const getScanText = makeScanTextGetter(history, userMessage);
     getScanText(defaultDepth);
 
     const idf = computeIdf(chunks.map(c => c.triggerKeywords ?? []));

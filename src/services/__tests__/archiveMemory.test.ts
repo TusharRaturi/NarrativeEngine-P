@@ -65,6 +65,26 @@ describe('computeArchiveIdf — signature-gated cache', () => {
         const idf = computeArchiveIdf(index);
         expect(idf.rare).toBeGreaterThan(idf.common);
     });
+
+    it('does not share a cached IDF table across campaigns with an identical signature', () => {
+        // Two campaigns whose indexes have the same length/first/last sceneId AND timestamps
+        // would collide under the old (campaignId-less) signature. Scoping by campaignId keeps
+        // them distinct.
+        const tsA = 5000;
+        const mk = (sceneId: string, strengths: Record<string, number>) =>
+            ({ sceneId, timestamp: tsA, keywords: [], npcsMentioned: [], witnesses: [], userSnippet: '', keywordStrengths: strengths } as ArchiveIndexEntry);
+
+        const campA = [mk('1', { alpha: 1 }), mk('2', { alpha: 1 })];
+        const campB = [mk('1', { beta: 1 }), mk('2', { beta: 1 })];
+
+        const idfA = computeArchiveIdf(campA, 'camp-a');
+        const idfB = computeArchiveIdf(campB, 'camp-b');
+
+        // Different campaignId → recomputed, not the camp-a object served for camp-b.
+        expect(idfB).not.toBe(idfA);
+        expect(idfB.beta).toBeDefined();
+        expect(idfB.alpha).toBeUndefined();
+    });
 });
 
 // ─── RRF fusion behaviour ──────────────────────────────────────────────────

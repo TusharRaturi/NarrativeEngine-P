@@ -1,5 +1,6 @@
 import type { LoreChunk, ChatMessage, RuleChunkMeta } from '../types';
 import { computeIdf, fuseRRF } from './retrieval/lexicalFusion';
+import { makeScanTextGetter } from './retrieval/retrievalCore';
 
 function stripChunkPrefix(header: string): string {
     return header.replace(/\[CHUNK:\s*[A-Z_]+[—\-\s]*\]/i, '').trim();
@@ -31,16 +32,7 @@ function retrieveRelevantRulesClassic(
 
     const history = recentMessages;
     const defaultDepth = 2;
-    const textByDepth = new Map<number, string>();
-    const getScanText = (depth: number) => {
-        if (!textByDepth.has(depth)) {
-            const slice = history.length > depth ? history.slice(-depth) : history;
-            const text = slice.map(m => (m.content || '').toLowerCase()).join(' ')
-                + ' ' + userMessage.toLowerCase();
-            textByDepth.set(depth, text);
-        }
-        return textByDepth.get(depth)!;
-    };
+    const getScanText = makeScanTextGetter(history, userMessage);
 
     const scored: { chunk: LoreChunk; score: number }[] = [];
     const semanticSet = new Set(semanticRuleIds || []);
@@ -148,16 +140,7 @@ function retrieveRelevantRulesIdfRrf(
 
     const history = recentMessages;
     const defaultDepth = 2;
-    const textByDepth = new Map<number, string>();
-    const getScanText = (depth: number) => {
-        if (!textByDepth.has(depth)) {
-            const slice = history.length > depth ? history.slice(-depth) : history;
-            const text = slice.map(m => (m.content || '').toLowerCase()).join(' ')
-                + ' ' + userMessage.toLowerCase();
-            textByDepth.set(depth, text);
-        }
-        return textByDepth.get(depth)!;
-    };
+    const getScanText = makeScanTextGetter(history, userMessage);
 
     const idf = computeIdf(chunks.map(c => (meta[c.id]?.triggerKeywords ?? c.triggerKeywords ?? [])));
     const chunkById = new Map(chunks.map(c => [c.id, c]));
