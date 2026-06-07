@@ -1,0 +1,136 @@
+import type { NPCEntry, LoreChunk } from '../../types';
+import type { TurnState } from '../turnOrchestrator';
+import { API_BASE as API } from '../../lib/apiBase';
+import { rerankCandidates, type RerankCandidate } from '../semanticReranker';
+import { llmCall } from '../../utils/llmCall';
+import { extractJsonRobust } from '../jsonExtract';
+
+const CALLBACK_REGEX = /\b(remember|earlier|back when|before|previously|that .*(we|i) (did|met|fought|saw|found|got))\b/i;
+
+async function expandQuery(query: string, npcLedger: NPCEntry[], utilityEndpoint: import('../../types').EndpointConfig): Promise<string[]> {
+    try {
+        const npcContext = npcLedger.slice(0, 10).map(n => n.name).join(', ');
+        const prompt = `User query: "${query}"
+Known NPCs: ${npcContext}
+Generate 2 alternative phrasings that expand pronouns, add likely entity names from context, and use synonyms. Return ONLY a JSON array of 2 strings. No prose.`;
+
+        const raw = await llmCall(utilityEndpoint, prompt, {
+            temperature: 0.2,
+            priority: 'high',
+            maxTokens: 200,
+        });
+
+        const { value: parsed, parseOk } = extractJsonRobust<string[]>(raw, []);
+        if (parseOk && Array.isArray(parsed) && parsed.length >= 2 && parsed.every((x: unknown) => typeof x === 'string')) {
+            return [query, parsed[0], parsed[1]];
+        }
+        return [query];
+    } catch {
+        return [query];
+    }
+}
+
+export type SemanticCandidates = {
+    semanticArchiveIds: string[] | undefined;
+    semanticLoreIds: string[] | undefined;
+    semanticRuleIds: string[] | undefined;
+};
+
+export async function gatherSemanticCandidates(
+    state: TurnState,
+    signal?: AbortSignal
+): Promise<SemanticCandidates> {
+    const { input, npcLedger, loreChunks, archiveIndex, activeCampaignId } = state;
+
+    let semanticArchiveIds: string[] | undefined;
+    let semanticLoreIds: string[] | undefined;
+    let semanticRuleIds: string[] | undefined;
+
+    if (!activeCampaignId) {
+        return { semanticArchiveIds, semanticLoreIds, semanticRuleIds };
+    }
+
+    try {
+        // Query expansion for callback phrases or short queries
+        let queries = [input];
+        const utilityEndpoint = state.getUtilityEndpoint?.();
+        const isCallback = CALLBACK_REGEX.test(input);
+        const isShort = input.trim().split(/\s+/).length < 8;
+        if ((isCallback || isShort) && utilityEndpoint?.endpoint) {
+            const expanded = await expandQuery(input, npcLedger, utilityEndpoint);
+            queries = expanded;
+            if (expanded.length > 1) {
+                console.log(`[QueryExpansion] "${input}" → ${expanded.length} variants`);
+            }
+        }
+
+        const queryBody = queries.length > 1 ? { queries } : { query: input };
+        const [archiveRes, loreRes, rulesRes] = await Promise.all([
+            fetch(`${API}/campaigns/${activeCampaignId}/archive/semantic-candidates`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(queryBody),
+                signal,
+            }),
+            fetch(`${API}/campaigns/${activeCampaignId}/lore/semantic-candidates`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(queryBody),
+                signal,
+            }),
+            fetch(`${API}/campaigns/${activeCampaignId}/rules/search`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(queryBody),
+                signal,
+            }),
+        ]);
+        if (archiveRes.ok) {
+            const data = await archiveRes.json();
+            semanticArchiveIds = data.sceneIds;
+        }
+        if (loreRes.ok) {
+            const data = await loreRes.json();
+            semanticLoreIds = data.loreIds;
+        }
+        if (rulesRes.ok) {
+            const data = await rulesRes.json();
+            semanticRuleIds = data.ruleIds;
+        }
+
+        // Rerank candidates via LLM if enough results and utility endpoint available
+        if (utilityEndpoint?.endpoint) {
+            if (semanticArchiveIds && semanticArchiveIds.length >= 5) {
+                const sceneCandidates: RerankCandidate[] = semanticArchiveIds.map(id => {
+                    const idxEntry = archiveIndex.find(e => e.sceneId === id);
+                    return {
+                        id,
+                        summary: idxEntry ? `${idxEntry.userSnippet} — ${idxEntry.keywords.slice(0, 5).join(', ')}` : id,
+                        type: 'scene' as const,
+                    };
+                });
+                const rerankedIds = await rerankCandidates(input, sceneCandidates, utilityEndpoint, { maxCandidates: 30, topN: 12 });
+                semanticArchiveIds = rerankedIds;
+                console.log(`[Reranker] Scene candidates: ${rerankedIds.length} after rerank`);
+            }
+
+            if (semanticLoreIds && semanticLoreIds.length >= 5) {
+                const loreCandidates: RerankCandidate[] = semanticLoreIds.map(id => {
+                    const chunk = loreChunks.find((c: LoreChunk) => c.id === id);
+                    return {
+                        id,
+                        summary: chunk ? `${chunk.header} — ${chunk.summary || chunk.content.slice(0, 80)}` : id,
+                        type: 'lore' as const,
+                    };
+                });
+                const rerankedLoreIds = await rerankCandidates(input, loreCandidates, utilityEndpoint, { maxCandidates: 25, topN: 10 });
+                semanticLoreIds = rerankedLoreIds;
+                console.log(`[Reranker] Lore candidates: ${rerankedLoreIds.length} after rerank`);
+            }
+        }
+    } catch (err) {
+        console.warn('[ContextGatherer] Semantic candidates fetch failed:', err);
+    }
+
+    return { semanticArchiveIds, semanticLoreIds, semanticRuleIds };
+}
