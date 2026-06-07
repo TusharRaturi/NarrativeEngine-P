@@ -34,23 +34,23 @@ const NPC_NAME_BLOCKLIST = new Set([
 
 const CONTRACTION_SUFFIX_RE = /['\u2019](s|re|t|ve|ll|d|m)$/i;
 
+// Structural/location words that invalidate two-word Pass-7 candidates.
+// All words previously listed here are already covered by NPC_NAME_BLOCKLIST (structures &
+// locations section above), so this set holds only words that are structural but NOT in the
+// blocklist. Currently empty after dedup — extend here for future structural words not in
+// the blocklist.
 const STRUCTURAL_WORDS = new Set([
-    "gate", "wall", "hall", "tower", "bridge", "mouth", "square", "market",
-    "outpost", "garrison", "district", "quarter", "road", "path", "bay",
-    "canal", "harbor", "harbour", "port", "keep", "fortress", "castle",
-    "temple", "shrine", "chapel", "tavern", "inn", "manor", "estate",
-    "forest", "mountain", "valley", "river", "lake", "sea", "ocean",
-    "north", "south", "east", "west", "northern", "southern", "eastern", "western",
-    "upper", "lower", "old", "new", "great", "grand",
+    // (intentionally empty — all structural location words live in NPC_NAME_BLOCKLIST above)
 ]);
 
 const SPEECH_VERBS = 'said|asked|whispered|shouted|replied|muttered|growled|spoke|called|answered|continued|added|cried|yelled|barked|snapped|hissed|murmured|breathed|intoned|declared|announced|exclaimed|demanded|ordered|commanded|pleaded|begged|insisted|admitted|confessed|offered|suggested|noted|observed|remarked|commented|explained|stated';
 
-function isValidCandidate(raw, genericPattern, blocklist) {
+function isValidCandidate(raw, genericPattern, blocklist, excludeSet) {
     if (raw.length < 2) return false;
     if (raw.includes(' ') && raw === raw.toUpperCase()) return false;
     if (blocklist.has(raw.toLowerCase())) return false;
     if (genericPattern.test(raw)) return false;
+    if (excludeSet && excludeSet.has(raw.toLowerCase())) return false;
     return true;
 }
 
@@ -96,10 +96,20 @@ export function extractIndexKeywords(text) {
  * Extract NPC names using 6 high-precision passes.
  * Pass 7 (two-capitalized-tokens) is deliberately omitted because the
  * server has no LLM validator to filter false positives.
+ *
+ * @param {string} text - The assistant / narrative text to scan.
+ * @param {number} [maxNames=15] - Hard cap on returned names.
+ * @param {string[]} [excludeNames=[]] - Names to exclude (e.g. player-character names).
+ *   The archive route currently passes no excludeNames because the route receives only
+ *   userContent + assistantContent; it has no access to a player-character roster at call
+ *   time. Pass an array here if a future caller gains that context.
  */
-export function extractNPCNames(text, maxNames = 15) {
+export function extractNPCNames(text, maxNames = 15, excludeNames = []) {
     const candidates = [];
     const seen = new Set();
+    const excludeSet = excludeNames.length > 0
+        ? new Set(excludeNames.map(n => n.toLowerCase()))
+        : null;
 
     const tryAdd = (raw) => {
         if (!raw || raw.length < 2) return;
@@ -107,7 +117,7 @@ export function extractNPCNames(text, maxNames = 15) {
         const stripped = stripTitle(raw);
         if (!stripped || stripped.length < 2) return;
         if (CONTRACTION_SUFFIX_RE.test(stripped)) return;
-        if (!isValidCandidate(stripped, GENERIC_ROLE_PATTERN, NPC_NAME_BLOCKLIST)) return;
+        if (!isValidCandidate(stripped, GENERIC_ROLE_PATTERN, NPC_NAME_BLOCKLIST, excludeSet)) return;
         const tokens = stripped.split(/\s+/);
         if (tokens.length > 1) {
             const hasBadToken = tokens.some(t => {

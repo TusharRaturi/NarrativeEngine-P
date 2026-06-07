@@ -38,18 +38,21 @@ const NPC_NAME_BLOCKLIST = new Set([
 ]);
 
 // Contraction suffix pattern — straight and curly apostrophes
-const CONTRACTION_SUFFIX_RE = /['\u2019](s|re|t|ve|ll|d|m)$/i;
+const CONTRACTION_SUFFIX_RE = /['’](s|re|t|ve|ll|d|m)$/i;
 
-// Structural/location words that invalidate two-word candidates even if not in the general blocklist
-const STRUCTURAL_WORDS = new Set([
-    "gate", "wall", "hall", "tower", "bridge", "mouth", "square", "market",
-    "outpost", "garrison", "district", "quarter", "road", "path", "bay",
-    "canal", "harbor", "harbour", "port", "keep", "fortress", "castle",
-    "temple", "shrine", "chapel", "tavern", "inn", "manor", "estate",
-    "forest", "mountain", "valley", "river", "lake", "sea", "ocean",
-    "north", "south", "east", "west", "northern", "southern", "eastern", "western",
-    "upper", "lower", "old", "new", "great", "grand",
+// Structural/location words that invalidate two-word Pass-7 candidates.
+// All words previously listed here are already covered by NPC_NAME_BLOCKLIST (structures &
+// locations section above), so this set holds only words that are structural but NOT in the
+// blocklist. Currently empty after dedup — extend here for future structural words not in
+// the blocklist.
+const STRUCTURAL_WORDS = new Set<string>([
+    // (intentionally empty — all structural location words live in NPC_NAME_BLOCKLIST above)
 ]);
+
+// Maximum Pass-7 (two consecutive capitals) candidates admitted per turn.
+// Pass 7 is the weakest heuristic; when the LLM validator is offline (fail-closed →
+// rejects everything), an uncapped Pass 7 floods the ledger with false positives.
+const PASS7_MAX_PER_TURN = 5;
 
 // Bounded speech attribution verbs
 const SPEECH_VERBS = 'said|asked|whispered|shouted|replied|muttered|growled|spoke|called|answered|continued|added|cried|yelled|barked|snapped|hissed|murmured|breathed|intoned|declared|announced|exclaimed|demanded|ordered|commanded|pleaded|begged|insisted|admitted|confessed|offered|suggested|noted|observed|remarked|commented|explained|stated';
@@ -102,12 +105,12 @@ export function extractNPCNames(content: string, excludeNames: string[] = []): s
     }
 
     // Pass 2: [SYSTEM: NPC_ENTRY - Name]
-    for (const m of content.matchAll(/\[SYSTEM:\s*NPC_ENTRY\s*[-\u2013\u2014]\s*([A-Za-z][A-Za-z0-9 _'-]*)\]/gi)) {
+    for (const m of content.matchAll(/\[SYSTEM:\s*NPC_ENTRY\s*[-–—]\s*([A-Za-z][A-Za-z0-9 _'-]*)\]/gi)) {
         tryAdd(m[1].trim());
     }
 
     // Pass 3: Title-prefixed — "Captain Aldric", "Instructor Roderick Vaul"
-    for (const m of content.matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z''\u2019-]+){1,3})\b/g)) {
+    for (const m of content.matchAll(/\b([A-Z][a-z]+(?:\s+[A-Z][a-z''’-]+){1,3})\b/g)) {
         const raw = m[1].trim();
         if (TITLES_SET.has(raw.split(/\s+/)[0].toLowerCase())) {
             tryAdd(raw);
@@ -131,22 +134,26 @@ export function extractNPCNames(content: string, excludeNames: string[] = []): s
     }
 
     // Pass 5a: Role-apposition — "the merchant Orin", "an innkeeper Bram"
-    for (const m of content.matchAll(/\b(?:[Tt]he|[Aa]n?)\s+\w+\s+([A-Z][a-z\u2019'-]+(?:\s+[A-Z][a-z\u2019'-]+){0,2})\b/g)) {
+    for (const m of content.matchAll(/\b(?:[Tt]he|[Aa]n?)\s+\w+\s+([A-Z][a-z’'-]+(?:\s+[A-Z][a-z’'-]+){0,2})\b/g)) {
         tryAdd(m[1].trim());
     }
 
     // Pass 5b: Named/called introduction — "a man named Bram", "called Orin"
-    for (const m of content.matchAll(/\b(?:[Nn]amed|[Cc]alled)\s+([A-Z][a-z\u2019'-]+(?:\s+[A-Z][a-z\u2019'-]+){0,2})\b/g)) {
+    for (const m of content.matchAll(/\b(?:[Nn]amed|[Cc]alled)\s+([A-Z][a-z’'-]+(?:\s+[A-Z][a-z’'-]+){0,2})\b/g)) {
         tryAdd(m[1].trim());
     }
 
     // Pass 6: Connective names — "Aldric of Westhold", "Elara von Mire"
-    for (const m of content.matchAll(/\b([A-Z][a-z''\u2019-]+\s+(?:of|von|de|di|al|el|ibn|bin)\s+[A-Z][a-z''\u2019-]+)\b/g)) {
+    for (const m of content.matchAll(/\b([A-Z][a-z''’-]+\s+(?:of|von|de|di|al|el|ibn|bin)\s+[A-Z][a-z''’-]+)\b/g)) {
         tryAdd(m[1].trim());
     }
 
     // Pass 7: Two consecutive capitalized non-blocklisted, non-structural, non-title tokens — "Seraphine Thornmere"
-    for (const m of content.matchAll(/\b([A-Z][a-z''\u2019-]+)\s+([A-Z][a-z''\u2019-]+)\b/g)) {
+    // Capped at PASS7_MAX_PER_TURN to prevent false-positive floods when the LLM validator
+    // is offline (fail-closed → rejects all candidates, leaving unvalidated Pass-7 names in the ledger).
+    let pass7Count = 0;
+    for (const m of content.matchAll(/\b([A-Z][a-z''’-]+)\s+([A-Z][a-z''’-]+)\b/g)) {
+        if (pass7Count >= PASS7_MAX_PER_TURN) break;
         const [, a, b] = m;
         if (
             !CONTRACTION_SUFFIX_RE.test(a) && !CONTRACTION_SUFFIX_RE.test(b) &&
@@ -154,7 +161,9 @@ export function extractNPCNames(content: string, excludeNames: string[] = []): s
             !STRUCTURAL_WORDS.has(a.toLowerCase()) && !STRUCTURAL_WORDS.has(b.toLowerCase()) &&
             !TITLES_SET.has(a.toLowerCase()) && !TITLES_SET.has(b.toLowerCase())
         ) {
+            const sizeBefore = candidates.size;
             tryAdd(`${a} ${b}`);
+            if (candidates.size > sizeBefore) pass7Count++;
         }
     }
 
@@ -209,8 +218,8 @@ export async function validateNPCCandidates(
 
     const shortContext = narrativeContext.slice(-1000);
 
-    const prompt = `You are a strict data filter for a fantasy RPG. 
-Given a short narrative context and a list of bracketed terms extracted from it, return ONLY the ones that are actual character or NPC names. 
+    const prompt = `You are a strict data filter for a fantasy RPG.
+Given a short narrative context and a list of bracketed terms extracted from it, return ONLY the ones that are actual character or NPC names.
 Exclude skill checks, game mechanics, actions, meta-tags, stats, spell names, locations, and any other non-name terms.
 
 [NARRATIVE CONTEXT]

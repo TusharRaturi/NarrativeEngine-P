@@ -255,6 +255,45 @@ describe('extractNPCNames', () => {
         const names = extractNPCNames(text);
         expect(names).toContain('Roderick Vaul');
     });
+
+    // ── Phase 4 parity: excludeNames param ──
+    it('excludes a name when given an excludeNames list', () => {
+        const text = '[**Aldric**] nodded. [**Maren**] smiled.';
+        const names = extractNPCNames(text, 15, ['Aldric']);
+        expect(names).not.toContain('Aldric');
+        expect(names).toContain('Maren');
+    });
+
+    it('excludeNames is case-insensitive', () => {
+        const text = '[**Seraphine**] entered the room.';
+        const names = extractNPCNames(text, 15, ['SERAPHINE']);
+        expect(names).not.toContain('Seraphine');
+    });
+
+    // ── Phase 4 parity: structural words still rejected after STRUCTURAL_WORDS dedup ──
+    it('structural word "Gate" still rejected by blocklist after dedup', () => {
+        const text = '[**Iron Gate**] stood firm.';
+        const names = extractNPCNames(text);
+        // "Iron Gate" has a blocklisted token ("gate") — should be filtered
+        expect(names).not.toContain('Iron Gate');
+    });
+
+    it('structural word "Hall" still rejected by blocklist after dedup', () => {
+        const text = 'Captain Great Hall said hello.';
+        const names = extractNPCNames(text);
+        expect(names).not.toContain('Great Hall');
+    });
+
+    // ── Phase 4 parity: smoke test ──
+    it('smoke: Seraphine Thornmere admitted; Iron Gate and Chapter Two rejected', () => {
+        // Server has no Pass 7, so Seraphine Thornmere only appears via earlier passes.
+        // Use a bracket format to ensure she's captured.
+        const text = '[**Seraphine Thornmere**] stepped through Iron Gate. Chapter Two begins.';
+        const names = extractNPCNames(text);
+        expect(names).toContain('Seraphine Thornmere');
+        expect(names).not.toContain('Iron Gate');
+        expect(names).not.toContain('Chapter Two');
+    });
 });
 
 // ─── estimateImportance ─────────────────────────────────────────────────────

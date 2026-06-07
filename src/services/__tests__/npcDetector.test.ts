@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { extractNPCNames } from '../npcDetector';
 
 describe('extractNPCNames — 7-pass detection', () => {
@@ -141,12 +141,49 @@ describe('extractNPCNames — 7-pass detection', () => {
         expect(result).not.toContain('CRITICAL HIT');
     });
 
-    // Fail-closed validator test (mocked)
-    it('Fail-closed: validateNPCCandidates returns [] on LLM error', async () => {
-        // Dynamic import to avoid circular mock issues — test the module's validator directly
-        const { validateNPCCandidates } = await import('../npcDetector');
-        // We can't easily mock llmCall here, so we test the signature is correct
-        // and the function accepts the right params
-        expect(typeof validateNPCCandidates).toBe('function');
+    // Fail-closed validator test — actually rejects on error
+    it('Fail-closed: validateNPCCandidates returns [] when llmCall throws', async () => {
+        // Mock llmCall to throw so we exercise the catch → return [] path
+        vi.doMock('../../utils/llmCall', () => ({
+            llmCall: vi.fn().mockRejectedValue(new Error('network offline')),
+        }));
+        const { validateNPCCandidates } = await import('../npcDetector?t=fail-closed');
+        const provider = { endpoint: 'http://localhost', model: 'test' } as any;
+        const result = await validateNPCCandidates(provider, ['Aldric', 'Maren'], 'Some context');
+        expect(result).toEqual([]);
+        vi.doUnmock('../../utils/llmCall');
+    });
+
+    // Pass-7 cap test
+    it('Pass-7 cap: at most PASS7_MAX_PER_TURN (5) Pass-7-only names admitted', () => {
+        // Build text with 10 clearly Pass-7-eligible two-word names (not caught by earlier passes)
+        const names = [
+            'Aldric Thornmere', 'Seraphine Blackwood', 'Orin Valewick',
+            'Maren Coldveil', 'Bram Ashfen', 'Lyra Duskmoore',
+            'Cael Rivenmoor', 'Syla Ironvale', 'Davan Greyspar', 'Ruva Brightholm',
+        ];
+        const text = names.join('. ') + '.';
+        const result = extractNPCNames(text);
+        // Count how many Pass-7-only candidates appear (none have a speech verb / bracket / etc.)
+        const p7Matches = result.filter(n => names.includes(n));
+        expect(p7Matches.length).toBeLessThanOrEqual(5);
+    });
+
+    // excludeSet filtering test
+    it('excludeSet: name in excludeNames is filtered out across all passes', () => {
+        // Aldric appears via Pass 1 (bracket) AND Pass 4a (speech verb) — still excluded
+        const text = '[Aldric] nodded. Aldric said hello. [**Maren**] smiled.';
+        const result = extractNPCNames(text, ['Aldric']);
+        expect(result).not.toContain('Aldric');
+        expect(result).toContain('Maren');
+    });
+
+    // Smoke test: real NPC + structural word + chapter heading
+    it('Smoke: Seraphine Thornmere admitted; Iron Gate and Chapter Two rejected', () => {
+        const text = 'Seraphine Thornmere stepped through Iron Gate. Chapter Two begins now.';
+        const result = extractNPCNames(text);
+        expect(result).toContain('Seraphine Thornmere');
+        expect(result).not.toContain('Iron Gate');
+        expect(result).not.toContain('Chapter Two');
     });
 });
