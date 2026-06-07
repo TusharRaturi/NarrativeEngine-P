@@ -28,6 +28,7 @@ import { normalizeEntityName } from '../lib/entityResolution.js';
 import { embedText, buildArchiveText, buildLoreText, warmup, embedBatch } from '../lib/embedder.js';
 import { storeArchiveEmbedding, storeLoreEmbedding, searchArchive, searchLore, getEmbeddingStatus, EMBEDDING_VERSION, getDb } from '../lib/vectorStore.js';
 import { wrapAsync } from '../lib/asyncHandler.js';
+import { serverError } from '../lib/serverError.js';
 
 export function createArchiveRouter() {
     const router = Router();
@@ -384,8 +385,7 @@ export function createArchiveRouter() {
                 }
                 res.json({ ok: true });
             }).catch(err => {
-                console.error('[Archive] shell.openPath rejected:', err.message);
-                res.status(500).json({ error: 'Failed to open archive' });
+                serverError(res, err, 'Archive Open');
             });
         } else {
             const cmd = process.platform === 'win32' ? 'cmd' : process.platform === 'darwin' ? 'open' : 'xdg-open';
@@ -394,14 +394,13 @@ export function createArchiveRouter() {
             import('child_process').then(({ execFile }) => {
                 execFile(cmd, args, (err) => {
                     if (err) {
-                        console.warn('[Archive] execFile failed:', err.message);
-                        return res.status(500).json({ error: 'Failed to open archive' });
+                        serverError(res, err, 'Archive Open');
+                        return;
                     }
                     res.json({ ok: true });
                 });
             }).catch(err => {
-                console.error('[Archive] child_process import failed:', err.message);
-                res.status(500).json({ error: 'Failed to open archive' });
+                serverError(res, err, 'Archive Open');
             });
         }
     }));
