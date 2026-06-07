@@ -1,6 +1,7 @@
 import type { LoreChunk, EndpointConfig, ProviderConfig } from '../types';
 import { llmCall } from '../utils/llmCall';
 import { saveLoreChunks } from '../store/campaignStore';
+import { extractJsonRobust } from './jsonExtract';
 
 const BATCH_SIZE = 8;
 const CONTENT_PREVIEW_CHARS = 300;
@@ -29,16 +30,9 @@ Respond with the JSON object now:`;
 }
 
 function parseEnrichmentResponse(raw: string): Record<string, { primary: string[]; secondary: string[] }> {
-    let clean = raw.replace(/<think>[\s\S]*?<\/think>/gi, '');
-    const mdMatch = clean.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (mdMatch) clean = mdMatch[1];
-
-    const start = clean.indexOf('{');
-    const end = clean.lastIndexOf('}');
-    if (start === -1 || end === -1) throw new Error('No JSON object found in enrichment response');
-
-    const parsed = JSON.parse(clean.substring(start, end + 1));
-    if (typeof parsed !== 'object' || parsed === null) throw new Error('Enrichment response is not an object');
+    type EnrichmentRaw = Record<string, unknown>;
+    const { value: parsed, parseOk } = extractJsonRobust<EnrichmentRaw>(raw, {});
+    if (!parseOk || typeof parsed !== 'object' || parsed === null) throw new Error('No JSON object found in enrichment response');
 
     const result: Record<string, { primary: string[]; secondary: string[] }> = {};
     for (const [id, value] of Object.entries(parsed)) {

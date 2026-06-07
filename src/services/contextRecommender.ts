@@ -11,6 +11,7 @@
 import type { EndpointConfig, NPCEntry, LoreChunk, ChatMessage, ArchiveChapter, InventoryItem, CharacterProfile, InventoryItemCategory } from '../types';
 import { llmCall } from '../utils/llmCall';
 import { buildInventoryIndex, buildProfileIndex } from './contextMinifier';
+import { extractJsonRobust } from './jsonExtract';
 
 export type RecommenderResult = {
     relevantNPCNames: string[];   // NPC names the model considers relevant
@@ -131,19 +132,12 @@ export async function recommendContext(
     });
 
     // Parse the JSON response — handle thinker blocks and markdown wrapping
-    let cleanContent = rawContent.replace(/<think>[\s\S]*?<\/think>/gi, '');
-    const mdMatch = cleanContent.match(/```(?:json)?\s*([\s\S]*?)```/i);
-    if (mdMatch) cleanContent = mdMatch[1];
-
-    // Find JSON object in the response
-    const jsonStart = cleanContent.indexOf('{');
-    const jsonEnd = cleanContent.lastIndexOf('}');
-    if (jsonStart === -1 || jsonEnd === -1 || jsonEnd <= jsonStart) {
+    type RecommenderRaw = { npcs?: unknown; lore?: unknown; inventoryCategories?: unknown; profileFields?: unknown };
+    const { value: parsed, parseOk } = extractJsonRobust<RecommenderRaw>(rawContent, {});
+    if (!parseOk) {
         console.warn('[ContextRecommender] Failed to find JSON in response:', rawContent.slice(0, 200));
         throw new Error('No valid JSON in recommender response');
     }
-
-    const parsed = JSON.parse(cleanContent.substring(jsonStart, jsonEnd + 1));
 
     const validCats = new Set(['equipped', 'weapon', 'armor', 'consumable', 'key', 'currency', 'misc']);
     const validFields = new Set(['name', 'race', 'class', 'level', 'hp', 'mp', 'stats', 'skills', 'abilities', 'traits', 'notes']);

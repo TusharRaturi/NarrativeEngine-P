@@ -12,6 +12,7 @@ import { rerankCandidates, type RerankCandidate } from './semanticReranker';
 import { llmCall } from '../utils/llmCall';
 import { queryFacts, formatFactsForContext } from './semanticMemory';
 import { runArchivePlanner } from './archivePlanner';
+import { extractJsonRobust } from './jsonExtract';
 
 const CALLBACK_REGEX = /\b(remember|earlier|back when|before|previously|that .*(we|i) (did|met|fought|saw|found|got))\b/i;
 
@@ -28,16 +29,8 @@ Generate 2 alternative phrasings that expand pronouns, add likely entity names f
             maxTokens: 200,
         });
 
-        let clean = raw.replace(/<think[\s\S]*?<\/think>/gi, '');
-        const mdMatch = clean.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        if (mdMatch) clean = mdMatch[1];
-
-        const bracketStart = clean.indexOf('[');
-        const bracketEnd = clean.lastIndexOf(']');
-        if (bracketStart === -1 || bracketEnd === -1) return [query];
-
-        const parsed = JSON.parse(clean.substring(bracketStart, bracketEnd + 1));
-        if (Array.isArray(parsed) && parsed.length >= 2 && parsed.every((x: unknown) => typeof x === 'string')) {
+        const { value: parsed, parseOk } = extractJsonRobust<string[]>(raw, []);
+        if (parseOk && Array.isArray(parsed) && parsed.length >= 2 && parsed.every((x: unknown) => typeof x === 'string')) {
             return [query, parsed[0], parsed[1]];
         }
         return [query];

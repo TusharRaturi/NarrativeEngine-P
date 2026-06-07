@@ -1,5 +1,6 @@
 import type { EndpointConfig } from '../types';
 import { llmCall } from '../utils/llmCall';
+import { extractJsonRobust } from './jsonExtract';
 
 export type RerankCandidate = {
     id: string;
@@ -38,22 +39,9 @@ Return ONLY a JSON array of the candidate ids most relevant to the query, in des
             maxTokens: 500,
         });
 
-        let cleanContent = raw.replace(/<think[\s\S]*?<\/think>/gi, '');
-        const mdMatch = cleanContent.match(/```(?:json)?\s*([\s\S]*?)```/i);
-        if (mdMatch) cleanContent = mdMatch[1];
-
-        const bracketStart = cleanContent.indexOf('[');
-        const bracketEnd = cleanContent.lastIndexOf(']');
-        if (bracketStart === -1 || bracketEnd === -1 || bracketEnd <= bracketStart) {
+        const { value: parsed, parseOk } = extractJsonRobust<string[]>(raw, []);
+        if (!parseOk || !Array.isArray(parsed)) {
             console.warn('[Reranker] No JSON array found in response');
-            return candidates.map(c => c.id);
-        }
-
-        const arrayStr = cleanContent.substring(bracketStart, bracketEnd + 1);
-        const parsed = JSON.parse(arrayStr);
-
-        if (!Array.isArray(parsed)) {
-            console.warn('[Reranker] Response is not an array');
             return candidates.map(c => c.id);
         }
 
