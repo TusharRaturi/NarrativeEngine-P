@@ -259,12 +259,20 @@ function retrieveRelevantLoreIdfRrf(
         .map(id => chunkById.get(id))
         .filter((c): c is LoreChunk => c !== undefined && !includedSet.has(c.id));
 
+    const kwRankMap = new Map<string, number>();
+    for (let i = 0; i < keywordRanked.length; i++) {
+        if (!kwRankMap.has(keywordRanked[i])) kwRankMap.set(keywordRanked[i], i);
+    }
+    const embRankMap = new Map<string, number>();
+    for (let i = 0; i < embeddingRanked.length; i++) {
+        if (!embRankMap.has(embeddingRanked[i])) embRankMap.set(embeddingRanked[i], i);
+    }
     const scoredForGroup = fusedChunks.map(c => {
-        const kwRank = keywordRanked.indexOf(c.id);
-        const embRank = embeddingRanked.indexOf(c.id);
+        const kwRank = kwRankMap.get(c.id);
+        const embRank = embRankMap.get(c.id);
         let score = 0;
-        if (kwRank !== -1) score += 1 / (60 + kwRank + 1);
-        if (embRank !== -1) score += 1 / (60 + embRank + 1);
+        if (kwRank !== undefined) score += 1 / (60 + kwRank + 1);
+        if (embRank !== undefined) score += 1 / (60 + embRank + 1);
         return { chunk: c, score };
     });
 

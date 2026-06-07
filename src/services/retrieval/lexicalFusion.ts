@@ -59,16 +59,26 @@ export function fuseRRF(
     if (keywordRanked.length === 0) return [...embeddingRanked];
     if (embeddingRanked.length === 0) return [...keywordRanked];
 
+    // Pre-build rank lookups once (O(n)) instead of indexOf per id (O(n²)).
+    const kwRankMap = new Map<string, number>();
+    for (let i = 0; i < keywordRanked.length; i++) {
+        if (!kwRankMap.has(keywordRanked[i])) kwRankMap.set(keywordRanked[i], i);
+    }
+    const embRankMap = new Map<string, number>();
+    for (let i = 0; i < embeddingRanked.length; i++) {
+        if (!embRankMap.has(embeddingRanked[i])) embRankMap.set(embeddingRanked[i], i);
+    }
+
     const allIds = new Set<string>([...keywordRanked, ...embeddingRanked]);
 
     const scores = new Map<string, number>();
 
     for (const id of allIds) {
         let score = 0;
-        const kwRank = keywordRanked.indexOf(id);
-        if (kwRank !== -1) score += kwWeight / (k + kwRank + 1);
-        const embRank = embeddingRanked.indexOf(id);
-        if (embRank !== -1) score += embWeight / (k + embRank + 1);
+        const kwRank = kwRankMap.get(id);
+        if (kwRank !== undefined) score += kwWeight / (k + kwRank + 1);
+        const embRank = embRankMap.get(id);
+        if (embRank !== undefined) score += embWeight / (k + embRank + 1);
         scores.set(id, score);
     }
 
