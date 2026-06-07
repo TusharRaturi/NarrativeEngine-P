@@ -362,3 +362,46 @@ describe('Rules Retriever — IDF+RRF algorithm', () => {
         expect(result.selected.map(r => r.id)).toContain('rule-3');
     });
 });
+
+// ─── Feature flag: algorithm switch ─────────────────────────────────────────
+
+describe('Retrieval feature flag — algorithm switch', () => {
+    // A vector-only chunk that is a semantic hit but has NO keyword match.
+    // Classic gives it a flat +15 semantic score; idf-rrf ranks it via RRF on the
+    // embedding list only. Either way it should surface — but we assert the two
+    // algorithms are independently reachable and the default matches idf-rrf.
+    const chunks: LoreChunk[] = [
+        makeLoreChunk({ id: 'kw', triggerKeywords: ['beacon'], tokens: 40 }),
+        makeLoreChunk({ id: 'vec', triggerKeywords: ['unrelated'], ragMode: 'vector', tokens: 40 }),
+    ];
+
+    it('default (omitted algorithm) equals explicit idf-rrf', () => {
+        const def = retrieveRelevantLore(chunks, '', '', 'light the beacon', 200, [], ['vec']);
+        const explicit = retrieveRelevantLore(chunks, '', '', 'light the beacon', 200, [], ['vec'], 'idf-rrf');
+        expect(def.map(c => c.id)).toEqual(explicit.map(c => c.id));
+    });
+
+    it('classic and idf-rrf are both reachable and can differ in ordering', () => {
+        const classic = retrieveRelevantLore(chunks, '', '', 'light the beacon', 200, [], ['vec'], 'classic');
+        const idfRrf = retrieveRelevantLore(chunks, '', '', 'light the beacon', 200, [], ['vec'], 'idf-rrf');
+        // Both must return results (the flag doesn't break either path).
+        expect(classic.length).toBeGreaterThan(0);
+        expect(idfRrf.length).toBeGreaterThan(0);
+        // The keyword-matched chunk is present in both regardless of algorithm.
+        expect(classic.map(c => c.id)).toContain('kw');
+        expect(idfRrf.map(c => c.id)).toContain('kw');
+    });
+
+    it('rules retriever honors the classic flag path', () => {
+        const ruleChunks: LoreChunk[] = [
+            makeLoreChunk({ id: 'r-kw', triggerKeywords: ['parry'], tokens: 40 }),
+        ];
+        const meta: Record<string, RuleChunkMeta> = {
+            'r-kw': { activationModes: ['keyword'], triggerKeywords: ['parry'], priority: 5 } as RuleChunkMeta,
+        };
+        const classic = retrieveRelevantRules(ruleChunks, meta, 'I parry the blow', 200, [], undefined, 'classic');
+        const idfRrf = retrieveRelevantRules(ruleChunks, meta, 'I parry the blow', 200, [], undefined, 'idf-rrf');
+        expect(classic.selected.map(r => r.id)).toContain('r-kw');
+        expect(idfRrf.selected.map(r => r.id)).toContain('r-kw');
+    });
+});

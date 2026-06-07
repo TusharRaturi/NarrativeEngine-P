@@ -170,6 +170,25 @@ export function GlobalSettingsTab() {
         </button>
       </div>
 
+      {/* Retrieval algorithm (IDF+RRF vs classic) — kill-switch for the lore/rules ranker */}
+      <div className="flex items-center justify-between bg-void p-3 border border-border rounded">
+        <div>
+          <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">
+            IDF + RRF Retrieval
+          </label>
+          <p className="text-[9px] text-text-dim max-w-[240px] leading-tight">
+            Ranks lore &amp; rules with IDF-weighted keywords fused with embeddings (Reciprocal Rank Fusion).
+            Turn off to fall back to the classic flat-keyword scorer.
+          </p>
+        </div>
+        <button
+          onClick={() => updateSettings({ retrievalAlgorithm: (settings.retrievalAlgorithm ?? 'idf-rrf') === 'idf-rrf' ? 'classic' : 'idf-rrf' })}
+          className={`relative w-10 h-5 rounded-full transition-colors focus:outline-none ${(settings.retrievalAlgorithm ?? 'idf-rrf') === 'idf-rrf' ? 'bg-terminal' : 'bg-border'}`}
+        >
+          <div className={`absolute top-[2px] w-4 h-4 rounded-full bg-surface transition-transform ${(settings.retrievalAlgorithm ?? 'idf-rrf') === 'idf-rrf' ? 'translate-x-[22px]' : 'translate-x-[2px]'}`} />
+        </button>
+      </div>
+
       {/* Re-index Embeddings */}
       <div className="bg-void p-3 border border-border rounded space-y-2">
         <div>
