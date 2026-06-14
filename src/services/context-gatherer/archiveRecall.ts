@@ -32,7 +32,10 @@ export async function gatherArchiveRecall(
     semanticCandidates: SemanticCandidates,
     plannerSceneIds: string[] | undefined,
     excludeSceneIds: Set<string> | undefined,
-    signal?: AbortSignal
+    // Accepted for signature symmetry with gatherPlannerSceneIds, but the archive
+    // recall path (recallArchiveScenes / recallWithChapterFunnel) has no AbortSignal
+    // plumbing yet, so cancellation is not wired through here. See follow-up.
+    _signal?: AbortSignal
 ): Promise<ArchiveScene[] | undefined> {
     const { input, messages, npcLedger, archiveIndex, activeCampaignId } = state;
 

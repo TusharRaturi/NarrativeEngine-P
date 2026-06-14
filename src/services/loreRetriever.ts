@@ -199,7 +199,6 @@ function retrieveRelevantLoreIdfRrf(
         if (includedSet.has(chunk.id)) continue;
 
         const isKeywordMode = chunk.ragMode !== 'vector';
-        const isVectorMode = chunk.ragMode !== 'keyword';
 
         const depth = chunk.scanDepth || defaultDepth;
         const scanText = getScanText(depth);

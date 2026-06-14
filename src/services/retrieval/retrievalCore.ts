@@ -17,7 +17,7 @@
  * different shape. It already shares `computeIdf`/`fuseRRF` from lexicalFusion.ts.
  */
 
-import type { ChatMessage } from '../types';
+import type { ChatMessage } from '../../types';
 
 // ─── Keyword regex cache ───────────────────────────────────────────────────
 // Anchored (\b…\b), case-insensitive. `.test()` callers reset lastIndex, so the

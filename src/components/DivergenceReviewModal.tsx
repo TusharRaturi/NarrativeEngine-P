@@ -49,7 +49,7 @@ export function DivergenceReviewModal() {
                     (err) => reject(new Error(err)),
                     undefined,
                     undefined,
-                    { temperature: 0.3, maxTokens: 256 },
+                    { temperature: 0.3, max_tokens: 256 },
                 );
             });
             const jsonStr = extractJson(raw);

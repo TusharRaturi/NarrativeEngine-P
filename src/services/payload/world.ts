@@ -1,4 +1,4 @@
-import type { ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, TimelineEvent, DivergenceRegister, ArchiveChapter, SceneEvent } from '../../types';
+import type { ChatMessage, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, TimelineEvent, DivergenceRegister, ArchiveChapter, SceneEvent } from '../../types';
 import { countTokens } from '../tokenizer';
 import { buildBehaviorDirective, buildDriftAlert, buildKnowledgeBoundary } from '../npcBehaviorDirective';
 import { minifyLoreChunk, minifyNPC } from '../contextMinifier';

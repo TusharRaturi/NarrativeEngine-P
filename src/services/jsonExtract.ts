@@ -15,17 +15,15 @@ export function extractJsonRobust<T>(raw: string, fallback: T): { value: T; pars
     const openBrace = clean.indexOf('{');
     const openBracket = clean.indexOf('[');
 
-    let rootClose: string;
     let start: number;
     if (openBrace === -1 && openBracket === -1) {
         return { value: fallback, parseOk: false };
     } else if (openBrace === -1) {
-        rootClose = ']'; start = openBracket;
+        start = openBracket;
     } else if (openBracket === -1) {
-        rootClose = '}'; start = openBrace;
+        start = openBrace;
     } else {
         const isArray = openBracket < openBrace;
-        rootClose = isArray ? ']' : '}';
         start = isArray ? openBracket : openBrace;
     }
 
@@ -70,7 +68,7 @@ export function extractJsonRobust<T>(raw: string, fallback: T): { value: T; pars
 
         // Try 2: each candidate — truncate + close remaining open brackets
         for (let ci = candidates.length - 1; ci >= 0; ci--) {
-            const { pos, depth: d } = candidates[ci];
+            const { pos } = candidates[ci];
             // Close brackets: we need '}' for every '{' and ']' for every '[' still open.
             // But we don't track whether each open bracket was { or [. Instead, we use
             // a simple heuristic: close with alternating }] pairs.
