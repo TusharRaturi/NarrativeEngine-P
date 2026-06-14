@@ -56,8 +56,9 @@ Respond with a JSON array only. No markdown formatting, no prose, no reasoning t
         ]);
 
         const validEvents: SceneEvent[] = [];
-        for (const ev of parsed) {
-            if (!ev || typeof ev !== 'object') continue;
+        for (const rawEv of parsed) {
+            if (!rawEv || typeof rawEv !== 'object') continue;
+            const ev = rawEv as Record<string, unknown>;
             if (typeof ev.text !== 'string' || !ev.text.trim()) continue;
             if (typeof ev.importance !== 'number') continue;
 

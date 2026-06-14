@@ -10,8 +10,6 @@ const LOCATION_PROMPT = `Based on the following scene, what is the party's curre
 
 function extractLocationFromResponse(response: string): string {
     const cleaned = response.replace(/<think[\s\S]*?<\/think>/gi, '').trim();
-    return cleaned || response.replace(/<think[\s\S]*?<\/think>/gi, '').trim();
-}
     return cleaned;
 }
 
