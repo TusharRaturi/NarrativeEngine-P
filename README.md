@@ -12,8 +12,8 @@ ANDROID VERSION: https://github.com/Sagesheep/NarrativeEngine-M/releases/tag/v.1
 
 1. **Clone the repo**
    ```
-   git clone https://github.com/Sagesheep/NarrativeEngine.git
-   cd NarrativeEngine
+   git clone https://github.com/Sagesheep/NarrativeEngine-P.git
+   cd NarrativeEngine-P
    ```
 
 2. **Install & Run**
