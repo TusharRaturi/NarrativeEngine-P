@@ -189,37 +189,42 @@ function makeDivergenceRegister(text: string): DivergenceRegister {
 describe('buildPayload — scenario 1: minimal', () => {
     it('first message is system and contains stable preamble (rules text)', () => {
         const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
-        expect(result.messages.length).toBeGreaterThanOrEqual(3);
+        // Minimum: at least a stable system message + final user message.
+        expect(result.messages.length).toBeGreaterThanOrEqual(2);
         expect(result.messages[0].role).toBe('system');
         // rules text is in the first system message
         expect(result.messages[0].content).toContain('ROLE: Impartial GM.');
     });
 
-    it('a system message near the end contains the GM REMINDER literal', () => {
+    it('the final user message contains the GM REMINDER literal', () => {
         const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
-        const sysMessages = result.messages.filter(m => m.role === 'system');
-        const hasReminder = sysMessages.some(
-            m => typeof m.content === 'string' && m.content.includes('[GM REMINDER')
-        );
-        expect(hasReminder).toBe(true);
+        const lastMsg = result.messages[result.messages.length - 1];
+        expect(lastMsg.role).toBe('user');
+        expect(typeof lastMsg.content === 'string' && lastMsg.content.includes('[GM REMINDER')).toBe(true);
     });
 
-    it('the LAST message is the user message', () => {
+    it('the LAST message is the user message and contains the original user text', () => {
         const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
         const last = result.messages[result.messages.length - 1];
         expect(last.role).toBe('user');
-        expect(last.content).toBe('Hello world');
+        // The final user message now includes the GM REMINDER and any volatile block folded in,
+        // so we check it contains the original user text rather than being exactly equal to it.
+        expect(typeof last.content === 'string' && last.content.includes('Hello world')).toBe(true);
     });
 
-    it('message ordering: system first, then GM reminder (second-to-last), then user last', () => {
+    it('message ordering: system first, user last (with GM REMINDER folded into final user message)', () => {
         const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
         const msgs = result.messages;
         expect(msgs[0].role).toBe('system');
-        const reminderIdx = msgs.findIndex(
-            m => typeof m.content === 'string' && m.content.includes('[GM REMINDER')
+        // GM REMINDER is now folded into the final user message (not a standalone system message).
+        const last = msgs[msgs.length - 1];
+        expect(last.role).toBe('user');
+        expect(typeof last.content === 'string' && last.content.includes('[GM REMINDER')).toBe(true);
+        // No standalone system message should contain the GM REMINDER.
+        const sysReminderMsg = msgs.find(
+            m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[GM REMINDER')
         );
-        expect(reminderIdx).toBe(msgs.length - 2);
-        expect(msgs[msgs.length - 1].role).toBe('user');
+        expect(sysReminderMsg).toBeUndefined();
     });
 
     it('returns trace and debugSections when debugMode is true', () => {
@@ -255,7 +260,7 @@ describe('buildPayload — scenario 2: full world context', () => {
     const divReg = makeDivergenceRegister('The bridge was destroyed in scene 001.');
     const userMsg = 'Aldric and Bella are at the docks. What happens next?';
 
-    it('world lore marker appears in assembled system content', () => {
+    it('world lore marker appears in assembled content', () => {
         const result = buildPayload(
             baseSettings(), baseContext(),
             [], userMsg,
@@ -263,11 +268,11 @@ describe('buildPayload — scenario 2: full world context', () => {
             undefined, undefined, 'Some semantic fact',
             undefined, timeline, undefined, undefined, undefined, divReg
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        // worldContent is folded into the final user message (below the cache boundary).
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('[WORLD LORE');
+        expect(allContent).toContain('[WORLD LORE');
     });
 
     it('FACTIONS section appears when faction lore is provided', () => {
@@ -276,11 +281,10 @@ describe('buildPayload — scenario 2: full world context', () => {
             [], userMsg,
             undefined, lore
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('[FACTIONS]');
+        expect(allContent).toContain('[FACTIONS]');
     });
 
     it('LOCATIONS section appears when location lore is provided', () => {
@@ -289,11 +293,10 @@ describe('buildPayload — scenario 2: full world context', () => {
             [], userMsg,
             undefined, lore
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('[LOCATIONS]');
+        expect(allContent).toContain('[LOCATIONS]');
     });
 
     it('archive recall marker appears when archiveRecall is provided', () => {
@@ -302,11 +305,10 @@ describe('buildPayload — scenario 2: full world context', () => {
             [], userMsg,
             undefined, undefined, undefined, archive
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('[ARCHIVE RECALL');
+        expect(allContent).toContain('[ARCHIVE RECALL');
     });
 
     it('active NPC context marker appears when matching NPCs are in ledger', () => {
@@ -315,11 +317,10 @@ describe('buildPayload — scenario 2: full world context', () => {
             [], userMsg,
             undefined, undefined, npcs
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('[ACTIVE NPC CONTEXT]');
+        expect(allContent).toContain('[ACTIVE NPC CONTEXT]');
     });
 
     it('semantic fact text is present in assembled content', () => {
@@ -329,11 +330,10 @@ describe('buildPayload — scenario 2: full world context', () => {
             undefined, undefined, undefined, undefined,
             undefined, undefined, 'SEMANTIC FACT: the sky is red'
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('SEMANTIC FACT: the sky is red');
+        expect(allContent).toContain('SEMANTIC FACT: the sky is red');
     });
 
     it('trace has included:true entries for RAG Lore and Active NPCs', () => {
@@ -398,11 +398,11 @@ describe('buildPayload — scenario 3: NPC spotlight', () => {
             [], userMsg,
             undefined, undefined, [highNpc, lowNpc]
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        // NPC context is part of worldContent, folded into the final user message.
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('DRIVES:');
+        expect(allContent).toContain('DRIVES:');
     });
 
     it('spotlit NPC TRIGGERS block appears in NPC context output', () => {
@@ -411,11 +411,10 @@ describe('buildPayload — scenario 3: NPC spotlight', () => {
             [], userMsg,
             undefined, undefined, [highNpc, lowNpc]
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('TRIGGERS:');
+        expect(allContent).toContain('TRIGGERS:');
     });
 
     it('spotlit NPC HARD LIMITS block appears in NPC context output', () => {
@@ -424,11 +423,10 @@ describe('buildPayload — scenario 3: NPC spotlight', () => {
             [], userMsg,
             undefined, undefined, [highNpc, lowNpc]
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('HARD LIMITS:');
+        expect(allContent).toContain('HARD LIMITS:');
     });
 
     it('non-spotlit NPC does not have DRIVES block in output', () => {
@@ -437,12 +435,11 @@ describe('buildPayload — scenario 3: NPC spotlight', () => {
             [], userMsg,
             undefined, undefined, [highNpc, lowNpc]
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
         // Only one DRIVES: block should be present (for the spotlit NPC)
-        const driveCount = (allSystem.match(/DRIVES:/g) ?? []).length;
+        const driveCount = (allContent.match(/DRIVES:/g) ?? []).length;
         expect(driveCount).toBe(1);
     });
 });
@@ -796,11 +793,11 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
         } as unknown as GameContext;
 
         const result = buildPayload(baseSettings(), ctx, [], 'What do I have?');
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        // volatile blocks are folded into the final user message.
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('[CHARACTER]');
+        expect(allContent).toContain('[CHARACTER]');
     });
 
     it('smart bookkeeping: [INVENTORY] block appears when inventoryCategories provided and items exist', () => {
@@ -841,11 +838,10 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
             undefined, undefined, undefined, undefined, undefined,
             ['weapon', 'equipped']
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('[INVENTORY]');
+        expect(allContent).toContain('[INVENTORY]');
     });
 
     it('smart bookkeeping: [PROFILE] block appears when profileFields provided', () => {
@@ -874,11 +870,10 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
             undefined, undefined, undefined, undefined, undefined,
             undefined, ['name', 'class', 'level']
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('[PROFILE]');
+        expect(allContent).toContain('[PROFILE]');
     });
 
     it('legacy: [CHARACTER PROFILE block appears with staleness tag when characterProfileActive and no smartBookkeeping', () => {
@@ -891,13 +886,12 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
         } as unknown as GameContext;
 
         const result = buildPayload(baseSettings(), ctx, [], 'Who am I?');
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('[CHARACTER PROFILE');
+        expect(allContent).toContain('[CHARACTER PROFILE');
         // should include the last scene reference
-        expect(allSystem).toContain('003');
+        expect(allContent).toContain('003');
     });
 
     it('legacy: staleness tag says NEVER AUTO-UPDATED when characterProfileLastScene is Never', () => {
@@ -910,11 +904,10 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
         } as unknown as GameContext;
 
         const result = buildPayload(baseSettings(), ctx, [], 'Who am I?');
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('NEVER AUTO-UPDATED');
+        expect(allContent).toContain('NEVER AUTO-UPDATED');
     });
 });
 
@@ -944,7 +937,7 @@ describe('buildPayload — cache_control: ephemeral markers', () => {
         expect((divMsg as any).cache_control).toEqual({ type: 'ephemeral' });
     });
 
-    it('world/volatile system message does NOT have cache_control', () => {
+    it('world/volatile content is folded into the final user message (no standalone world system message)', () => {
         const lore: LoreChunk[] = [
             makeLoreChunk({ id: 'lc1', category: 'faction', header: 'Guild', content: 'A guild.', tokens: 5 }),
         ];
@@ -953,27 +946,35 @@ describe('buildPayload — cache_control: ephemeral markers', () => {
             [], 'Hello',
             undefined, lore
         );
-        const worldMsg = result.messages.find(
+        // worldContent is now in the final user message, not a system message.
+        const worldSysMsg = result.messages.find(
             m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[WORLD LORE')
         );
-        expect(worldMsg).toBeDefined();
-        expect((worldMsg as any).cache_control).toBeUndefined();
+        expect(worldSysMsg).toBeUndefined();
+        // It should appear in the final user message instead.
+        const lastMsg = result.messages[result.messages.length - 1];
+        expect(lastMsg.role).toBe('user');
+        expect(typeof lastMsg.content === 'string' && lastMsg.content.includes('[WORLD LORE')).toBe(true);
     });
 
-    it('GM REMINDER system message does NOT have cache_control', () => {
+    it('GM REMINDER is folded into the final user message (no standalone GM REMINDER system message)', () => {
         const result = buildPayload(baseSettings(), baseContext(), [], 'Hello');
-        const reminderMsg = result.messages.find(
+        // No system message should carry the GM REMINDER.
+        const sysReminderMsg = result.messages.find(
             m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[GM REMINDER')
         );
-        expect(reminderMsg).toBeDefined();
-        expect((reminderMsg as any).cache_control).toBeUndefined();
+        expect(sysReminderMsg).toBeUndefined();
+        // It should be in the final user message.
+        const lastMsg = result.messages[result.messages.length - 1];
+        expect(lastMsg.role).toBe('user');
+        expect(typeof lastMsg.content === 'string' && lastMsg.content.includes('[GM REMINDER')).toBe(true);
     });
 
-    it('user message does NOT have cache_control', () => {
+    it('final user message does NOT have cache_control (cache boundary is on last history message)', () => {
         const result = buildPayload(baseSettings(), baseContext(), [], 'Hello');
-        const userMsg = result.messages.find(m => m.role === 'user');
-        expect(userMsg).toBeDefined();
-        expect((userMsg as any).cache_control).toBeUndefined();
+        const lastMsg = result.messages[result.messages.length - 1];
+        expect(lastMsg.role).toBe('user');
+        expect((lastMsg as any).cache_control).toBeUndefined();
     });
 
     it('history system messages (scene notes) do NOT have cache_control', () => {
@@ -1007,11 +1008,11 @@ describe('buildPayload — Scenario 11: Recent Scene Events rendering', () => {
             undefined, undefined, undefined, archive,
             undefined, undefined, undefined, archiveIndex
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        // worldContent is folded into the final user message; check all content.
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).not.toContain('Recent Scene Events');
+        expect(allContent).not.toContain('Recent Scene Events');
     });
 
     it('Recent Scene Events block is present when recent scenes have events', () => {
@@ -1033,11 +1034,10 @@ describe('buildPayload — Scenario 11: Recent Scene Events rendering', () => {
             undefined, undefined, undefined, archive,
             undefined, undefined, undefined, archiveIndex
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('[combat] Fought goblins (ambush → won)');
+        expect(allContent).toContain('[combat] Fought goblins (ambush → won)');
     });
 
     it('Recent Scene Events are sorted by importance descending in output', () => {
@@ -1061,13 +1061,12 @@ describe('buildPayload — Scenario 11: Recent Scene Events rendering', () => {
             undefined, undefined, undefined, archive,
             undefined, undefined, undefined, archiveIndex
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        const firstIdx = allSystem.indexOf('High importance event');
-        const secondIdx = allSystem.indexOf('Medium importance event');
-        const thirdIdx = allSystem.indexOf('Low importance event');
+        const firstIdx = allContent.indexOf('High importance event');
+        const secondIdx = allContent.indexOf('Medium importance event');
+        const thirdIdx = allContent.indexOf('Low importance event');
         expect(firstIdx).toBeLessThan(secondIdx);
         expect(secondIdx).toBeLessThan(thirdIdx);
     });
@@ -1094,15 +1093,14 @@ describe('buildPayload — Scenario 11: Recent Scene Events rendering', () => {
             undefined, undefined, undefined, archive,
             undefined, undefined, undefined, archiveIndex
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allSystem).toContain('[combat] Both present (ambush → won)');
-        expect(allSystem).toContain('[combat] Cause only (cause: ambush)');
-        expect(allSystem).toContain('[combat] Result only (result: won)');
-        expect(allSystem).toContain('[combat] Neither');
-        expect(allSystem).not.toContain('importance:');
+        expect(allContent).toContain('[combat] Both present (ambush → won)');
+        expect(allContent).toContain('[combat] Cause only (cause: ambush)');
+        expect(allContent).toContain('[combat] Result only (result: won)');
+        expect(allContent).toContain('[combat] Neither');
+        expect(allContent).not.toContain('importance:');
     });
 
     it('respects token budget by dropping lowest-importance events', () => {
@@ -1127,14 +1125,13 @@ describe('buildPayload — Scenario 11: Recent Scene Events rendering', () => {
             undefined, undefined, undefined, archive,
             undefined, undefined, undefined, archiveIndex
         );
-        const allSystem = result.messages
-            .filter(m => m.role === 'system')
+        const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        
-        expect(allSystem).toContain('index 9');
-        expect(allSystem).toContain('index 8');
-        expect(allSystem).not.toContain('index 0');
+
+        expect(allContent).toContain('index 9');
+        expect(allContent).toContain('index 8');
+        expect(allContent).not.toContain('index 0');
     });
 });
 
@@ -1154,18 +1151,19 @@ describe('buildPayload — volatile notebook budget', () => {
 
         const result = buildPayload(smallSettings, ctx, [], 'Hello');
 
-        const notebookMsg = result.messages.find(
-            m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[SCENE NOTEBOOK')
-        );
+        // [SCENE NOTEBOOK] is part of volatileContent, folded into the final user message.
+        const lastMsg = result.messages[result.messages.length - 1];
+        const notebookContent = lastMsg.role === 'user' && typeof lastMsg.content === 'string' && lastMsg.content.includes('[SCENE NOTEBOOK')
+            ? lastMsg.content : null;
         // A trim trace must be recorded proving the budget was enforced.
         const trimTrace = (result.trace ?? []).find(
             t => t.source === 'Scene Notebook' && !t.included && typeof t.reason === 'string' && t.reason.includes('Trimmed')
         );
         expect(trimTrace).toBeDefined();
         // The newest entries are kept; the oldest are dropped.
-        if (notebookMsg) {
-            expect(notebookMsg.content as string).toContain('entry number 49');
-            expect(notebookMsg.content as string).not.toContain('entry number 0 ');
+        if (notebookContent) {
+            expect(notebookContent).toContain('entry number 49');
+            expect(notebookContent).not.toContain('entry number 0 ');
         }
     });
 
@@ -1177,12 +1175,12 @@ describe('buildPayload — volatile notebook budget', () => {
             { id: 'n2', text: 'Another short note.', timestamp: 1 },
         ];
         const result = buildPayload(baseSettings(), ctx, [], 'Hello');
-        const notebookMsg = result.messages.find(
-            m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[SCENE NOTEBOOK')
-        );
-        expect(notebookMsg).toBeDefined();
-        expect(notebookMsg!.content as string).toContain('A short note.');
-        expect(notebookMsg!.content as string).toContain('Another short note.');
+        // [SCENE NOTEBOOK] is part of volatileContent, folded into the final user message.
+        const lastMsg = result.messages[result.messages.length - 1];
+        expect(lastMsg.role).toBe('user');
+        expect(typeof lastMsg.content === 'string' && lastMsg.content.includes('[SCENE NOTEBOOK')).toBe(true);
+        expect(lastMsg.content as string).toContain('A short note.');
+        expect(lastMsg.content as string).toContain('Another short note.');
         // No trim trace when everything fits.
         const trimTrace = (result.trace ?? []).find(
             t => t.source === 'Scene Notebook' && !t.included

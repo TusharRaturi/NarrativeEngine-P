@@ -51,12 +51,25 @@ export function buildPayload(
     if (pinnedExcerpts && pinnedExcerpts.length > 0) {
         messages.push({ role: 'system', content: buildPinnedMemoriesBlock(pinnedExcerpts), cache_control: cacheControl });
     }
-    if (worldContent || volatileContent) {
-        messages.push({ role: 'system', content: [worldContent, volatileContent].filter(Boolean).join('\n\n') });
-    }
+
+    // Push history BEFORE the volatile block so the growing campaign log rides in the cached prefix.
     messages.push(...fitted);
-    messages.push({ role: 'system', content: '[GM REMINDER: NPCs push back when their wants/boundaries are crossed. Do not default to facilitation.]' });
-    messages.push({ role: 'user', content: userMessage });
+
+    // Stamp cache_control: ephemeral on the last history message so prefix-caching covers all of history.
+    if (fitted.length > 0) {
+        const last = messages.length - 1;
+        const lastMsg = messages[last];
+        if (lastMsg.role === 'user' || lastMsg.role === 'assistant') {
+            messages[last] = { ...lastMsg, cache_control: { type: 'ephemeral' } };
+        }
+    }
+
+    // Fold the per-turn volatile world/NPC block and the GM reminder into the final user message
+    // (below the cache boundary) so they never perturb the cached prefix.
+    const GM_REMINDER = '[GM REMINDER: NPCs push back when their wants/boundaries are crossed. Do not default to facilitation.]';
+    const volatileBlock = [worldContent, volatileContent].filter(Boolean).join('\n\n');
+    const finalUserContent = [volatileBlock, GM_REMINDER, userMessage].filter(Boolean).join('\n\n');
+    messages.push({ role: 'user', content: finalUserContent });
 
     return { messages, trace: isDebug ? collector.trace : undefined, debugSections: isDebug ? collector.debugSections : undefined };
 }

@@ -108,12 +108,12 @@ function cachedPrefix(messages: OpenAIMessage[]): string {
         .join('\n----CACHE-BOUNDARY----\n');
 }
 
-/** Non-cached system content (where the volatile scoped-knowledge block lives). */
+/** Non-cached volatile content (where the volatile scoped-knowledge block lives).
+ *  After the cache-layout fix, worldContent + volatileContent are folded into the
+ *  final user message (below the cache boundary), not emitted as a system message. */
 function volatileContent(messages: OpenAIMessage[]): string {
-    return messages
-        .filter(m => m.role === 'system' && !(m as unknown as { cache_control?: unknown }).cache_control)
-        .map(m => (typeof m.content === 'string' ? m.content : ''))
-        .join('\n');
+    const lastUser = [...messages].reverse().find(m => m.role === 'user');
+    return lastUser && typeof lastUser.content === 'string' ? lastUser.content : '';
 }
 
 function build(onStageNpcIds: string[]) {
@@ -190,5 +190,36 @@ describe('Phase 6 — divergence cache-prefix stability', () => {
         const { messages } = build(['npc_a']);
         expect(cachedPrefix(messages)).not.toContain(SCOPED_A_TEXT);
         expect(volatileContent(messages)).toContain(SCOPED_A_TEXT);
+    });
+
+    it('history tail carries cache_control: ephemeral so history rides inside the cached prefix', () => {
+        // Build with two history messages so the cache breakpoint lands on the last history entry,
+        // NOT on the final volatile user message.
+        const historyA: import('../../types').ChatMessage = {
+            id: 'h1', role: 'user', content: 'First history user turn', timestamp: 1,
+        };
+        const historyB: import('../../types').ChatMessage = {
+            id: 'h2', role: 'assistant', content: 'First history assistant reply', timestamp: 2,
+        };
+        const { messages } = buildPayload(
+            baseSettings(), baseContext(),
+            [historyA, historyB], 'What happens next?',
+            undefined, undefined, NPCS, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, makeRegister(), undefined, ['npc_a'],
+        );
+
+        // The last message carrying cache_control: ephemeral must be a history message
+        // (its content matches one of our history entries), not the final volatile user message.
+        const ephemeralMsgs = messages.filter(
+            m => (m as unknown as { cache_control?: { type: string } }).cache_control?.type === 'ephemeral'
+        );
+        expect(ephemeralMsgs.length).toBeGreaterThan(0);
+        const lastEphemeral = ephemeralMsgs[ephemeralMsgs.length - 1];
+        // The last ephemeral message must be a history entry (user or assistant role with history content).
+        expect(['user', 'assistant']).toContain(lastEphemeral.role);
+        const content = typeof lastEphemeral.content === 'string' ? lastEphemeral.content : '';
+        expect(
+            content === historyA.content || content === historyB.content
+        ).toBe(true);
     });
 });
