@@ -1,14 +1,14 @@
 import { useState, useEffect } from 'react';
-import { Settings, PanelLeftOpen, PanelLeftClose, Trash2, LogOut, Users, Archive, Save, ScanSearch, BookCheck } from 'lucide-react';
+import { Settings, PanelLeftOpen, PanelLeftClose, LogOut, Users, Archive, Save, ScanSearch, BookCheck, Pin, Replace, UserPlus, Loader2 } from 'lucide-react';
 import { createBackup } from '../store/campaignStore';
 import { flushAllPendingSaves } from '../store/slices/campaignSlice';
 import { toast } from './Toast';
 import { useAppStore } from '../store/useAppStore';
 import { TokenGauge } from './TokenGauge';
 import { saveCampaignState } from '../store/campaignStore';
-import { API_BASE as API } from '../lib/apiBase';
+import { addNpcFromSelection } from '../services/npc/manualAdd';
 
-type LoreSelectionSnapshot = {
+type SelectionSnapshot = {
     messageId: string;
     text: string;
     start: number;
@@ -16,75 +16,156 @@ type LoreSelectionSnapshot = {
     bubbleText: string;
 };
 
+const stripMarkdown = (s: string) => s.replace(/\*\*/g, '').replace(/\*/g, '').trim();
+
 export function Header() {
     const {
         toggleSettings,
         toggleDrawer,
         toggleNPCLedger,
         toggleBackupModal,
+        togglePinnedMemories,
         drawerOpen,
-        clearChat,
         activeCampaignId,
         setActiveCampaign,
         context,
         messages,
         condenser,
         divergenceRegister,
+        addPinnedExcerpt,
+        openRenameModal,
     } = useAppStore();
 
     const deepArmed = useAppStore(s => s.deepArmed);
     const toggleDeepArmed = useAppStore(s => s.toggleDeepArmed);
     const settings = useAppStore(s => s.settings);
     const openLoreCheck = useAppStore(s => s.openLoreCheck);
+    const pinnedExcerpts = useAppStore(s => s.pinnedExcerpts);
 
-    const [loreSel, setLoreSel] = useState<LoreSelectionSnapshot | null>(null);
+    const [loreSel, setLoreSel] = useState<SelectionSnapshot | null>(null);
+    const [pinSel, setPinSel] = useState<SelectionSnapshot | null>(null);
+    const [renameSel, setRenameSel] = useState<SelectionSnapshot | null>(null);
+    const [npcSel, setNpcSel] = useState<SelectionSnapshot | null>(null);
+    const [npcAdding, setNpcAdding] = useState(false);
 
-    const captureSelection = (): LoreSelectionSnapshot | null => {
+    const captureFromBubble = (selector: string): SelectionSnapshot | null => {
         const sel = window.getSelection();
         if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
         const range = sel.getRangeAt(0);
         const node = range.commonAncestorContainer;
         const el = (node.nodeType === 1 ? node as Element : node.parentElement);
-        const bubble = el?.closest('[data-lore-checkable="true"]') as HTMLElement | null;
+        const bubble = el?.closest(selector) as HTMLElement | null;
         if (!bubble) return null;
         const messageId = bubble.dataset.messageId;
         const text = sel.toString().trim();
-        if (!messageId || text.length < 3) return null;
+        if (!messageId || text.length < 1) return null;
         const bubbleText = bubble.textContent ?? '';
-        const start = bubbleText.indexOf(text);
-        if (start === -1) return null;
+        let start = bubbleText.indexOf(text);
+        if (start === -1) {
+            const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+            start = norm(bubbleText).indexOf(norm(text));
+        }
+        if (start === -1) start = 0;
         return { messageId, text, start, end: start + text.length, bubbleText };
     };
 
     useEffect(() => {
-        const handle = () => setLoreSel(captureSelection());
+        const handle = () => {
+            setLoreSel(captureFromBubble('[data-lore-checkable="true"]'));
+            setPinSel(captureFromBubble('[data-message-id]'));
+            setRenameSel(captureFromBubble('[data-message-id]'));
+            setNpcSel(captureFromBubble('[data-lore-checkable="true"]'));
+        };
         document.addEventListener('selectionchange', handle);
         return () => document.removeEventListener('selectionchange', handle);
     }, []);
 
     const handleLoreCheck = (e: React.MouseEvent | React.TouchEvent) => {
         e.preventDefault();
-        const snap = captureSelection() ?? loreSel;
+        const snap = captureFromBubble('[data-lore-checkable="true"]') ?? loreSel;
         if (!snap) return;
         const before = snap.bubbleText.slice(Math.max(0, snap.start - 200), snap.start);
         const after = snap.bubbleText.slice(snap.end, Math.min(snap.bubbleText.length, snap.end + 200));
         openLoreCheck({
-            messageId: snap.messageId, selectedText: snap.text,
+            messageId: snap.messageId, selectedText: stripMarkdown(snap.text),
             start: snap.start, end: snap.end,
             surroundingContext: `${before}[[HIGHLIGHTED]]${snap.text}[[/HIGHLIGHTED]]${after}`,
         });
         window.getSelection()?.removeAllRanges();
         setLoreSel(null);
+        setPinSel(null);
+    };
+
+    const handlePinSelection = (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault();
+        const snap = captureFromBubble('[data-message-id]') ?? pinSel;
+        if (!snap) return;
+        const result = addPinnedExcerpt(snap.messageId, snap.text, false);
+        if (result.ok) {
+            window.getSelection()?.removeAllRanges();
+            setPinSel(null);
+            setLoreSel(null);
+        } else {
+            toast.warning(result.reason);
+        }
+    };
+
+    const handleRenameSelection = (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault();
+        const snap = captureFromBubble('[data-message-id]') ?? renameSel;
+        if (!snap) return;
+        openRenameModal(stripMarkdown(snap.text));
+        window.getSelection()?.removeAllRanges();
+        setRenameSel(null);
+        setPinSel(null);
+        setLoreSel(null);
+    };
+
+    const handleAddNpc = async (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault();
+        if (npcAdding) return;
+        const snap = captureFromBubble('[data-lore-checkable="true"]') ?? npcSel;
+        if (!snap) return;
+        const state = useAppStore.getState();
+        const campaignId = state.activeCampaignId;
+        if (!campaignId) { toast.warning('No active campaign.'); return; }
+
+        window.getSelection()?.removeAllRanges();
+        setNpcSel(null);
+        setLoreSel(null);
+        setPinSel(null);
+        setNpcAdding(true);
+        const cleanName = stripMarkdown(snap.text);
+        toast.info(`Resolving "${cleanName}"…`);
+        try {
+            const result = await addNpcFromSelection({
+                rawText: cleanName,
+                ledger: state.npcLedger ?? [],
+                messages: state.messages,
+                campaignId,
+                storyProvider: state.getActiveStoryEndpoint(),
+                updateProvider: state.getActiveSummarizerEndpoint() ?? state.getActiveUtilityEndpoint() ?? state.getActiveStoryEndpoint(),
+                addNPC: state.addNPC,
+                updateNPC: state.updateNPC,
+            });
+            if (result.ok) toast.success(result.message);
+            else if (result.kind === 'ambiguous') toast.warning(result.message);
+            else toast.error(result.message);
+        } catch (err) {
+            toast.error(`Add NPC failed: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+            setNpcAdding(false);
+        }
     };
 
     const handleExit = async () => {
         if (activeCampaignId) {
-            await saveCampaignState(activeCampaignId, { context, messages, condenser });
+            await saveCampaignState(activeCampaignId, { context, messages, condenser, pinnedExcerpts });
             if (divergenceRegister && (divergenceRegister.entries.length > 0 || (divergenceRegister.prunedLog ?? []).length > 0)) {
                 try {
                     const { saveDivergenceRegister } = await import('../store/campaignStore');
                     await saveDivergenceRegister(activeCampaignId, divergenceRegister);
-                } catch {}
+                } catch (e) { console.warn('[Header] saveDivergenceRegister failed:', e); }
             }
         }
         setActiveCampaign(null);
@@ -139,24 +220,6 @@ export function Header() {
             </button>
 
             <button
-                onClick={() => {
-                    if (activeCampaignId) {
-                        fetch(`${API}/campaigns/${activeCampaignId}/backup`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ trigger: 'pre-clear', isAuto: true }),
-                        }).catch(() => {});
-                    }
-                    clearChat();
-                }}
-                className="text-text-dim hover:text-danger transition-colors p-1"
-                title="Clear chat history"
-                aria-label="Clear chat history"
-            >
-                <Trash2 size={16} />
-            </button>
-
-            <button
                 onClick={toggleNPCLedger}
                 className="text-text-dim hover:text-terminal transition-colors p-1"
                 title="NPC Ledger"
@@ -186,6 +249,48 @@ export function Header() {
             </button>
 
             <button
+                onMouseDown={handlePinSelection}
+                className={`transition-colors p-1 ${pinSel ? 'text-terminal animate-pulse' : 'text-text-dim hover:text-terminal'}`}
+                title="Pin selected text as a memory"
+                aria-label="Pin selection"
+            >
+                <Pin size={16} />
+            </button>
+
+            <button
+                onMouseDown={handleRenameSelection}
+                className={`transition-colors p-1 ${renameSel ? 'text-terminal animate-pulse' : 'text-text-dim hover:text-terminal'}`}
+                title="Rename selected name everywhere (highlight a name first)"
+                aria-label="Rename selection"
+            >
+                <Replace size={16} />
+            </button>
+
+            <button
+                onMouseDown={handleAddNpc}
+                disabled={npcAdding}
+                className={`transition-colors p-1 ${npcAdding ? 'text-terminal' : npcSel ? 'text-terminal animate-pulse' : 'text-text-dim hover:text-terminal'}`}
+                title="Add highlighted name to the NPC ledger (or update if it exists)"
+                aria-label="Add selection to NPC ledger"
+            >
+                {npcAdding ? <Loader2 size={16} className="animate-spin" /> : <UserPlus size={16} />}
+            </button>
+
+            <button
+                onClick={togglePinnedMemories}
+                className={`relative transition-colors p-1 ${pinnedExcerpts.length > 0 ? 'text-terminal' : 'text-text-dim hover:text-terminal'}`}
+                title="Pinned memories"
+                aria-label="Open pinned memories"
+            >
+                <Pin size={16} />
+                {pinnedExcerpts.length > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-terminal text-void text-[8px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center">
+                        {pinnedExcerpts.length}
+                    </span>
+                )}
+            </button>
+
+            <button
                 onClick={toggleSettings}
                 className="text-text-dim hover:text-terminal transition-colors p-1"
                 title="Settings"
@@ -205,4 +310,3 @@ export function Header() {
         </header>
     );
 }
-

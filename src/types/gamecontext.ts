@@ -22,7 +22,7 @@ export type StreamingStats = {
 };
 
 export type LoreCheckCategory = 'wrong-fact' | 'contradicts-lore' | 'wrong-entity' | 'tone-voice' | 'out-of-character';
-export type LoreCheckVerdict = 'consistent' | 'unsupported' | 'contradicts';
+export type LoreCheckVerdict = 'consistent' | 'unsupported' | 'contradicts' | 'corrected';
 export type LoreCheckCitation = { ref: string; label: string };
 export type LoreCheckResult = {
     verdict: LoreCheckVerdict;

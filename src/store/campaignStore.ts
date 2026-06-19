@@ -1,4 +1,4 @@
-import type { ArchiveChapter, Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, SemanticFact, EntityEntry, BackupMeta, TimelineEvent, DivergenceRegister } from '../types';
+import type { ArchiveChapter, Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, SemanticFact, EntityEntry, BackupMeta, TimelineEvent, DivergenceRegister, PinnedExcerpt } from '../types';
 
 import { API_BASE as API } from '../lib/apiBase';
 
@@ -6,6 +6,7 @@ export type CampaignState = {
     context: GameContext;
     messages: ChatMessage[];
     condenser: CondenserState;
+    pinnedExcerpts?: PinnedExcerpt[];
 };
 
 // ─── Campaign CRUD ───

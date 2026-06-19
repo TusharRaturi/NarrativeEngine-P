@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { X, Check, Edit3, AlertTriangle, ShieldCheck, HelpCircle, Loader2, Search, Zap } from 'lucide-react';
+import { X, Check, Edit3, AlertTriangle, ShieldCheck, HelpCircle, Loader2, Search, Zap, Wand2 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import { runLoreCheck } from '../services/loreCheck';
+import { runLoreCheck, runDirectRewrite } from '../services/loreCheck';
 import type { LoreCheckCategory } from '../types';
 
 const CATEGORY_CHIPS: { value: LoreCheckCategory; label: string }[] = [
@@ -111,6 +111,40 @@ export function LoreCheckModal() {
         runCheck(undefined, undefined);
     };
 
+    const handleFixWithFact = () => {
+        const fact = hint.trim();
+        if (!fact || !selection) return;
+        const ac = new AbortController();
+        abortRef.current = ac;
+        setStage('running');
+
+        (async () => {
+            try {
+                const state = useAppStore.getState();
+                const utility = state.getActiveUtilityEndpoint();
+                if (!utility) {
+                    setError('No Utility AI configured. Set one in Settings \u2192 AI Providers.');
+                    setStage('done');
+                    return;
+                }
+                setStatus('Rewriting with your fact...');
+                const res = await runDirectRewrite({
+                    utilityEndpoint: utility,
+                    selectedText: selection.selectedText,
+                    surroundingContext: selection.surroundingContext,
+                    fact,
+                    signal: ac.signal,
+                });
+                setResult(res);
+                setStage('done');
+            } catch (err) {
+                if (ac.signal.aborted) return;
+                setError(err instanceof Error ? err.message : 'Rewrite failed.');
+                setStage('done');
+            }
+        })();
+    };
+
     if (!open) return null;
 
     const loading = stage === 'running';
@@ -119,6 +153,7 @@ export function LoreCheckModal() {
         consistent:    { color: 'text-emerald-400 border-emerald-500/40', icon: <ShieldCheck size={14} />, label: 'Consistent' },
         unsupported:   { color: 'text-amber-400 border-amber-500/40',     icon: <HelpCircle size={14} />,  label: 'Unsupported' },
         contradicts:   { color: 'text-red-400 border-red-500/40',         icon: <AlertTriangle size={14} />, label: 'Contradicts' },
+        corrected:     { color: 'text-terminal border-terminal/40',       icon: <Wand2 size={14} />,       label: 'Rewritten from your fact' },
     }[result.verdict];
 
     const accept = (text: string) => {
@@ -214,6 +249,14 @@ export function LoreCheckModal() {
                                     className="text-[10px] uppercase tracking-widest border border-border text-text-dim px-3 py-1.5 rounded hover:text-text-primary flex items-center gap-1.5"
                                 >
                                     <Zap size={10} /> Just check it
+                                </button>
+                                <button
+                                    onClick={handleFixWithFact}
+                                    disabled={!hint.trim()}
+                                    title={hint.trim() ? 'Rewrite the sentence to match the fact above — no lore lookup' : 'Type the correct fact above first'}
+                                    className="text-[10px] uppercase tracking-widest bg-terminal/10 border border-terminal text-terminal px-3 py-1.5 rounded hover:bg-terminal/20 flex items-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-terminal/10"
+                                >
+                                    <Wand2 size={10} /> Fix with my fact
                                 </button>
                             </div>
                         </>

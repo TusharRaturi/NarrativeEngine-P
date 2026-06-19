@@ -25,7 +25,7 @@ import {
 } from '../lib/nlp.js';
 import { extractWitnessesLLM, extractTimelineEventsLLM } from '../services/llmProxy.js';
 import { normalizeEntityName } from '../lib/entityResolution.js';
-import { embedText, buildArchiveText, buildLoreText, warmup, embedBatch } from '../lib/embedder.js';
+import { embedText, buildArchiveText, buildLoreText, warmup, embedBatch, getActiveDims, getActiveModelId } from '../lib/embedder.js';
 import { storeArchiveEmbedding, storeLoreEmbedding, searchArchive, searchLore, getEmbeddingStatus, EMBEDDING_VERSION, getDb } from '../lib/vectorStore.js';
 import { wrapAsync } from '../lib/asyncHandler.js';
 import { serverError } from '../lib/serverError.js';
@@ -285,6 +285,54 @@ export function createArchiveRouter() {
         res.json(result);
     }));
 
+    // Whole-word, case-insensitive rename across the sealed archive: scene prose
+    // (.archive.md) and the index snippet/keywords/NPCs. Used by the manual
+    // highlight → rename tool. Returns the number of scenes whose prose changed.
+    router.post('/api/campaigns/:id/archive/rename', wrapAsync((req, res) => {
+        const { from, to } = req.body || {};
+        const fromTrim = typeof from === 'string' ? from.trim() : '';
+        const toTrim = typeof to === 'string' ? to.trim() : '';
+        if (!fromTrim || !toTrim) {
+            return res.status(400).json({ error: 'from and to are required non-empty strings' });
+        }
+        const pat = `\\b${fromTrim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`;
+        const sub = (txt) => String(txt).replace(new RegExp(pat, 'gi'), to);
+
+        const fp = archivePath(req.params.id);
+        const idxp = archiveIndexPath(req.params.id);
+        let proseChanged = 0;
+
+        if (fs.existsSync(fp)) {
+            const raw = fs.readFileSync(fp, 'utf-8');
+            const next = sub(raw);
+            if (next !== raw) {
+                fs.writeFileSync(fp, next, 'utf-8');
+                // Count touched scenes by re-splitting on ## SCENE boundaries.
+                proseChanged = (next.match(/^## SCENE \d+/gm) || []).length;
+            }
+        }
+
+        let indexChanged = false;
+        if (fs.existsSync(idxp)) {
+            const entries = readJson(idxp, []);
+            const newIndex = entries.map(e => {
+                const userSnippet = e.userSnippet ? sub(e.userSnippet) : e.userSnippet;
+                const keywords = Array.isArray(e.keywords) ? e.keywords.map(sub) : e.keywords;
+                const npcsMentioned = Array.isArray(e.npcsMentioned) ? e.npcsMentioned.map(sub) : e.npcsMentioned;
+                if (userSnippet !== e.userSnippet
+                    || JSON.stringify(keywords) !== JSON.stringify(e.keywords)
+                    || JSON.stringify(npcsMentioned) !== JSON.stringify(e.npcsMentioned)) {
+                    indexChanged = true;
+                    return { ...e, userSnippet, keywords, npcsMentioned };
+                }
+                return e;
+            });
+            if (indexChanged) writeJson(idxp, newIndex);
+        }
+
+        res.json({ ok: true, scenesTouched: proseChanged, indexUpdated: indexChanged });
+    }));
+
     // Rollback: remove all scenes >= sceneId from .archive.md and .archive.index.json
     router.delete('/api/campaigns/:id/archive/scenes-from/:sceneId', wrapAsync((req, res) => {
         const fp = archivePath(req.params.id);
@@ -451,6 +499,15 @@ export function createArchiveRouter() {
     router.get('/api/campaigns/:id/embeddings/status', wrapAsync(async (req, res) => {
         const status = getEmbeddingStatus(req.params.id);
         res.json(status);
+    }));
+
+    // ─── Embedder Info (model, dims, version — global, not per-campaign) ──
+    router.get('/api/embeddings/info', wrapAsync((_req, res) => {
+        res.json({
+            modelId: getActiveModelId(),
+            dims: getActiveDims(),
+            embeddingVersion: EMBEDDING_VERSION,
+        });
     }));
 
     // ─── Re-index Embeddings (Backfill) ───────────────────────────────

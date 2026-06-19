@@ -23,7 +23,8 @@ vi.mock('../../store/useAppStore', () => {
         } as unknown as GameContext,
         activeCampaignId: 'test-campaign',
         settings: {
-            presets: [{ id: 'p1', name: 'Test', storyAI: { endpoint: 'http://test', apiKey: 'k', modelName: 'm' }, imageAI: { endpoint: '', apiKey: '', modelName: '' }, summarizerAI: { endpoint: '', apiKey: '', modelName: '' } }],
+            presets: [{ id: 'p1', name: 'Test', storyAIProviderId: 'prov1' }],
+            providers: [{ id: 'prov1', label: 'Test', endpoint: 'http://test', apiKey: 'k', modelName: 'm' }],
             activePresetId: 'p1',
             contextLimit: 4096,
             debugMode: false,
@@ -59,7 +60,7 @@ vi.mock('../../store/useAppStore', () => {
         incrementBookkeepingTurnCounter: vi.fn(() => 1),
         resetBookkeepingTurnCounter: vi.fn(),
         setCondenser: vi.fn(),
-        getActiveStoryEndpoint: vi.fn(() => ({ endpoint: 'http://test', apiKey: 'k', modelName: 'm' })),
+        getActiveStoryEndpoint: vi.fn(() => ({ id: 'prov1', label: 'Test', endpoint: 'http://test', apiKey: 'k', modelName: 'm' })),
         getActiveUtilityEndpoint: vi.fn(() => undefined),
         getActiveSummarizerEndpoint: vi.fn(() => undefined),
         getActivePreset: vi.fn(() => undefined),
@@ -238,17 +239,6 @@ describe('ChatArea', () => {
         render(<ChatArea />);
         const saveBtn = screen.getByText(/SAVE CAMPAIGN/i).closest('button')!;
         await user.click(saveBtn);
-    });
-
-    it('clear archive calls API and resets store', async () => {
-        const user = userEvent.setup();
-        const state = useAppStore.getState();
-        state.archiveIndex = [{ sceneId: '001', timestamp: 1, keywords: [], npcsMentioned: [], witnesses: [], userSnippet: '' }];
-        vi.stubGlobal('confirm', vi.fn(() => true));
-        render(<ChatArea />);
-        const clearBtn = screen.getByText('Clear Archive').closest('button')!;
-        await user.click(clearBtn);
-        vi.restoreAllMocks();
     });
 
     it('shows load more button when messages exceed visibleCount', () => {

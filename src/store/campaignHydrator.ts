@@ -73,5 +73,6 @@ export async function hydrateCampaign(campaignId: string) {
         activeCampaignId: campaignId,
         inventoryItems: migratedContext.inventoryItems,
         characterProfileData: migratedContext.characterProfileData,
+        pinnedExcerpts: state?.pinnedExcerpts ?? [],
     });
 }

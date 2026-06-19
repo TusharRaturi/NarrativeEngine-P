@@ -12,6 +12,7 @@ import type {
 import { llmCall } from '../utils/llmCall';
 import { searchLoreByQuery } from './loreRetriever';
 import { deepArchiveScan } from './deepArchiveSearch';
+import { extractJsonRobust } from './jsonExtract';
 
 export type LoreCheckInput = {
     utilityEndpoint: EndpointConfig;
@@ -96,6 +97,88 @@ export async function runLoreCheck(input: LoreCheckInput): Promise<LoreCheckResu
     });
 
     return parseVerdict(raw, selectedText);
+}
+
+export type DirectRewriteInput = {
+    utilityEndpoint: EndpointConfig;
+    selectedText: string;
+    surroundingContext: string;
+    fact: string;
+    signal?: AbortSignal;
+};
+
+/**
+ * Edit-and-replace mode. The user already knows the correct fact, so we skip all
+ * retrieval/verification and just rewrite the highlighted sentence to state that fact.
+ */
+export async function runDirectRewrite(input: DirectRewriteInput): Promise<LoreCheckResult> {
+    const { utilityEndpoint, selectedText, surroundingContext, fact, signal } = input;
+
+    const prompt = buildRewritePrompt({ selectedText, surroundingContext, fact });
+
+    const raw = await llmCall(utilityEndpoint, prompt, {
+        temperature: 0.3,
+        maxTokens: 4096,
+        priority: 'high',
+        signal,
+    });
+
+    return parseRewrite(raw, selectedText);
+}
+
+export function buildRewritePrompt(args: {
+    selectedText: string;
+    surroundingContext: string;
+    fact: string;
+}): string {
+    return `You are a precise copy editor for a tabletop RPG narration. The player has highlighted a SENTENCE the GM wrote and supplied a FACT they know to be true. Your only job is to rewrite the sentence so it states the fact correctly.
+
+Rules:
+- Treat the FACT as authoritative ground truth. Do NOT question it, soften it, or check it against anything.
+- Change ONLY what is needed to make the SENTENCE consistent with the FACT.
+- Preserve the GM's tone, voice, tense, and approximate length.
+- Do NOT add new events, NPCs, places, or commitments beyond what the FACT states.
+- The SURROUNDING CONTEXT is for tone and continuity reference only — your rewrite replaces just the SENTENCE, so it must read naturally between those neighbors.
+- If the SENTENCE already matches the FACT, return it essentially unchanged.
+
+OUTPUT SCHEMA:
+{
+  "rewrite": "the rewritten sentence"
+}
+
+Respond with ONLY a single JSON object, no prose, no code fence.
+
+[SENTENCE]
+${args.selectedText}
+
+[SURROUNDING CONTEXT]
+${args.surroundingContext}
+
+[FACT]
+${args.fact}
+`;
+}
+
+function parseRewrite(raw: string, originalText: string): LoreCheckResult {
+    const { value, parseOk } = extractJsonRobust<{ rewrite?: unknown }>(raw, { rewrite: '' });
+    const rewrite =
+        parseOk && typeof value.rewrite === 'string' && value.rewrite.trim().length > 0
+            ? value.rewrite.trim()
+            : null;
+
+    if (rewrite) {
+        return { verdict: 'corrected', issues: [], citations: [], suggestedRewrite: rewrite, originalText };
+    }
+
+    console.warn('[DirectRewrite] Rewriter returned unparseable response. Raw:\n', raw);
+    return {
+        verdict: 'corrected',
+        issues: ['Could not produce a rewrite from your fact. See raw output below.'],
+        citations: [],
+        suggestedRewrite: null,
+        originalText,
+        rawResponse: raw,
+    };
 }
 
 export function buildVerifierPrompt(args: {

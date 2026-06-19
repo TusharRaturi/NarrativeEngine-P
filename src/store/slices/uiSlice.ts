@@ -43,6 +43,9 @@ export type UISlice = {
     composerInjection: string | null;
     injectToComposer: (text: string) => void;
     consumeComposerInjection: () => void;
+    pinnedMemoriesOpen: boolean;
+    togglePinnedMemories: () => void;
+    closePinnedMemories: () => void;
 };
 
 // ── Slice creator ──────────────────────────────────────────────────────
@@ -86,4 +89,7 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     composerInjection: null,
     injectToComposer: (text) => set({ composerInjection: text }),
     consumeComposerInjection: () => set({ composerInjection: null }),
+    pinnedMemoriesOpen: false,
+    togglePinnedMemories: () => set((s) => ({ pinnedMemoriesOpen: !s.pinnedMemoriesOpen })),
+    closePinnedMemories: () => set({ pinnedMemoriesOpen: false }),
 });

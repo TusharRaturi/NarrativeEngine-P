@@ -26,3 +26,11 @@ export type Campaign = {
     createdAt: number;
     lastPlayedAt: number;
 };
+
+export type PinnedExcerpt = {
+    id: string;
+    sourceMessageId: string;
+    text: string;
+    createdAt: number;
+    isFullMessage: boolean;
+};

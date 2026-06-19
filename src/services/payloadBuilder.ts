@@ -1,4 +1,4 @@
-import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, PayloadTrace, TimelineEvent, DebugSection, InventoryItemCategory, DivergenceRegister, ArchiveChapter } from '../types';
+import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, PayloadTrace, TimelineEvent, DebugSection, InventoryItemCategory, DivergenceRegister, ArchiveChapter, PinnedExcerpt } from '../types';
 import type { OpenAIMessage } from './llmService';
 import { createTraceCollector } from './payload/traceCollector';
 import { computeBudgets } from './payload/budgets';
@@ -6,6 +6,7 @@ import { buildStable } from './payload/stable';
 import { buildWorld } from './payload/world';
 import { buildVolatile } from './payload/volatile';
 import { buildHistory } from './payload/history';
+import { buildPinnedMemoriesBlock } from './payload/pinnedMemories';
 
 export function buildPayload(
     settings: AppSettings,
@@ -28,7 +29,8 @@ export function buildPayload(
     chapters?: ArchiveChapter[],
     onStageNpcIds?: string[],
     relevantRules?: LoreChunk[],
-    rulesManifest?: string
+    rulesManifest?: string,
+    pinnedExcerpts?: PinnedExcerpt[],
 ): { messages: OpenAIMessage[]; trace?: PayloadTrace[]; debugSections?: DebugSection[] } {
     const isDebug = settings.debugMode === true;
     const limit = settings.contextLimit || 8192;
@@ -46,6 +48,9 @@ export function buildPayload(
     const messages: OpenAIMessage[] = [];
     if (stableContent) messages.push({ role: 'system', content: stableContent, cache_control: cacheControl });
     if (divergenceContent) messages.push({ role: 'system', content: divergenceContent, cache_control: cacheControl });
+    if (pinnedExcerpts && pinnedExcerpts.length > 0) {
+        messages.push({ role: 'system', content: buildPinnedMemoriesBlock(pinnedExcerpts), cache_control: cacheControl });
+    }
     if (worldContent || volatileContent) {
         messages.push({ role: 'system', content: [worldContent, volatileContent].filter(Boolean).join('\n\n') });
     }

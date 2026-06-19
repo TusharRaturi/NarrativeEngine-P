@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Send, Save, Loader2, Zap, Scroll, Edit2, X, Square, Trash2, Search, Check, Package } from 'lucide-react';
+import { Send, Save, Loader2, Zap, Scroll, Edit2, X, Square, Search, Check, Package } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { runTurn } from '../services/turnOrchestrator';
 import { uid } from '../utils/uid';
@@ -8,7 +8,7 @@ import type { InventoryProposal, InventoryItem, InventoryItemCategory } from '..
 import { set } from 'idb-keyval';
 import { toast } from './Toast';
 import { debouncedSaveCampaignState } from '../store/slices/campaignSlice';
-import { rollbackArchiveFrom, openArchive as openArchiveFn, clearArchive as clearArchiveFn } from '../services/archiveManager';
+import { rollbackArchiveFrom, openArchive as openArchiveFn } from '../services/archiveManager';
 import { MessageBubble } from './MessageBubble';
 import { GenerationProgress } from './GenerationProgress';
 import { useCondenser } from './hooks/useCondenser';
@@ -126,7 +126,7 @@ export function ChatArea() {
         setCondensed,
     });
 
-    const { handleSealChapter, checkAndSealChapter } = useChapterSealing({
+    const { checkAndSealChapter } = useChapterSealing({
         activeCampaignId,
         chapters,
         context,
@@ -179,6 +179,7 @@ export function ChatArea() {
             deepSearchThisTurn: useDeepSearch,
             divergenceRegister: storeSnapshot.divergenceRegister,
             onStageNpcIds: storeSnapshot.onStageNpcIds,
+            pinnedExcerpts: storeSnapshot.pinnedExcerpts,
             getFreshAuxiliaryProvider: () => {
                 const aux = useAppStore.getState().getActiveAuxiliaryEndpoint();
                 return aux?.modelName ? aux : useAppStore.getState().getActiveStoryEndpoint();
@@ -327,11 +328,6 @@ export function ChatArea() {
         if (activeCampaignId) openArchiveFn(activeCampaignId);
     };
 
-    const handleClearArchive = () => {
-        if (!activeCampaignId || !window.confirm('Are you sure you want to PERMANENTLY delete the entire archive? This cannot be undone.')) return;
-        clearArchiveFn(archiveDeps);
-    };
-
     return (
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
             {context.sceneNoteActive && (
@@ -429,10 +425,10 @@ export function ChatArea() {
                     onClick={triggerCondense}
                     disabled={isStreaming || messages.length < 6}
                     className="flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
-                    title="Condense history"
+                    title="Trim history"
                 >
                     <Zap size={13} />
-                    Condense
+                    Trim
                 </button>
                 {settings.deepContextSearch && (
                     <button
@@ -459,23 +455,6 @@ export function ChatArea() {
                 >
                     <Scroll size={13} />
                     Archive
-                </button>
-                <button
-                    onClick={() => activeCampaignId && handleSealChapter(activeCampaignId)}
-                    disabled={!activeCampaignId || !chapters.find(c => !c.sealedAt)}
-                    className="flex items-center gap-1.5 bg-void border border-amber-500/30 hover:border-amber-500 text-amber-500 text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-amber-500/5 disabled:opacity-30 disabled:cursor-not-allowed"
-                    title="Manually seal current chapter"
-                >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    Seal
-                </button>
-                <button
-                    onClick={handleClearArchive}
-                    disabled={!activeCampaignId || archiveIndex.length === 0}
-                    className="flex items-center gap-1.5 bg-void border border-danger/30 hover:border-danger text-danger text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-danger/5 disabled:opacity-30 disabled:cursor-not-allowed"
-                >
-                    <Trash2 size={13} />
-                    Clear Archive
                 </button>
             </div>
 

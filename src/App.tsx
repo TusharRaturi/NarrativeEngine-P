@@ -11,6 +11,8 @@ import { BackupModal } from './components/BackupModal';
 import { LoreCheckModal } from './components/LoreCheckModal';
 import { DivergenceReviewModal } from './components/DivergenceReviewModal';
 import { CreateTroubleModal } from './components/CreateTroubleModal';
+import { RenameNpcModal } from './components/RenameNpcModal';
+import { PinnedMemoriesPanel } from './components/PinnedMemoriesPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastContainer } from './components/Toast';
 import { VaultUnlockModal } from './components/VaultUnlockModal';
@@ -27,6 +29,8 @@ export default function App() {
   const checkVaultStatus = useAppStore((s) => s.checkVaultStatus);
   const unlockVaultWithRemembered = useAppStore((s) => s.unlockVaultWithRemembered);
   const unlockVault = useAppStore((s) => s.unlockVault);
+  const pinnedMemoriesOpen = useAppStore((s) => s.pinnedMemoriesOpen);
+  const closePinnedMemories = useAppStore((s) => s.closePinnedMemories);
 
   // True once campaign state has been hydrated into Zustand (or there's no campaign to hydrate)
   const [campaignLoaded, setCampaignLoaded] = useState(false);
@@ -146,6 +150,11 @@ export default function App() {
       <LoreCheckModal />
       <DivergenceReviewModal />
       <CreateTroubleModal />
+      <RenameNpcModal />
+      <PinnedMemoriesPanel
+        open={pinnedMemoriesOpen}
+        onClose={closePinnedMemories}
+      />
       <ToastContainer />
     </ErrorBoundary>
   );

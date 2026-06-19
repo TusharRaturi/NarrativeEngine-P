@@ -1,6 +1,10 @@
 import type { StateCreator } from 'zustand';
-import type { ArchiveIndexEntry, ChatMessage, CondenserState, GameContext, DivergenceRegister, DivergenceEntry, DivergenceCategory, TopicClusters } from '../../types';
+import type { ArchiveIndexEntry, ChatMessage, CondenserState, GameContext, DivergenceRegister, DivergenceEntry, DivergenceCategory, TopicClusters, PinnedExcerpt } from '../../types';
 import { debouncedSaveCampaignState } from './campaignSlice';
+import { uid } from '../../utils/uid';
+import { countTokens } from '../../services/tokenizer';
+
+const PINNED_EXCERPTS_TOKEN_CAP = 3000;
 
 // ── Slice type ─────────────────────────────────────────────────────────
 
@@ -40,6 +44,17 @@ export type ChatSlice = {
     deleteReviewedEntry: (id: string) => void;
     setTopicClusters: (clusters: TopicClusters) => void;
     setManyFactsEnabled: (updates: Array<{ id: string; enabled: boolean }>) => void;
+
+    pinnedExcerpts: PinnedExcerpt[];
+    addPinnedExcerpt: (sourceMessageId: string, text: string, isFullMessage: boolean) => { ok: true } | { ok: false; reason: string };
+    removePinnedExcerpt: (id: string) => void;
+    clearPinnedExcerpts: () => void;
+
+    renameModalOpen: boolean;
+    renameModalText: string;
+    openRenameModal: (text: string) => void;
+    closeRenameModal: () => void;
+    renameAcrossMessages: (from: string, to: string) => number;
 };
 
 // ── Cross-slice dependencies ───────────────────────────────────────────
@@ -269,4 +284,70 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
         return { messages: [], condenser: newCondenser, divergenceRegister: newDivReg, context: { ..._s.context, notebook: [] } } as Partial<ChatDeps>;
     }),
     clearArchive: () => set({ archiveIndex: [] } as Partial<ChatDeps>),
+
+    pinnedExcerpts: [],
+    addPinnedExcerpt: (sourceMessageId, text, isFullMessage) => {
+        let result: { ok: true } | { ok: false; reason: string } = { ok: true };
+        set((s) => {
+            const newTokens = countTokens(text);
+            const currentTotal = s.pinnedExcerpts.reduce((sum, e) => sum + countTokens(e.text), 0);
+            if (currentTotal + newTokens > PINNED_EXCERPTS_TOKEN_CAP) {
+                result = { ok: false, reason: 'Pinned memories full — unpin something first' };
+                return s;
+            }
+            const excerpt: PinnedExcerpt = {
+                id: `pin_${uid()}`,
+                sourceMessageId,
+                text,
+                createdAt: Date.now(),
+                isFullMessage,
+            };
+            const pinnedExcerpts = [...s.pinnedExcerpts, excerpt];
+            debouncedSaveCampaignState();
+            return { pinnedExcerpts };
+        });
+        return result;
+    },
+    removePinnedExcerpt: (id) =>
+        set((s) => {
+            const pinnedExcerpts = s.pinnedExcerpts.filter(e => e.id !== id);
+            debouncedSaveCampaignState();
+            return { pinnedExcerpts };
+        }),
+    clearPinnedExcerpts: () =>
+        set(() => {
+            debouncedSaveCampaignState();
+            return { pinnedExcerpts: [] };
+        }),
+
+    renameModalOpen: false,
+    renameModalText: '',
+    openRenameModal: (text) => set({ renameModalOpen: true, renameModalText: text }),
+    closeRenameModal: () => set({ renameModalOpen: false, renameModalText: '' }),
+    renameAcrossMessages: (from, to) => {
+        const fromTrim = from.trim();
+        if (!fromTrim || !to.trim()) return 0;
+        const pat = `\\b${fromTrim.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`;
+        let changed = 0;
+        set((s) => {
+            const msgs = s.messages.map(m => {
+                const next = { ...m };
+                let touched = false;
+                if (typeof m.content === 'string') {
+                    const rep = m.content.replace(new RegExp(pat, 'gi'), to);
+                    if (rep !== m.content) { next.content = rep; touched = true; }
+                }
+                if (typeof m.displayContent === 'string') {
+                    const rep = m.displayContent.replace(new RegExp(pat, 'gi'), to);
+                    if (rep !== m.displayContent) { next.displayContent = rep; touched = true; }
+                }
+                if (touched) changed++;
+                return next;
+            });
+            if (changed === 0) return {};
+            debouncedSaveCampaignState();
+            return { messages: msgs };
+        });
+        return changed;
+    },
 });

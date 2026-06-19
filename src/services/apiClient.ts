@@ -78,6 +78,22 @@ export const api = {
                 console.warn('[Archive] Failed to patch events:', err);
             }
         },
+        async renameText(campaignId: string, from: string, to: string): Promise<{ scenesTouched: number }> {
+            try {
+                const res = await fetch(`${API}/campaigns/${campaignId}/archive/rename`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ from, to }),
+                });
+                if (res.ok) {
+                    const data = await res.json();
+                    return { scenesTouched: typeof data.scenesTouched === 'number' ? data.scenesTouched : 0 };
+                }
+            } catch (err) {
+                console.warn('[Archive] Failed to rename text:', err);
+            }
+            return { scenesTouched: 0 };
+        },
     },
     chapters: {
         async list(campaignId: string): Promise<ArchiveChapter[]> {
@@ -273,11 +289,11 @@ export const api = {
             if (!res.ok) throw new Error('Failed to get vault status');
             return await res.json();
         },
-        async setup(password: string | null, presets: any[]): Promise<void> {
+        async setup(password: string | null, presets: any[], providers?: any[]): Promise<void> {
             const res = await fetch(`${API}/vault/setup`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password, presets }),
+                body: JSON.stringify({ password, presets, providers }),
             });
             if (!res.ok) throw new Error('Failed to create vault');
         },
@@ -298,12 +314,12 @@ export const api = {
         async lock(): Promise<void> {
             await fetch(`${API}/vault/lock`, { method: 'POST' });
         },
-        async getKeys(): Promise<{ presets: any[] }> {
+        async getKeys(): Promise<{ presets: any[]; providers?: any[] }> {
             const res = await fetch(`${API}/vault/keys`);
             if (!res.ok) throw new Error('Vault is locked');
             return await res.json();
         },
-        async saveKeys(data: { presets: any[] }): Promise<void> {
+        async saveKeys(data: { presets: any[]; providers?: any[] }): Promise<void> {
             const res = await fetch(`${API}/vault/keys`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },

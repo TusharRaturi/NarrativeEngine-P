@@ -64,6 +64,7 @@ export type TurnState = {
     sampling?: SamplingConfig;
     deepSearchThisTurn?: boolean;
     divergenceRegister?: DivergenceRegister;
+    pinnedExcerpts?: import('../types').PinnedExcerpt[];
 };
 
 
@@ -168,6 +169,7 @@ export async function runTurn(
         state.onStageNpcIds,
         relevantRules,
         rulesManifest,
+        state.pinnedExcerpts,
     );
 
     const payload = payloadResult.messages;
