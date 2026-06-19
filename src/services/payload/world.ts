@@ -1,9 +1,10 @@
-import type { ChatMessage, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, TimelineEvent, DivergenceRegister, ArchiveChapter, SceneEvent } from '../../types';
+import type { ChatMessage, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, TimelineEvent, DivergenceRegister, DivergenceEntry, ArchiveChapter, SceneEvent } from '../../types';
 import { countTokens } from '../tokenizer';
 import { buildBehaviorDirective, buildDriftAlert, buildKnowledgeBoundary } from '../npcBehaviorDirective';
 import { minifyLoreChunk, minifyNPC } from '../contextMinifier';
 import { resolveTimeline, formatResolvedForContext } from '../timelineResolver';
 import { renderRegisterForPayload } from '../divergenceRegister';
+import { isKnownToAnyOnStage, parseKnownByToken } from '../campaign-state/knowledgeScope';
 import type { TraceCollector } from './traceCollector';
 
 const RECENT_SCENE_WINDOW = 3;      // mobile used 2; desktop can see a touch deeper
@@ -302,6 +303,53 @@ export function buildWorld(opts: {
         }
     }
 
+    // ── Phase 6: per-turn scoped-knowledge block (the cage) ──
+    // Facts whose knownBy is DEFINED ride here, never in the cached canon block. Only
+    // facts a present (on-stage) character knows are shown, resolved against the live
+    // cast. Cast-aware → MUST live below the cache boundary (the world block), so that
+    // cached [ESTABLISHED FACTS] stays byte-identical when only the cast changes.
+    if (divergenceRegister && divergenceRegister.entries.length > 0) {
+        const onStage = onStageNpcIds ?? [];
+        const ledger = npcLedger ?? [];
+        const isActive = (e: DivergenceEntry): boolean => {
+            if (e.enabled === false) return false;
+            if (e.pinned) return true;
+            const chapterOn = divergenceRegister.chapterToggles[e.chapterId] !== false;
+            if (!chapterOn) return false;
+            const catToggles = divergenceRegister.categoryToggles[e.chapterId];
+            if (catToggles && catToggles[e.category] === false) return false;
+            return true;
+        };
+        const labelKnowers = (knownBy: string[]): string => {
+            const parts: string[] = [];
+            for (const tok of knownBy) {
+                const p = parseKnownByToken(tok);
+                if (!p || p.kind === 'player') continue;
+                if (p.kind === 'npc') {
+                    const npc = ledger.find(n => n.id === p.id);
+                    if (npc) parts.push(npc.name);
+                } else {
+                    parts.push(`${p.name} members`);
+                }
+            }
+            return parts.join(', ');
+        };
+        const scoped = divergenceRegister.entries.filter(e =>
+            e.knownBy !== undefined &&
+            isActive(e) &&
+            isKnownToAnyOnStage(e.knownBy, onStage, ledger)
+        );
+        if (scoped.length > 0) {
+            const lines = scoped.map(e => {
+                const who = labelKnowers(e.knownBy!);
+                const whoStr = who ? ` (known to: ${who})` : '';
+                return `• ${e.text}${whoStr} [#${e.sceneRef}]`;
+            });
+            const content = `[FACTS KNOWN TO ON-STAGE CHARACTERS]\n${lines.join('\n')}\n[END FACTS KNOWN TO ON-STAGE CHARACTERS]`;
+            worldBlocks.push({ source: 'Scoped Knowledge', content, tokens: countTokens(content), reason: `Per-fact knowledge bounded to present cast (${scoped.length})` });
+        }
+    }
+
     // ── Phase 2/3: agency + arc digest fold ──
     // Off-screen movement (NPC agency tick) and world undercurrent (Arc Engine tick) are
     // short per-turn prose strings accumulated in post-turn and consumed once by the next GM
@@ -315,14 +363,18 @@ export function buildWorld(opts: {
         worldBlocks.push({ source: 'Arc Digest', content: text, tokens: countTokens(text), reason: 'Arc Engine surface line' });
     }
 
-    // Divergence Register — extracted separately for cache_control: ephemeral
-    // Not added to worldBlocks; emitted as its own system message by payloadBuilder
+    // Divergence Register — extracted separately for cache_control: ephemeral.
+    // Phase 6 cache split: render PUBLIC/broadcast facts ONLY (publicOnly=true) with NO
+    // cast args, so this block is cast-independent and the cached prefix stays
+    // byte-identical across turns when the on-stage cast changes. Scoped (knownBy-defined)
+    // facts are surfaced per-turn in the [FACTS KNOWN TO ON-STAGE CHARACTERS] world block
+    // above. Not added to worldBlocks; emitted as its own cached system message by payloadBuilder.
     if (divergenceRegister && divergenceRegister.entries.length > 0) {
-        const regText = renderRegisterForPayload(divergenceRegister, chapters, onStageNpcIds, npcLedger);
+        const regText = renderRegisterForPayload(divergenceRegister, chapters, undefined, undefined, true);
         if (regText) {
             divergenceRegText = regText;
             divergenceTokens = countTokens(regText);
-            collector.addTrace({ source: 'Established Facts', classification: 'world_context', tokens: divergenceTokens, reason: `Campaign facts (${divergenceRegister.entries.length} entries)`, included: true, position: 'system_cacheable' });
+            collector.addTrace({ source: 'Established Facts', classification: 'world_context', tokens: divergenceTokens, reason: `Campaign canon — public facts (${divergenceRegister.entries.length} entries)`, included: true, position: 'system_cacheable' });
             collector.addSection({ label: 'Established Facts', role: 'system', tokens: divergenceTokens, content: regText, classification: 'world_context' });
         }
     }

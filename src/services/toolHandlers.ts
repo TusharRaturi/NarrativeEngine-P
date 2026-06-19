@@ -1,4 +1,4 @@
-import type { GameContext, LoreChunk, DiceConfig } from '../types';
+import type { GameContext, LoreChunk, DiceConfig, InventoryProposal } from '../types';
 import { searchLoreByQuery } from './loreRetriever';
 import { uid } from '../utils/uid';
 import { mapTier } from './diceTier';
@@ -24,6 +24,15 @@ export type NotebookHandlerResult = {
 };
 
 export type DiceHandlerResult = {
+    toolResult: string;
+};
+
+export type ProposeInventoryHandlerResult = {
+    toolResult: string;
+    proposal: InventoryProposal;
+};
+
+export type InitiateCombatHandlerResult = {
     toolResult: string;
 };
 
@@ -88,8 +97,72 @@ const ROLL_DICE_TOOL = {
     }
 } as const;
 
-export function getToolDefinitions(opts: { allowDiceTool: boolean }) {
-    return opts.allowDiceTool ? [...BASE_TOOLS, ROLL_DICE_TOOL] : [...BASE_TOOLS];
+const PROPOSE_INVENTORY_TOOL = {
+    type: 'function' as const,
+    function: {
+        name: 'propose_inventory_change',
+        description:
+            "Propose adding, removing, or equipping an item in the player's inventory when the fiction materially changes their gear (loot found, a weapon gifted/bought/broken, armor donned). This only *proposes* — the player must confirm before anything changes. Supply bounded labels ONLY; the engine sets all numbers (damage dice, bonus, AC). NEVER output damageDice, bonus, hp, or AC. Do NOT call for flavor mentions the player won't use mechanically. Default quality to 'common'; reserve 'rare'+ for clearly special, story-significant items.",
+        parameters: {
+            type: 'object' as const,
+            properties: {
+                name:        { type: 'string' as const, description: 'Item name.' },
+                op:          { type: 'string' as const, enum: ['grant', 'remove', 'equip'], description: "Operation. Default 'grant'." },
+                kind:        { type: 'string' as const, enum: ['weapon', 'armor', 'consumable', 'misc'], description: "Item kind. Default 'misc'." },
+                quality:     { type: 'string' as const, enum: ['common', 'uncommon', 'rare', 'epic', 'legendary'], description: "Rarity/quality tier. Default 'common'." },
+                scalingStat: { type: 'string' as const, enum: ['PWR', 'SPD', 'WIL'], description: "Scaling stat for weapons. Default 'PWR'." },
+                range:       { type: 'string' as const, enum: ['Close', 'Reach', 'Ranged'], description: "Weapon range. Default 'Close'." },
+                properties:  { type: 'array' as const, items: { type: 'string' as const }, description: 'Flavor tags, e.g. ["fire","heavy"].' },
+                equip:       { type: 'boolean' as const, description: 'Equip on confirm (weapons/armor). Default false.' },
+                description: { type: 'string' as const, description: 'Short flavor text.' },
+            },
+            required: ['name'],
+        },
+    },
+} as const;
+
+const INITIATE_COMBAT_TOOL = {
+    type: 'function' as const,
+    function: {
+        name: 'initiate_combat',
+        description:
+            "Signal that physical combat is beginning. Call this the moment a fight actually starts " +
+            "(a strike is launched, an ambush triggers), NOT for threats or posturing. List the " +
+            "hostile parties so the engine can build the encounter. The engine owns all stats and " +
+            "resolution — you are only flagging that combat mode should open.",
+        parameters: {
+            type: 'object' as const,
+            properties: {
+                foes: {
+                    type: 'array' as const,
+                    items: {
+                        type: 'object' as const,
+                        properties: {
+                            name:       { type: 'string' as const, description: 'Name or short label, e.g. "Drunk Pirate".' },
+                            count:      { type: 'integer' as const, description: 'How many of this foe (mooks). Default 1.' },
+                            combatTier: { type: 'string' as const, enum: ['minion', 'grunt', 'elite', 'boss', 'legendary'], description: "Threat level. Use 'minion' for basic/weak/fodder foes; reserve 'elite'+ for standout, named, or clearly-dangerous foes." },
+                            archetype:  { type: 'string' as const, enum: ['bulwark', 'assassin', 'caster', 'skirmisher', 'brute'], description: 'Fighting style.' },
+                        },
+                        required: ['name'],
+                    },
+                    description: 'The hostile combatants entering the fight.',
+                },
+            },
+            required: ['foes'],
+        },
+    },
+} as const;
+
+export function getToolDefinitions(opts: { allowDiceTool: boolean; combatModeActive?: boolean }): unknown[] {
+    const tools: unknown[] = [...BASE_TOOLS];
+    if (opts.allowDiceTool) tools.push(ROLL_DICE_TOOL);
+    // propose_inventory_change is combat-independent — always offered.
+    tools.push(PROPOSE_INVENTORY_TOOL);
+    // initiate_combat is only offered when combat isn't already active. The handler
+    // is a stub until Phase 7 (combat engine) lands; exposing the definition keeps the
+    // LLM's tool-calling from erroring while the result defers gracefully.
+    if (!opts.combatModeActive) tools.push(INITIATE_COMBAT_TOOL);
+    return tools;
 }
 
 export const TOOL_DEFINITIONS = BASE_TOOLS;
@@ -150,6 +223,76 @@ export function handleNotebookTool(
     console.log(`[Notebook] Updated: ${currentNotebook.length} notes active (${opsCount} ops)`);
 
     return { toolResult, updatedNotebook: currentNotebook };
+}
+
+const VALID_OPS = new Set<string>(['grant', 'remove', 'equip']);
+const VALID_KINDS = new Set<string>(['weapon', 'armor', 'consumable', 'misc']);
+const VALID_QUALITIES = new Set<string>(['common', 'uncommon', 'rare', 'epic', 'legendary']);
+const VALID_SCALING_STATS = new Set<string>(['PWR', 'SPD', 'WIL']);
+const VALID_RANGES = new Set<string>(['Close', 'Reach', 'Ranged']);
+
+/**
+ * Handles `propose_inventory_change` tool calls. Pure parsing + clamping — no LLM
+ * call, no mutation. Returns a normalized {@link InventoryProposal} for the caller
+ * to stage for user confirmation (the player must confirm before the delta applies).
+ * Numeric weapon/armor stats (damageDice, bonus, AC) are intentionally NOT parsed —
+ * the engine (Phase 7) owns all numbers; the GM only supplies bounded labels.
+ */
+export function handleProposeInventoryTool(
+    toolArguments: string
+): ProposeInventoryHandlerResult {
+    let args: Record<string, unknown> = {};
+    try { args = JSON.parse(toolArguments); } catch { /* ignore */ }
+
+    const name = typeof args.name === 'string' && args.name.trim() ? args.name.trim() : 'Unknown Item';
+
+    const rawOp = typeof args.op === 'string' ? args.op : '';
+    const op: InventoryProposal['op'] = VALID_OPS.has(rawOp) ? (rawOp as InventoryProposal['op']) : 'grant';
+
+    const rawKind = typeof args.kind === 'string' ? args.kind : '';
+    const kind: InventoryProposal['kind'] = VALID_KINDS.has(rawKind) ? (rawKind as InventoryProposal['kind']) : 'misc';
+
+    const rawQuality = typeof args.quality === 'string' ? args.quality : '';
+    const quality: InventoryProposal['quality'] = VALID_QUALITIES.has(rawQuality) ? (rawQuality as InventoryProposal['quality']) : 'common';
+
+    const rawScalingStat = typeof args.scalingStat === 'string' ? args.scalingStat : '';
+    const scalingStat: InventoryProposal['scalingStat'] = VALID_SCALING_STATS.has(rawScalingStat) ? (rawScalingStat as InventoryProposal['scalingStat']) : 'PWR';
+
+    const rawRange = typeof args.range === 'string' ? args.range : '';
+    const range: InventoryProposal['range'] = VALID_RANGES.has(rawRange) ? (rawRange as InventoryProposal['range']) : 'Close';
+
+    let properties: string[] = [];
+    if (Array.isArray(args.properties)) {
+        properties = args.properties.filter((p: unknown): p is string => typeof p === 'string').map(p => p.trim()).filter(Boolean);
+    }
+
+    const equip = typeof args.equip === 'boolean' ? args.equip : false;
+    const description = typeof args.description === 'string' ? args.description : '';
+
+    const proposal: InventoryProposal = { name, op, kind, quality, scalingStat, range, properties, equip, description };
+
+    return {
+        toolResult: JSON.stringify({ status: 'staged', name, op, kind, quality }),
+        proposal,
+    };
+}
+
+/**
+ * Phase 6 STUB for `initiate_combat`. The combat engine is Phase 7; until then this
+ * defers gracefully — it parses nothing of consequence, does NOT flip combatModeActive,
+ * and returns a tool result telling the LLM combat is unavailable so the turn continues
+ * without erroring. Phase 7 replaces this with the real `callbacks.initiateCombat` call.
+ */
+export function handleInitiateCombatTool(
+    _toolArguments: string
+): InitiateCombatHandlerResult {
+    console.warn('[InitiateCombat] Combat mode is not yet available on this build (Phase 7) — deferring.');
+    return {
+        toolResult: JSON.stringify({
+            status: 'unavailable',
+            message: 'Combat mode is not yet available on this build. Narrate the conflict freeform instead.',
+        }),
+    };
 }
 
 function parseAndRoll(expr: string): { total: number; breakdown: string; isD20: boolean } {

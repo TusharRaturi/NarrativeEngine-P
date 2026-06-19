@@ -15,6 +15,22 @@ export type InventoryItem = {
     status?: string;
 };
 
+// Staged inventory change proposed by the GM via the `propose_inventory_change`
+// tool. Bounded labels only — the engine (Phase 7) owns all numbers (damage dice,
+// bonus, AC). `quality` rarity is inlined here rather than referencing the Phase 7
+// `ItemDef['rarity']` so this type stays self-contained until combat lands.
+export type InventoryProposal = {
+    name: string;
+    op: 'grant' | 'remove' | 'equip';
+    kind: 'weapon' | 'armor' | 'consumable' | 'misc';
+    quality: 'common' | 'uncommon' | 'rare' | 'epic' | 'legendary';
+    scalingStat: 'PWR' | 'SPD' | 'WIL';
+    range: 'Close' | 'Reach' | 'Ranged';
+    properties: string[];
+    equip: boolean;
+    description: string;
+};
+
 export type CharacterProfile = {
     name: string;
     race: string;

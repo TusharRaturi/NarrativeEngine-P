@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Send, Save, Loader2, Zap, Scroll, Edit2, X, Square, Trash2, Search } from 'lucide-react';
+import { Send, Save, Loader2, Zap, Scroll, Edit2, X, Square, Trash2, Search, Check, Package } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { runTurn } from '../services/turnOrchestrator';
+import { uid } from '../utils/uid';
+import type { InventoryProposal, InventoryItem, InventoryItemCategory } from '../types';
 import { set } from 'idb-keyval';
 import { toast } from './Toast';
 import { debouncedSaveCampaignState } from '../store/slices/campaignSlice';
@@ -66,6 +68,8 @@ export function ChatArea() {
     const [loadStep, setLoadStep] = useState(10);
     const [isSaving, setIsSaving] = useState(false);
     const [showPCCreator, setShowPCCreator] = useState(false);
+    // Phase 6: GM-proposed inventory change awaiting user confirmation.
+    const [pendingProposal, setPendingProposal] = useState<InventoryProposal | null>(null);
     const deepArmed = useAppStore(s => s.deepArmed);
     const setDeepArmed = useAppStore(s => s.setDeepArmed);
     const composerInjection = useAppStore(s => s.composerInjection);
@@ -198,6 +202,7 @@ export function ChatArea() {
             setOnStageNpcIds: storeSnapshot.setOnStageNpcIds,
             archiveNPC: storeSnapshot.archiveNPC,
             restoreNPC: storeSnapshot.restoreNPC,
+            stageInventoryProposal: (proposal) => setPendingProposal(proposal),
         }, abortControllerRef.current);
 
         if (activeCampaignId) {
@@ -230,6 +235,43 @@ export function ChatArea() {
         onAfterEdit: (text) => handleSend(text),
         onAfterRegenerate: (text) => handleSend(text),
     });
+
+    // Phase 6: apply a confirmed GM inventory proposal as a real delta on the ledger.
+    const applyInventoryProposal = (p: InventoryProposal) => {
+        const store = useAppStore.getState();
+        const items = store.inventoryItems ?? [];
+        const lastScene = archiveIndex.length > 0 ? archiveIndex[archiveIndex.length - 1].sceneId : '000';
+        const findByName = () => items.find(it => it.name.toLowerCase() === p.name.toLowerCase());
+
+        if (p.op === 'remove') {
+            const target = findByName();
+            if (target) { store.removeInventoryItem(target.id); toast.info(`Removed ${p.name}`); }
+            else toast.warning(`"${p.name}" not found in inventory`);
+        } else if (p.op === 'equip') {
+            const target = findByName();
+            if (target) { store.updateInventoryItem(target.id, { equipped: true }); toast.success(`Equipped ${p.name}`); }
+            else toast.warning(`"${p.name}" not found to equip`);
+        } else {
+            const category: InventoryItemCategory = p.kind === 'weapon' ? 'weapon'
+                : p.kind === 'armor' ? 'armor'
+                : p.kind === 'consumable' ? 'consumable'
+                : 'misc';
+            const newItem: InventoryItem = {
+                id: uid(),
+                name: p.name,
+                qty: 1,
+                category,
+                keywords: p.name.toLowerCase().split(/\s+/).filter(w => w.length > 2),
+                equipped: p.equip,
+                lastUsedScene: lastScene,
+                importance: 5,
+                notes: [p.description, p.properties.length ? `(${p.properties.join(', ')})` : ''].filter(Boolean).join(' '),
+            };
+            store.addInventoryItem(newItem);
+            toast.success(`Added ${p.name}`);
+        }
+        setPendingProposal(null);
+    };
 
     const handleStop = () => {
         if (abortControllerRef.current) {
@@ -438,6 +480,35 @@ export function ChatArea() {
             </div>
 
             <div className="flex-shrink-0 bg-void border-t border-border">
+                {pendingProposal && (
+                    <div className="bg-amber-500/10 border-b border-amber-500/40 px-4 py-2 flex items-center justify-between gap-3">
+                        <span className="text-amber-400 text-[11px] font-mono flex items-center gap-2 min-w-0">
+                            <Package size={13} className="shrink-0" />
+                            <span className="truncate">
+                                GM proposes:{' '}
+                                <span className="font-bold uppercase">{pendingProposal.op}</span>{' '}
+                                <span className="text-text-primary">{pendingProposal.name}</span>
+                                {pendingProposal.op === 'grant' && (
+                                    <span className="text-text-dim"> ({pendingProposal.quality} {pendingProposal.kind})</span>
+                                )}
+                            </span>
+                        </span>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                                onClick={() => applyInventoryProposal(pendingProposal)}
+                                className="flex items-center gap-1 bg-green-900/30 border border-green-600 text-green-400 hover:bg-green-900/50 text-[10px] uppercase tracking-wider px-2 py-1 rounded-sm transition-colors"
+                            >
+                                <Check size={12} /> Apply
+                            </button>
+                            <button
+                                onClick={() => setPendingProposal(null)}
+                                className="flex items-center gap-1 text-text-dim hover:text-text-primary border border-border hover:border-text-dim text-[10px] uppercase tracking-wider px-2 py-1 rounded-sm transition-colors"
+                            >
+                                <X size={12} /> Dismiss
+                            </button>
+                        </div>
+                    </div>
+                )}
                 {editingMessageId && (
                     <div className="bg-terminal/10 border-b border-border px-4 py-2 flex items-center justify-between">
                         <span className="text-terminal text-[11px] uppercase tracking-wider font-bold flex items-center gap-2">

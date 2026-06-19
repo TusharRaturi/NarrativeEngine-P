@@ -1,12 +1,12 @@
 import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from './condenser';
 import { useAppStore } from '../store/useAppStore';
-import type { AppSettings, GameContext, ChatMessage, NPCEntry, LoreChunk, CondenserState, ArchiveIndexEntry, TimelineEvent, EndpointConfig, ProviderConfig, ArchiveChapter, SamplingConfig, PipelinePhase, DivergenceRegister, ThinkingEffort } from '../types';
+import type { AppSettings, GameContext, ChatMessage, NPCEntry, LoreChunk, CondenserState, ArchiveIndexEntry, TimelineEvent, EndpointConfig, ProviderConfig, ArchiveChapter, SamplingConfig, PipelinePhase, DivergenceRegister, ThinkingEffort, InventoryProposal } from '../types';
 import { uid } from '../utils/uid';
 import { buildPayload, sendMessage } from './chatEngine';
 import { rollEngines, rollDiceFairness } from './engineRolls';
 import { toast } from '../components/Toast';
 import { sanitizePayloadForApi } from './lib/payloadSanitizer';
-import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool } from './toolHandlers';
+import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool, handleProposeInventoryTool, handleInitiateCombatTool } from './toolHandlers';
 import { gatherContext } from './contextGatherer';
 import { runPostTurnPipeline } from './postTurnPipeline';
 
@@ -29,6 +29,9 @@ export type TurnCallbacks = {
     setOnStageNpcIds?: (ids: string[]) => void;
     archiveNPC: (id: string, turn: number, reason: string) => void;
     restoreNPC: (id: string) => void;
+    /** Stage a GM-proposed inventory change for user confirmation (Phase 6). The
+     *  proposal does not mutate inventory until the user confirms it in the UI. */
+    stageInventoryProposal?: (proposal: InventoryProposal) => void;
 };
 
 export type TurnState = {
@@ -199,7 +202,7 @@ export async function runTurn(
         const requestPayload = sanitizePayloadForApi(currentPayload, allowTools, provider?.modelName);
 
         const allowDiceTool = context.diceFairnessActive === false;
-        const tools = allowTools ? getToolDefinitions({ allowDiceTool }) : undefined;
+        const tools = allowTools ? getToolDefinitions({ allowDiceTool, combatModeActive: context.combatModeActive }) : undefined;
 
         callbacks.setPipelinePhase?.('generating');
         callbacks.setLoadingStatus?.(null);
@@ -361,6 +364,116 @@ export async function runTurn(
                     currentPayload.push({
                         role: 'tool',
                         content: diceResult,
+                        name: toolCall.name,
+                        tool_call_id: toolCall.id
+                    } as unknown as import('./chatEngine').OpenAIMessage);
+
+                    retryTimer = setTimeout(() => {
+                        retryTimer = null;
+                        if (abortController.signal.aborted) return;
+                        executeTurn(currentPayload, toolCallCount + 1, 0, assistantMsgId);
+                    }, 800);
+                    return;
+                }
+
+                if (toolCall && toolCall.name === 'propose_inventory_change') {
+                    const invEngineText = sceneNumber
+                        ? `Scene #${sceneNumber} | ${stripLLMSceneHeader(finalText)}`
+                        : finalText;
+                    accumulatedContent = accumulatedContent
+                        ? `${accumulatedContent}\n\n${stripLLMSceneHeader(finalText)}`
+                        : invEngineText;
+                    callbacks.updateLastAssistant(accumulatedContent);
+
+                    callbacks.updateLastMessage({
+                        tool_calls: [{
+                            id: toolCall.id,
+                            type: 'function' as const,
+                            function: { name: toolCall.name, arguments: toolCall.arguments }
+                        }],
+                        ...(reasoningContent ? { reasoning_content: reasoningContent } : {})
+                    });
+
+                    currentPayload.push({
+                        role: 'assistant',
+                        content: invEngineText || "",
+                        reasoning_content: reasoningContent || undefined,
+                        tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
+                    } as unknown as import('./chatEngine').OpenAIMessage);
+
+                    const { toolResult: invResult, proposal } = handleProposeInventoryTool(toolCall.arguments);
+                    callbacks.stageInventoryProposal?.(proposal);
+
+                    const toolMsgId = uid();
+                    callbacks.addMessage({
+                        id: toolMsgId,
+                        role: 'tool' as const,
+                        content: invResult,
+                        timestamp: Date.now(),
+                        name: toolCall.name,
+                        tool_call_id: toolCall.id,
+                        ephemeral: true
+                    });
+
+                    currentPayload.push({
+                        role: 'tool',
+                        content: invResult,
+                        name: toolCall.name,
+                        tool_call_id: toolCall.id
+                    } as unknown as import('./chatEngine').OpenAIMessage);
+
+                    retryTimer = setTimeout(() => {
+                        retryTimer = null;
+                        if (abortController.signal.aborted) return;
+                        executeTurn(currentPayload, toolCallCount + 1, 0, assistantMsgId);
+                    }, 800);
+                    return;
+                }
+
+                if (toolCall && toolCall.name === 'initiate_combat') {
+                    // Phase 6 stub: combat engine is Phase 7. The handler defers gracefully
+                    // (returns "not available") and we do NOT flip combatModeActive — the turn
+                    // continues narratively without erroring on the tool call.
+                    const combatEngineText = sceneNumber
+                        ? `Scene #${sceneNumber} | ${stripLLMSceneHeader(finalText)}`
+                        : finalText;
+                    accumulatedContent = accumulatedContent
+                        ? `${accumulatedContent}\n\n${stripLLMSceneHeader(finalText)}`
+                        : combatEngineText;
+                    callbacks.updateLastAssistant(accumulatedContent);
+
+                    callbacks.updateLastMessage({
+                        tool_calls: [{
+                            id: toolCall.id,
+                            type: 'function' as const,
+                            function: { name: toolCall.name, arguments: toolCall.arguments }
+                        }],
+                        ...(reasoningContent ? { reasoning_content: reasoningContent } : {})
+                    });
+
+                    currentPayload.push({
+                        role: 'assistant',
+                        content: combatEngineText || "",
+                        reasoning_content: reasoningContent || undefined,
+                        tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
+                    } as unknown as import('./chatEngine').OpenAIMessage);
+
+                    const { toolResult: combatResult } = handleInitiateCombatTool(toolCall.arguments);
+
+                    const toolMsgId = uid();
+                    callbacks.addMessage({
+                        id: toolMsgId,
+                        role: 'tool' as const,
+                        content: combatResult,
+                        timestamp: Date.now(),
+                        name: toolCall.name,
+                        tool_call_id: toolCall.id,
+                        ephemeral: true
+                    });
+
+                    currentPayload.push({
+                        role: 'tool',
+                        content: combatResult,
                         name: toolCall.name,
                         tool_call_id: toolCall.id
                     } as unknown as import('./chatEngine').OpenAIMessage);

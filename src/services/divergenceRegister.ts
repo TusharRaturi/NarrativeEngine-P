@@ -110,7 +110,8 @@ export function renderRegisterForPayload(
     register: DivergenceRegister,
     chapters?: import('../types').ArchiveChapter[],
     onStageNpcIds?: string[],
-    npcLedger?: NPCEntry[]
+    npcLedger?: NPCEntry[],
+    publicOnly = false
 ): string {
     if (register.entries.length === 0) return '';
 
@@ -122,6 +123,12 @@ export function renderRegisterForPayload(
     }
 
     const activeEntries = register.entries.filter(e => {
+        // Cached-canon path (publicOnly) renders ONLY broadcast facts. Scoped facts
+        // (knownBy defined, incl. pinned ones) are withheld from the cached prefix and
+        // surfaced per-turn in the [FACTS KNOWN TO ON-STAGE CHARACTERS] world block
+        // instead. "Is knownBy defined" is a static fact property → cast-independent →
+        // cache-safe: the cached block stays byte-identical when only the cast changes.
+        if (publicOnly && e.knownBy !== undefined) return false;
         if (e.enabled === false) return false;
         if (e.pinned) return true;
         const chapterOn = register.chapterToggles[e.chapterId] !== false;
