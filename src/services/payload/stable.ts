@@ -86,7 +86,10 @@ export function buildStable(opts: {
     if (context.continuePromptActive && context.continuePrompt) stableParts.push(context.continuePrompt);
 
     // Only inject if using a known reasoning/thinking model (DeepSeek-R1, Qwen QwQ, etc.)
-    const modelName = (settings as any).presets?.find?.((p: any) => p.id === (settings as any).activePresetId)?.storyAI?.modelName ?? '';
+    const activePreset: any = (settings as any).presets?.find?.((p: any) => p.id === (settings as any).activePresetId);
+    const storyProviderId: string | undefined = activePreset?.storyAIProviderId;
+    const storyProvider: any = storyProviderId ? (settings as any).providers?.find?.((p: any) => p.id === storyProviderId) : undefined;
+    const modelName = storyProvider?.modelName ?? activePreset?.storyAI?.modelName ?? '';
     const isReasoningModel = /deepseek-r|qwq|qwen.*think|r1/i.test(modelName);
     if (isReasoningModel) {
         stableParts.push("IMPORTANT: If you use a 'thinking' or 'reasoning' block (<think>...</think>), you MUST still provide the full narrative response AFTER the closing tag. Never end a turn with only a thinking block.");

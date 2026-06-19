@@ -2,6 +2,9 @@ import type { EndpointConfig, ProviderConfig, SamplingConfig, ThinkingEffort } f
 import { uid } from '../utils/uid';
 import { getQueueForEndpoint } from './llmRequestQueue';
 import { getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, getApiFormat, extractStreamDelta, extractStreamToolCall } from '../utils/llmApiHelper';
+import { recordCacheUsage, type LLMUsage } from './cacheTelemetry';
+
+const STORY_LABEL = 'story-generation';
 
 export type OpenAIMessage = {
     role: 'system' | 'user' | 'assistant' | 'tool';
@@ -68,6 +71,7 @@ export async function sendMessage(
             let buffer = '';
             let fullText = '';
             let reasoningContent = '';
+            let streamUsage: LLMUsage | undefined;
 
             let tcId = '';
             let tcName = '';
@@ -128,6 +132,9 @@ export async function sendMessage(
 
                         try {
                             const parsed = JSON.parse(data);
+                            // DeepSeek/OpenAI emit a trailing chunk (choices:[]) carrying usage
+                            // when stream_options.include_usage is set.
+                            if (parsed.usage) streamUsage = parsed.usage as LLMUsage;
                             const delta = parsed.choices?.[0]?.delta;
 
                             if (delta?.content) {
@@ -188,6 +195,8 @@ export async function sendMessage(
                     onChunk(fullText);
                 }
             }
+
+            recordCacheUsage(STORY_LABEL, streamUsage);
 
             if (tcName) {
                 onDone(fullText, { id: tcId, name: tcName, arguments: tcArgs }, reasoningContent || undefined);

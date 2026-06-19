@@ -2,6 +2,7 @@ import type { EndpointConfig, ProviderConfig, ThinkingEffort } from '../types';
 import { getQueueForEndpoint, type LLMCallPriority } from '../services/llmRequestQueue';
 import { getApiFormat, getChatUrl, buildChatHeaders, buildChatBody, extractContent } from './llmApiHelper';
 import { startUtilityCall } from '../services/utilityCallTracker';
+import { recordCacheUsage, type LLMUsage } from '../services/cacheTelemetry';
 
 const MAX_RETRIES = 3;
 const DEFAULT_RETRY_DELAY_MS = 300;
@@ -84,6 +85,7 @@ async function runInner(
         temperature?: number;
         priority?: LLMCallPriority;
         thinkingEffort?: ThinkingEffort;
+        trackingLabel?: string;
     },
 ): Promise<string> {
     const url = getChatUrl(provider);
@@ -132,6 +134,9 @@ async function runInner(
                 throw new Error(`LLM API error ${res.status}: ${errBody} (max_tokens=${opts?.maxTokens ?? 'default'}, thinkingEffort=${resolvedEffort ?? 'default'})`);
             }
             const data = await res.json();
+            if (opts?.trackingLabel) {
+                recordCacheUsage(opts.trackingLabel, (data as { usage?: LLMUsage }).usage);
+            }
             return extractContent(data, provider);
         }
 

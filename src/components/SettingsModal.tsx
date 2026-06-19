@@ -1,10 +1,26 @@
+import { useState } from 'react';
 import { X } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import { ProvidersTab } from './settings-modal/ProvidersTab';
 import { PresetsTab } from './settings-modal/PresetsTab';
 import { GlobalSettingsTab } from './settings-modal/GlobalSettingsTab';
+import { AdvancedTab } from './settings-modal/AdvancedTab';
+import { DebugTab } from './settings-modal/DebugTab';
+
+type TabKey = 'providers' | 'presets' | 'global' | 'advanced' | 'debug';
+
+const TABS: { key: TabKey; label: string }[] = [
+  { key: 'providers', label: 'Providers' },
+  { key: 'presets', label: 'Presets' },
+  { key: 'global', label: 'Global' },
+  { key: 'advanced', label: 'Advanced' },
+  { key: 'debug', label: 'Debug' },
+];
 
 export function SettingsModal() {
-  const { settingsOpen, toggleSettings } = useAppStore();
+  const settingsOpen = useAppStore(s => s.settingsOpen);
+  const toggleSettings = useAppStore(s => s.toggleSettings);
+  const [activeTab, setActiveTab] = useState<TabKey>('providers');
 
   if (!settingsOpen) return null;
 
@@ -14,7 +30,7 @@ export function SettingsModal() {
       <div className="absolute inset-0 bg-ember/40 backdrop-blur-sm" onClick={toggleSettings} />
 
       {/* Panel */}
-      <div className="relative bg-surface border border-border w-full h-full sm:h-[85vh] sm:max-w-xl sm:mx-4 flex flex-col shadow-2xl overflow-hidden">
+      <div className="relative bg-surface border border-border w-full h-full sm:h-[75vh] sm:max-w-[75vw] sm:mx-4 flex flex-col shadow-2xl overflow-hidden">
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-border shrink-0 bg-void z-10">
           <h2 className="text-terminal text-sm font-bold tracking-[0.2em] uppercase glow-green">
             ⚙ SETTINGS
@@ -24,9 +40,30 @@ export function SettingsModal() {
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-20">
-          <PresetsTab />
-          <GlobalSettingsTab />
+        {/* Tabs */}
+        <div className="flex border-b border-border shrink-0 bg-void">
+          {TABS.map(({ key, label }) => (
+            <button
+              key={key}
+              onClick={() => setActiveTab(key)}
+              className={`flex-1 px-3 py-2 text-[11px] uppercase tracking-wider transition-all border-b-2 -mb-px ${
+                activeTab === key
+                  ? 'text-terminal border-terminal bg-terminal/5 font-bold'
+                  : 'text-text-dim border-transparent hover:text-text-primary'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {/* Active tab content */}
+        <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-20 relative">
+          <div className={activeTab !== 'providers' ? 'hidden' : ''}><ProvidersTab /></div>
+          <div className={activeTab !== 'presets' ? 'hidden' : ''}><PresetsTab /></div>
+          <div className={activeTab !== 'global' ? 'hidden' : ''}><GlobalSettingsTab /></div>
+          <div className={activeTab !== 'advanced' ? 'hidden' : ''}><AdvancedTab /></div>
+          <div className={activeTab !== 'debug' ? 'hidden' : ''}><DebugTab /></div>
         </div>
       </div>
     </div>

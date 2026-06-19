@@ -85,6 +85,10 @@ export function getActiveProvider() {
     return ACTIVE_PROVIDER;
 }
 
+export function getActiveModelId() {
+    return MODEL_ID;
+}
+
 export function buildArchiveText(indexEntry) {
     const parts = [];
     if (indexEntry.witnesses?.length) parts.push(indexEntry.witnesses.join(' '));

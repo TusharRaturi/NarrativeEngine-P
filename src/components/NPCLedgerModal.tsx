@@ -214,8 +214,7 @@ export function NPCLedgerModal() {
     // ── Portrait / AI ────────────────────────────────────────────────────
     const handleGeneratePortrait = async () => {
         const state = useAppStore.getState();
-        const activePreset = state.settings.presets.find((p: any) => p.id === state.settings.activePresetId) || state.settings.presets[0];
-        const imageConfig = activePreset?.imageAI;
+        const imageConfig = state.getActiveImageEndpoint();
         if (!imageConfig || !imageConfig.endpoint) { alert('Image AI endpoint is not configured in Settings.'); return; }
 
         setIsGeneratingImage(true);

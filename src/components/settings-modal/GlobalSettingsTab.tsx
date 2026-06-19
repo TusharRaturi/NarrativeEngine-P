@@ -1,68 +1,8 @@
-import { useState } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
-import { getEmbeddingStatus, runBackfill } from '../../services/backfillRunner';
-import { api } from '../../services/apiClient';
-import { toast } from '../Toast';
 import { VaultSection } from './VaultSection';
 
 export function GlobalSettingsTab() {
   const { settings, updateSettings } = useAppStore();
-
-  const [reindexing, setReindexing] = useState(false);
-  const [reindexStatus, setReindexStatus] = useState('');
-  const [embedStatus, setEmbedStatus] = useState<import('../../services/backfillRunner').BackfillStatus | null>(null);
-  const [rebuildingRules, setRebuildingRules] = useState(false);
-
-  const handleReindex = async () => {
-    const campaignId = useAppStore.getState().activeCampaignId;
-    if (!campaignId) {
-      toast.error('No active campaign');
-      return;
-    }
-    setReindexing(true);
-    setReindexStatus('Loading status...');
-    try {
-      const status = await getEmbeddingStatus(campaignId);
-      setEmbedStatus(status);
-      if (status.scenes.stale === 0 && status.lore.stale === 0) {
-        toast.info('All embeddings are up to date');
-        setReindexing(false);
-        return;
-      }
-      setReindexStatus('Re-indexing...');
-      const result = await runBackfill(campaignId, 'all', (msg) => setReindexStatus(msg));
-      setEmbedStatus(result.status);
-      toast.success(`Re-indexed ${result.reindexedScenes} scenes, ${result.reindexedLore} lore chunks`);
-    } catch (err) {
-      toast.error(`Re-index failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
-      setReindexing(false);
-      setReindexStatus('');
-    }
-  };
-
-  const handleRebuildRules = async () => {
-    const campaignId = useAppStore.getState().activeCampaignId;
-    if (!campaignId) {
-      toast.error('No active campaign');
-      return;
-    }
-    setRebuildingRules(true);
-    try {
-      toast.info('Rebuilding rules embeddings...');
-      const res = await api.rules.reindex(campaignId);
-      if (res) {
-        toast.success(`Successfully rebuilt ${res.totalChunks} rule chunks`);
-      } else {
-        toast.error('Rebuild failed');
-      }
-    } catch (err) {
-      toast.error(`Rebuild failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
-    } finally {
-      setRebuildingRules(false);
-    }
-  };
 
   return (
     <div className="mt-8 pt-6 border-t border-border space-y-6">
@@ -233,34 +173,6 @@ export function GlobalSettingsTab() {
         </button>
       </div>
 
-      {/* Re-index Embeddings */}
-      <div className="bg-void p-3 border border-border rounded space-y-2">
-        <div>
-          <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">
-            Re-index Embeddings
-          </label>
-          <p className="text-[9px] text-text-dim max-w-[280px] leading-tight">
-            Re-embeds stale or unversioned scene and lore vectors. Use after changing embedding models or if semantic search seems off.
-          </p>
-        </div>
-        <button
-          id="reindex-embeddings-btn"
-          disabled={reindexing}
-          onClick={handleReindex}
-          className="text-[10px] uppercase tracking-widest bg-terminal/10 border border-terminal/30 text-terminal px-3 py-1.5 rounded hover:bg-terminal/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-        >
-          {reindexing ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
-          {reindexing ? (reindexStatus || 'Re-indexing...') : 'Re-index Now'}
-        </button>
-        {embedStatus && !reindexing && (
-          <div className="text-[9px] text-text-dim">
-            Scenes: {embedStatus.scenes.current}/{embedStatus.scenes.total} current · Lore: {embedStatus.lore.current}/{embedStatus.lore.total} current
-            {embedStatus.scenes.stale > 0 && ` · ${embedStatus.scenes.stale + embedStatus.lore.stale} stale`}
-            {` (v${embedStatus.version})`}
-          </div>
-        )}
-      </div>
-
       {/* Rules RAG Preferences */}
       <div className="bg-void p-3 border border-border rounded space-y-3">
         <div>
@@ -335,26 +247,6 @@ export function GlobalSettingsTab() {
             }}
             className="w-full h-7 bg-surface border border-border rounded px-2 text-xs text-text font-mono focus:outline-none focus:border-terminal"
           />
-        </div>
-
-        {/* Rebuild Rules Embeddings Button */}
-        <div className="pt-2 border-t border-border/30 flex items-center justify-between">
-          <div>
-            <label className="block text-[10px] text-text-primary uppercase tracking-wider font-bold mb-0.5">
-              Rebuild Rules Embeddings
-            </label>
-            <p className="text-[9px] text-text-dim max-w-[200px] leading-tight">
-              Manually parse and re-embed rules markdown.
-            </p>
-          </div>
-          <button
-            disabled={rebuildingRules}
-            onClick={handleRebuildRules}
-            className="text-[10px] uppercase tracking-widest bg-terminal/10 border border-terminal/30 text-terminal px-3 py-1.5 rounded hover:bg-terminal/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
-          >
-            {rebuildingRules ? <Loader2 size={10} className="animate-spin" /> : <RefreshCw size={10} />}
-            {rebuildingRules ? 'Rebuilding...' : 'Rebuild Now'}
-          </button>
         </div>
       </div>
 
@@ -542,8 +434,17 @@ export function GlobalSettingsTab() {
             ☀ Light
           </button>
           <button
+            onClick={() => updateSettings({ theme: 'system' })}
+            className={`px-4 py-1.5 text-[10px] uppercase tracking-wider border-l border-border transition-colors focus:outline-none ${settings.theme === 'system'
+              ? 'bg-terminal text-surface font-bold'
+              : 'bg-void text-text-dim hover:text-text-primary'
+              }`}
+          >
+            ⚙ System
+          </button>
+          <button
             onClick={() => updateSettings({ theme: 'dark' })}
-            className={`px-4 py-1.5 text-[10px] uppercase tracking-wider transition-colors border-l border-border focus:outline-none ${settings.theme === 'dark'
+            className={`px-4 py-1.5 text-[10px] uppercase tracking-wider border-l border-border focus:outline-none ${settings.theme === 'dark'
               ? 'bg-terminal text-surface font-bold'
               : 'bg-void text-text-dim hover:text-text-primary'
               }`}
@@ -551,6 +452,54 @@ export function GlobalSettingsTab() {
             ☽ Dark
           </button>
         </div>
+      </div>
+
+      {/* UI Scale */}
+      <div className="flex flex-col bg-void p-3 border border-border rounded space-y-2">
+        <div className="flex items-center justify-between">
+          <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold">UI Scale</label>
+          <span className="text-terminal font-bold font-mono bg-terminal/10 px-2 py-0.5 rounded text-[10px]">
+            {Math.round((settings.uiScale ?? 1) * 100)}%
+          </span>
+        </div>
+        <p className="text-[9px] text-text-dim leading-tight">Global zoom. 100% is the default. Changes apply immediately.</p>
+        <div className="flex flex-wrap gap-1.5">
+          {[0.7, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3].map(v => (
+            <button
+              key={v}
+              onClick={() => updateSettings({ uiScale: v })}
+              className={`px-2 py-1 text-[10px] uppercase font-mono border rounded transition-colors focus:outline-none ${Math.round((settings.uiScale ?? 1) * 100) === Math.round(v * 100) ? 'bg-terminal text-void border-terminal' : 'bg-surface border-border text-text-dim hover:text-text-primary hover:border-text-dim'}`}
+            >
+              {Math.round(v * 100)}%
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Image Style Prompt */}
+      <div className="flex flex-col bg-void p-3 border border-border rounded">
+        <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">Image Style Prompt</label>
+        <p className="text-[9px] text-text-dim mb-2 leading-tight">Prepended to every illustration request. Leave empty for the default style scaffold.</p>
+        <input
+          type="text"
+          value={settings.imageStylePrompt || ''}
+          onChange={(e) => updateSettings({ imageStylePrompt: e.target.value })}
+          placeholder="e.g. oil painting, fantasy art, dark atmosphere"
+          className="w-full bg-surface border border-border px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/40 focus:border-terminal focus:outline-none"
+        />
+      </div>
+
+      {/* Image Negative Prompt */}
+      <div className="flex flex-col bg-void p-3 border border-border rounded">
+        <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">Image Negative Prompt</label>
+        <p className="text-[9px] text-text-dim mb-2 leading-tight">Elements to exclude from generated images. Only supported by some models (e.g. DALL-E 2, Stable Diffusion).</p>
+        <input
+          type="text"
+          value={settings.imageNegativePrompt || ''}
+          onChange={(e) => updateSettings({ imageNegativePrompt: e.target.value })}
+          placeholder="e.g. text, watermark, blurry, deformed"
+          className="w-full bg-surface border border-border px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/40 focus:border-terminal focus:outline-none"
+        />
       </div>
 
       {/* Vault Export/Import */}

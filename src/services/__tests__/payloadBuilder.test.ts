@@ -714,10 +714,11 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
         const reasoningSettings = {
             ...baseSettings(),
             activePresetId: 'preset_reasoning',
+            providers: [{ id: 'prov_reasoning', modelName: 'deepseek-r1-distill-llama-70b' }],
             presets: [
                 {
                     id: 'preset_reasoning',
-                    storyAI: { modelName: 'deepseek-r1-distill-llama-70b' },
+                    storyAIProviderId: 'prov_reasoning',
                 },
             ],
         } as unknown as AppSettings;
@@ -732,10 +733,11 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
         const reasoningSettings = {
             ...baseSettings(),
             activePresetId: 'preset_qwq',
+            providers: [{ id: 'prov_qwq', modelName: 'QwQ-32B-Preview' }],
             presets: [
                 {
                     id: 'preset_qwq',
-                    storyAI: { modelName: 'QwQ-32B-Preview' },
+                    storyAIProviderId: 'prov_qwq',
                 },
             ],
         } as unknown as AppSettings;

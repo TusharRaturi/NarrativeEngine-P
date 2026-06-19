@@ -1,5 +1,6 @@
 import type { SceneStakes, EndpointConfig, ProviderConfig } from '../../types';
 import { llmCall } from '../../utils/llmCall';
+import { recordSceneStakesFallback } from '../sceneStakesTelemetry';
 
 // Phase 2 port: mobile used a shared infrastructure/utilityPrompts module for these constant
 // sections; desktop has no equivalent shared module. Inlined here (small + only used by this
@@ -12,12 +13,6 @@ const INPUT_DELIMITER = '----- INPUT -----';
 
 function joinPromptSections(...sections: Array<string | null | undefined>): string {
     return sections.filter(Boolean).join('\n\n');
-}
-
-// Telemetry: desktop has no sceneStakesFallback telemetry module. Stubbed as a no-op for the
-// faithful port — tracked as a follow-up if we want to surface the fallback count in the UI.
-function recordSceneStakesFallback(): void {
-    // no-op
 }
 
 const SCENE_STAKES_RE = /\[\[SCENE_STAKES:\s*(calm|tense|dangerous)\s*\]\]/i;

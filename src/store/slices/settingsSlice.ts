@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand';
-import type { AppSettings, ProviderConfig, AIPreset, EndpointConfig } from '../../types';
+import type { AppSettings, LLMProvider, AIPreset, ApiFormat, AiTier } from '../../types';
 import { get as idbGet, set as idbSet } from 'idb-keyval';
-import { encryptSettingsPresets, decryptSettingsPresets } from '../../services/settingsCrypto';
+import { encryptSettingsProviders, decryptSettingsProviders, decryptSettingsPresets } from '../../services/settingsCrypto';
 import { uid } from '../../utils/uid';
 import { toast } from '../../components/Toast';
 import { api } from '../../services/apiClient';
@@ -58,27 +58,30 @@ export const DEFAULT_WORLD_WHAT = [
 
 // ── Internal helpers ───────────────────────────────────────────────────
 
+export const defaultProvider: LLMProvider = {
+    id: uid(),
+    label: 'Default',
+    endpoint: 'http://localhost:11434/v1',
+    apiKey: '',
+    modelName: 'llama3',
+    apiFormat: 'openai',
+    streamingEnabled: true,
+};
+
 export const defaultPreset: AIPreset = {
     id: uid(),
     name: 'Default Setting',
-    storyAI: {
-        endpoint: 'http://localhost:11434/v1',
-        apiKey: '',
-        modelName: 'llama3',
-    },
-    imageAI: { endpoint: '', apiKey: '', modelName: '' },
-    summarizerAI: {
-        endpoint: 'http://localhost:11434/v1',
-        apiKey: '',
-        modelName: 'llama3',
-    },
-    utilityAI: { endpoint: '', apiKey: '', modelName: '' },
-    auxiliaryAI: { endpoint: '', apiKey: '', modelName: '' }
+    storyAIProviderId: defaultProvider.id,
+    summarizerAIProviderId: defaultProvider.id,
+    utilityAIProviderId: '',
+    auxiliaryAIProviderId: '',
+    imageAIProviderId: '',
 };
 
 export const defaultSettings: AppSettings = {
     presets: [defaultPreset],
     activePresetId: defaultPreset.id,
+    providers: [defaultProvider],
     contextLimit: 4096,
     debugMode: false,
     theme: 'light',
@@ -96,95 +99,220 @@ export const defaultSettings: AppSettings = {
     enableArchivePlanner: false,
     retrievalAlgorithm: 'idf-rrf',
     archiveRecallDepth: 'standard',
+    uiScale: 1.0,
+    imageStylePrompt: '',
+    imageNegativePrompt: '',
 };
 
-export function applyTheme(theme: 'light' | 'dark') {
-    document.documentElement.setAttribute('data-theme', theme);
+export function applyTheme(theme: 'light' | 'dark' | 'system') {
+    const resolved = theme === 'system' ? systemTheme() : theme;
+    document.documentElement.setAttribute('data-theme', resolved);
 }
 
-/** Migrate old single-provider/multi-provider settings to presets format */
+export function systemTheme(): 'light' | 'dark' {
+    return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+
+export function applyUIScale(scale: number): void {
+    const html = document.documentElement;
+    html.style.setProperty('--ui-scale', String(scale));
+    html.style.zoom = scale !== 1 ? String(scale) : '';
+}
+
+// Re-apply theme when the OS preference changes (only meaningful while theme === 'system').
+if (typeof window !== 'undefined' && window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+        try {
+            // Lazy import avoids a circular dependency with useAppStore.
+            import('../useAppStore').then(({ useAppStore }) => {
+                const current = useAppStore.getState()?.settings?.theme ?? 'light';
+                if (current === 'system') applyTheme('system');
+            });
+        } catch { /* store not ready — ignore */ }
+    });
+}
+
+/**
+ * Migrate settings to the two-tier (providers[] + presets with *AIProviderId) model.
+ * Handles three input shapes:
+ *  1. Already two-tier (has providers[] + presets with *AIProviderId) — pass through.
+ *  2. Old inline-config presets (presets with storyAI/imageAI EndpointConfig objects) —
+ *     extract unique configs into providers[] and rewrite presets to reference by id.
+ *  3. Pre-preset legacy (providers?/endpoint/apiKey/modelName) — synthesize one provider + preset.
+ */
 export function migrateSettings(data: Record<string, unknown>): AppSettings {
-    const raw = (data.settings || {}) as Record<string, unknown>;
+    const raw = (data.settings || data) as Record<string, unknown>;
 
-    // Already migrated -- has presets array
-    if (Array.isArray(raw.presets) && raw.presets.length > 0) {
+    const providers: LLMProvider[] = [];
+    const providerIdMap = new Map<string, string>();
+
+    function normalizeProviderConfig(config: any): LLMProvider | null {
+        if (!config || typeof config !== 'object') return null;
+        const endpoint = (config.endpoint ?? '').trim();
+        if (!endpoint) return null;
         return {
-            presets: raw.presets as AIPreset[],
-            activePresetId: (raw.activePresetId as string) || (raw.presets as AIPreset[])[0].id,
-            contextLimit: (raw.contextLimit as number) ?? 4096,
-            debugMode: (raw.debugMode as boolean) ?? false,
-            theme: (raw.theme as 'light' | 'dark') ?? 'light',
-            showReasoning: (raw.showReasoning as boolean) ?? true,
-            deepContextSearch: (raw.deepContextSearch as boolean) ?? false,
-            autoExtractDivergences: (raw.autoExtractDivergences as boolean) ?? true,
-            divergenceTokenBudget: (raw.divergenceTokenBudget as number) ?? 2000,
-            divergenceScanBudget: (raw.divergenceScanBudget as number) ?? 0,
-            autoCondenseEnabled: (raw.autoCondenseEnabled as boolean) ?? true,
-            condenseAggressiveness: (raw.condenseAggressiveness as 'tight' | 'smart' | 'deep') ?? 'smart',
-            autoArchiveStaleNPCsTurns: (raw.autoArchiveStaleNPCsTurns as number) ?? 0,
-            rulesBudgetPct: (raw.rulesBudgetPct as number) ?? 0.10,
-            autoGenerateRuleKeywords: (raw.autoGenerateRuleKeywords as boolean) ?? true,
-            utilityTimeoutSeconds: (raw.utilityTimeoutSeconds as number) ?? 45,
-            verboseUtilityLogging: raw.verboseUtilityLogging as boolean,
-            enableArchivePlanner: (raw.enableArchivePlanner as boolean) ?? false,
-            retrievalAlgorithm: (raw.retrievalAlgorithm as 'classic' | 'idf-rrf') ?? 'idf-rrf',
-            archiveRecallDepth: (raw.archiveRecallDepth as 'lean' | 'standard' | 'deep') ?? 'standard',
+            id: config.id || uid(),
+            label: config.label || config.modelName || 'Provider',
+            endpoint,
+            apiKey: config.apiKey ?? '',
+            modelName: (config.modelName ?? '').trim() || 'model',
+            streamingEnabled: config.streamingEnabled ?? true,
+            apiFormat: config.apiFormat || 'openai',
+            thinkingEffort: config.thinkingEffort,
         };
     }
 
-    // Migration from old provider structure
-    let migratedStoryProvider: EndpointConfig = { ...defaultPreset.storyAI };
+    function providerKey(p: LLMProvider): string {
+        return `${p.endpoint}|${p.modelName}|${p.apiKey}|${p.apiFormat || 'openai'}`;
+    }
 
-    if (Array.isArray(raw.providers) && raw.providers.length > 0) {
-        const oldActive = (raw.providers as ProviderConfig[]).find(p => p.id === raw.activeProviderId) || (raw.providers as ProviderConfig[])[0];
-        migratedStoryProvider = {
-            endpoint: oldActive.endpoint || defaultPreset.storyAI.endpoint,
-            apiKey: oldActive.apiKey || '',
-            modelName: oldActive.modelName || defaultPreset.storyAI.modelName
-        };
+    function getOrAddProvider(config: any): string {
+        if (!config || typeof config !== 'object') return '';
+        const endpoint = (config.endpoint ?? '').trim();
+        if (!endpoint) return '';
+        const normalized = normalizeProviderConfig(config)!;
+        const key = providerKey(normalized);
+        const existingId = providerIdMap.get(key);
+        if (existingId) return existingId;
+        const provider: LLMProvider = { ...normalized, id: config.id || uid() };
+        providers.push(provider);
+        providerIdMap.set(key, provider.id);
+        return provider.id;
+    }
+
+    function getOrAddProvidersFromRawList(rawProviders: any[]): void {
+        for (const p of rawProviders) {
+            if (!p || typeof p !== 'object') continue;
+            const endpoint = (p.endpoint ?? '').trim();
+            if (!endpoint) continue;
+            const normalized = normalizeProviderConfig(p)!;
+            const key = providerKey(normalized);
+            if (providerIdMap.has(key)) continue;
+            const provider: LLMProvider = { ...normalized, id: p.id || uid() };
+            providers.push(provider);
+            providerIdMap.set(key, provider.id);
+        }
+    }
+
+    // Seed providers from a legacy raw.providers[] if present (old ProviderConfig shape)
+    if (Array.isArray(raw.providers) && (raw.providers as any[]).length > 0) {
+        getOrAddProvidersFromRawList(raw.providers as any[]);
+    }
+
+    let presets: AIPreset[];
+
+    if (Array.isArray(raw.presets) && (raw.presets as any[]).length > 0) {
+        presets = (raw.presets as any[]).map((p: any) => {
+            let storyAIProviderId = p.storyAIProviderId || getOrAddProvider(p.storyAI);
+            if (!storyAIProviderId && providers.length > 0) storyAIProviderId = providers[0].id;
+
+            const summarizerAIProviderId = p.summarizerAIProviderId || getOrAddProvider(p.summarizerAI) || '';
+            const utilityAIProviderId = p.utilityAIProviderId || getOrAddProvider(p.utilityAI) || '';
+            const auxiliaryAIProviderId = p.auxiliaryAIProviderId || getOrAddProvider(p.auxiliaryAI) || '';
+            const imageAIProviderId = p.imageAIProviderId || getOrAddProvider(p.imageAI) || '';
+
+            // Strip legacy inline endpoint configs; keep everything else (id, name, sampling, etc.)
+            const { storyAI, summarizerAI, utilityAI, auxiliaryAI, imageAI, ...presetRest } = p;
+            void storyAI; void summarizerAI; void utilityAI; void auxiliaryAI; void imageAI;
+            return {
+                ...presetRest,
+                storyAIProviderId,
+                summarizerAIProviderId,
+                utilityAIProviderId,
+                auxiliaryAIProviderId,
+                imageAIProviderId,
+            } as AIPreset;
+        });
     } else {
-        migratedStoryProvider = {
-            endpoint: (raw.endpoint as string) || defaultPreset.storyAI.endpoint,
-            apiKey: (raw.apiKey as string) || '',
-            modelName: (raw.modelName as string) || defaultPreset.storyAI.modelName
-        };
+        let storyProvider: LLMProvider;
+        if (Array.isArray(raw.providers) && (raw.providers as any[]).length > 0) {
+            const oldActive = (raw.providers as any[]).find((p: any) => p.id === raw.activeProviderId) || (raw.providers as any[])[0];
+            storyProvider = normalizeProviderConfig(oldActive) || { ...defaultProvider, id: uid() };
+        } else {
+            storyProvider = {
+                id: uid(),
+                label: 'Default',
+                endpoint: (raw.endpoint as string) || defaultProvider.endpoint,
+                apiKey: (raw.apiKey as string) || '',
+                modelName: (raw.modelName as string) || defaultProvider.modelName,
+                apiFormat: (raw.apiFormat as ApiFormat) || 'openai',
+                streamingEnabled: true,
+            };
+        }
+
+        const key = providerKey(storyProvider);
+        let providerId = providerIdMap.get(key);
+        if (!providerId) {
+            providers.push(storyProvider);
+            providerIdMap.set(key, storyProvider.id);
+            providerId = storyProvider.id;
+        }
+
+        const migratedPresetId = uid();
+        presets = [{
+            id: migratedPresetId,
+            name: 'Default Preset',
+            storyAIProviderId: providerId,
+            summarizerAIProviderId: providerId,
+            utilityAIProviderId: '',
+            auxiliaryAIProviderId: '',
+            imageAIProviderId: '',
+        }];
+
+        // Carry over legacy image endpoint config into its own provider if present
+        if (raw.imageApiEndpoint || raw.imageApiKey || raw.imageApiModel) {
+            const imgId = getOrAddProvider({
+                endpoint: raw.imageApiEndpoint,
+                apiKey: raw.imageApiKey,
+                modelName: raw.imageApiModel,
+            });
+            if (imgId) presets[0].imageAIProviderId = imgId;
+        }
     }
 
-    const legacyId = uid();
-    const migratedPreset: AIPreset = {
-        id: legacyId,
-        name: 'Default Preset',
-        storyAI: migratedStoryProvider,
-        imageAI: {
-            endpoint: (raw.imageApiEndpoint as string) || '',
-            apiKey: (raw.imageApiKey as string) || '',
-            modelName: (raw.imageApiModel as string) || '',
-        },
-        summarizerAI: { ...migratedStoryProvider },
-        utilityAI: { endpoint: '', apiKey: '', modelName: '' },
-        auxiliaryAI: { endpoint: '', apiKey: '', modelName: '' }
-    };
+    if (providers.length === 0) {
+        const fallback: LLMProvider = { ...defaultProvider, id: uid() };
+        providers.push(fallback);
+    }
+
+    if (presets.length === 0) {
+        presets = [{ ...defaultPreset, id: uid(), storyAIProviderId: providers[0].id, summarizerAIProviderId: providers[0].id }];
+    }
+
+    for (const preset of presets) {
+        if (!preset.storyAIProviderId && providers.length > 0) {
+            preset.storyAIProviderId = providers[0].id;
+        }
+    }
 
     return {
-        presets: [migratedPreset],
-        activePresetId: legacyId,
+        presets,
+        activePresetId: (raw.activePresetId as string) || presets[0].id,
+        providers,
         contextLimit: (raw.contextLimit as number) ?? 4096,
         debugMode: (raw.debugMode as boolean) ?? false,
-        theme: (raw.theme as 'light' | 'dark') ?? 'light',
+        theme: (raw.theme as 'light' | 'dark' | 'system') ?? 'light',
         showReasoning: (raw.showReasoning as boolean) ?? true,
         deepContextSearch: (raw.deepContextSearch as boolean) ?? false,
         autoExtractDivergences: (raw.autoExtractDivergences as boolean) ?? true,
         divergenceTokenBudget: (raw.divergenceTokenBudget as number) ?? 2000,
         divergenceScanBudget: (raw.divergenceScanBudget as number) ?? 0,
-        autoCondenseEnabled: true,
-        condenseAggressiveness: 'smart',
-        autoArchiveStaleNPCsTurns: 0,
-        rulesBudgetPct: 0.10,
-        autoGenerateRuleKeywords: true,
-        utilityTimeoutSeconds: 45,
-        enableArchivePlanner: false,
-        retrievalAlgorithm: 'idf-rrf',
-        archiveRecallDepth: 'standard',
+        autoCondenseEnabled: (raw.autoCondenseEnabled as boolean) ?? true,
+        condenseAggressiveness: (raw.condenseAggressiveness as 'tight' | 'smart' | 'deep') ?? 'smart',
+        autoArchiveStaleNPCsTurns: (raw.autoArchiveStaleNPCsTurns as number) ?? 0,
+        rulesBudgetPct: (raw.rulesBudgetPct as number) ?? 0.10,
+        autoGenerateRuleKeywords: (raw.autoGenerateRuleKeywords as boolean) ?? true,
+        utilityTimeoutSeconds: (raw.utilityTimeoutSeconds as number) ?? 45,
+        verboseUtilityLogging: raw.verboseUtilityLogging as boolean,
+        enableArchivePlanner: (raw.enableArchivePlanner as boolean) ?? false,
+        retrievalAlgorithm: (raw.retrievalAlgorithm as 'classic' | 'idf-rrf') ?? 'idf-rrf',
+        archiveRecallDepth: (raw.archiveRecallDepth as 'lean' | 'standard' | 'deep') ?? 'standard',
+        matureMode: (raw.matureMode as boolean) ?? false,
+        aiTier: raw.aiTier as AiTier | undefined,
+        uiScale: (raw.uiScale as number) ?? 1.0,
+        embeddingModel: raw.embeddingModel as ('standard' | 'high') | undefined,
+        imageStylePrompt: (raw.imageStylePrompt as string) ?? '',
+        imageNegativePrompt: (raw.imageNegativePrompt as string) ?? '',
     };
 }
 
@@ -193,8 +321,8 @@ let saveTimer: ReturnType<typeof setTimeout> | null = null;
 export function debouncedSaveSettings(settings: AppSettings, activeCampaignId: string | null) {
     if (saveTimer) clearTimeout(saveTimer);
     saveTimer = setTimeout(async () => {
-        const encryptedPresets = await encryptSettingsPresets(settings.presets);
-        const encryptedSettings = { ...settings, presets: encryptedPresets };
+        const encryptedProviders = await encryptSettingsProviders(settings.providers);
+        const encryptedSettings = { ...settings, providers: encryptedProviders };
 
         idbSet('nn_settings', { settings: encryptedSettings, activeCampaignId })
             .catch((e) => { console.error(e); toast.error('Failed to save settings to browser storage'); });
@@ -232,11 +360,15 @@ export type SettingsSlice = {
     removePreset: (id: string) => void;
     setActivePreset: (id: string) => void;
     getActivePreset: () => AIPreset | undefined;
-    getActiveStoryEndpoint: () => EndpointConfig | undefined;
-    getActiveImageEndpoint: () => EndpointConfig | undefined;
-    getActiveSummarizerEndpoint: () => EndpointConfig | undefined;
-    getActiveUtilityEndpoint: () => EndpointConfig | undefined;
-    getActiveAuxiliaryEndpoint: () => EndpointConfig | undefined;
+    getActiveStoryEndpoint: () => LLMProvider | undefined;
+    getActiveImageEndpoint: () => LLMProvider | undefined;
+    getActiveSummarizerEndpoint: () => LLMProvider | undefined;
+    getActiveUtilityEndpoint: () => LLMProvider | undefined;
+    getActiveAuxiliaryEndpoint: () => LLMProvider | undefined;
+
+    addProvider: (provider: LLMProvider) => void;
+    updateProvider: (id: string, patch: Partial<LLMProvider>) => void;
+    removeProvider: (id: string) => void;
 };
 
 // ── Slice creator ──────────────────────────────────────────────────────
@@ -249,14 +381,26 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
         try {
             const localSettings = await idbGet('nn_settings');
             if (localSettings && localSettings.settings) {
-                const migrated = migrateSettings(localSettings);
-                const decryptedPresets = await decryptSettingsPresets(migrated.presets);
-                const decrypted = { ...migrated, presets: decryptedPresets };
+                const raw = localSettings as any;
+
+                // Decrypt providers (new two-tier) and legacy inline-config presets (if still present).
+                const providersPlain = await decryptSettingsProviders(raw.settings?.providers ?? []);
+                const presetsPlain = await decryptSettingsPresets(raw.settings?.presets ?? []);
+
+                const migrated = migrateSettings({
+                    settings: {
+                        ...(raw.settings || {}),
+                        providers: providersPlain,
+                        presets: presetsPlain,
+                    },
+                });
+
                 set({
-                    settings: decrypted,
+                    settings: migrated,
                     settingsLoaded: true,
                 } as Partial<SettingsSlice>);
-                applyTheme(decrypted.theme ?? 'light');
+                applyTheme(migrated.theme ?? 'light');
+                applyUIScale(migrated.uiScale ?? 1.0);
                 return;
             }
 
@@ -269,6 +413,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
                     settingsLoaded: true,
                 } as Partial<SettingsSlice>);
                 applyTheme(migrated.theme ?? 'light');
+                applyUIScale(migrated.uiScale ?? 1.0);
                 debouncedSaveSettings(migrated, null);
                 return;
             }
@@ -285,6 +430,9 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
             debouncedSaveSettings(newSettings, s.activeCampaignId);
             if (patch.theme) {
                 applyTheme(patch.theme);
+            }
+            if (patch.uiScale !== undefined) {
+                applyUIScale(patch.uiScale);
             }
             return { settings: newSettings };
         });
@@ -342,28 +490,90 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
     },
 
     getActiveStoryEndpoint: () => {
-        const preset = get().getActivePreset();
-        return preset?.storyAI;
+        const s = get();
+        const preset = s.getActivePreset();
+        if (!preset) return undefined;
+        return s.settings.providers.find(p => p.id === preset.storyAIProviderId);
     },
 
     getActiveImageEndpoint: () => {
-        const preset = get().getActivePreset();
-        return preset?.imageAI;
+        const s = get();
+        const preset = s.getActivePreset();
+        if (!preset || !preset.imageAIProviderId) return undefined;
+        return s.settings.providers.find(p => p.id === preset.imageAIProviderId);
     },
 
     getActiveSummarizerEndpoint: () => {
-        const preset = get().getActivePreset();
-        return preset?.summarizerAI;
+        const s = get();
+        const preset = s.getActivePreset();
+        if (!preset || !preset.summarizerAIProviderId) return undefined;
+        return s.settings.providers.find(p => p.id === preset.summarizerAIProviderId);
     },
 
     getActiveUtilityEndpoint: () => {
-        const preset = get().getActivePreset();
-        return preset?.utilityAI;
+        const s = get();
+        const preset = s.getActivePreset();
+        if (!preset || !preset.utilityAIProviderId) return undefined;
+        return s.settings.providers.find(p => p.id === preset.utilityAIProviderId);
     },
 
     getActiveAuxiliaryEndpoint: () => {
-        const preset = get().getActivePreset();
-        return preset?.auxiliaryAI;
+        const s = get();
+        const preset = s.getActivePreset();
+        if (!preset || !preset.auxiliaryAIProviderId) return undefined;
+        return s.settings.providers.find(p => p.id === preset.auxiliaryAIProviderId);
+    },
+
+    addProvider: (provider) => {
+        set((s) => {
+            const newSettings = {
+                ...s.settings,
+                providers: [...s.settings.providers, provider],
+            };
+            debouncedSaveSettings(newSettings, s.activeCampaignId);
+            return { settings: newSettings };
+        });
+    },
+
+    updateProvider: (id, patch) => {
+        set((s) => {
+            const newProviders = s.settings.providers.map((p) =>
+                p.id === id ? { ...p, ...patch } : p
+            );
+            const newSettings = { ...s.settings, providers: newProviders };
+            debouncedSaveSettings(newSettings, s.activeCampaignId);
+            return { settings: newSettings };
+        });
+    },
+
+    removeProvider: (id) => {
+        set((s) => {
+            if (s.settings.providers.length <= 1) return {};
+            const newProviders = s.settings.providers.filter(p => p.id !== id);
+            const firstProviderId = newProviders[0].id;
+            const newPresets = s.settings.presets.map(preset => {
+                const updated = { ...preset };
+                if (updated.storyAIProviderId === id) {
+                    updated.storyAIProviderId = firstProviderId;
+                }
+                if (updated.summarizerAIProviderId === id) {
+                    updated.summarizerAIProviderId = '';
+                }
+                if (updated.utilityAIProviderId === id) {
+                    updated.utilityAIProviderId = '';
+                }
+                if (updated.auxiliaryAIProviderId === id) {
+                    updated.auxiliaryAIProviderId = '';
+                }
+                if (updated.imageAIProviderId === id) {
+                    updated.imageAIProviderId = '';
+                }
+                return updated;
+            });
+            const newSettings = { ...s.settings, providers: newProviders, presets: newPresets };
+            debouncedSaveSettings(newSettings, s.activeCampaignId);
+            return { settings: newSettings };
+        });
     },
 
     // ── Vault methods ──────────────────────────────────────────────────────
@@ -385,7 +595,8 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
         set({ vaultLoading: true });
         try {
             const presets = get().settings.presets;
-            await api.vault.setup(password, presets);
+            const providers = get().settings.providers;
+            await api.vault.setup(password, presets, providers);
             set({ vaultStatus: { exists: true, unlocked: true, hasRemember: remember } });
             toast.success(password ? 'Secure vault created' : 'Machine-only vault created');
             return true;
@@ -403,12 +614,14 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
         try {
             await api.vault.unlock(password, remember);
             const data = await api.vault.getKeys();
-            // Merge vault presets into settings
-            if (data.presets && data.presets.length > 0) {
-                set((s) => ({
-                    settings: { ...s.settings, presets: data.presets }
-                }));
-            }
+            // Merge vault presets and providers into settings
+            set((s) => ({
+                settings: {
+                    ...s.settings,
+                    ...(data.presets && data.presets.length > 0 ? { presets: data.presets } : {}),
+                    ...(data.providers && data.providers.length > 0 ? { providers: data.providers } : {}),
+                }
+            }));
             set({ vaultStatus: { exists: true, unlocked: true, hasRemember: remember } });
             toast.success('Vault unlocked');
             return true;
@@ -425,11 +638,13 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
         try {
             await api.vault.unlockWithRemembered();
             const data = await api.vault.getKeys();
-            if (data.presets && data.presets.length > 0) {
-                set((s) => ({
-                    settings: { ...s.settings, presets: data.presets }
-                }));
-            }
+            set((s) => ({
+                settings: {
+                    ...s.settings,
+                    ...(data.presets && data.presets.length > 0 ? { presets: data.presets } : {}),
+                    ...(data.providers && data.providers.length > 0 ? { providers: data.providers } : {}),
+                }
+            }));
             set({ vaultStatus: { exists: true, unlocked: true, hasRemember: true } });
             return true;
         } catch (e) {
@@ -454,7 +669,8 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
     saveVaultKeys: async () => {
         try {
             const presets = get().settings.presets;
-            await api.vault.saveKeys({ presets });
+            const providers = get().settings.providers;
+            await api.vault.saveKeys({ presets, providers });
         } catch (e) {
             console.error('[Vault] Save failed:', e);
             toast.error('Failed to save keys to vault');
@@ -475,11 +691,13 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
         try {
             await api.vault.import(file, password, merge);
             const data = await api.vault.getKeys();
-            if (data.presets && data.presets.length > 0) {
-                set((s) => ({
-                    settings: { ...s.settings, presets: data.presets }
-                }));
-            }
+            set((s) => ({
+                settings: {
+                    ...s.settings,
+                    ...(data.presets && data.presets.length > 0 ? { presets: data.presets } : {}),
+                    ...(data.providers && data.providers.length > 0 ? { providers: data.providers } : {}),
+                }
+            }));
             toast.success('Vault imported successfully');
         } catch (e) {
             console.error('[Vault] Import failed:', e);

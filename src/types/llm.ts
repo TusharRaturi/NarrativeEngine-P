@@ -28,15 +28,40 @@ export type SamplingConfig = {
     max_tokens?: number;
 };
 
+/**
+ * Reusable LLM provider (two-tier model, ported from mobile). A preset references
+ * one of these by id for each role (story / summarizer / image / utility / auxiliary).
+ * Structurally a superset of EndpointConfig, so it can be passed to llmCall/testConnection
+ * unchanged. The optional legacy `*AI` EndpointConfig fields are kept ONLY for migration;
+ * new code reads providers via `*AIProviderId`.
+ */
+export type LLMProvider = {
+    id: string;
+    label: string;
+    endpoint: string;
+    apiKey: string;
+    modelName: string;
+    streamingEnabled?: boolean;
+    apiFormat?: ApiFormat;
+    thinkingEffort?: ThinkingEffort;
+};
+
 export type AIPreset = {
     id: string;
     name: string;
-    storyAI: EndpointConfig;
-    imageAI: EndpointConfig;
-    summarizerAI: EndpointConfig;
+    // Two-tier (new) — references into settings.providers
+    storyAIProviderId: string;
+    summarizerAIProviderId?: string;
+    utilityAIProviderId?: string;
+    auxiliaryAIProviderId?: string;
+    imageAIProviderId?: string;
+    sampling?: SamplingConfig;
+    // Legacy inline endpoint configs — kept ONLY for one-time migration; ignored after migration runs.
+    storyAI?: EndpointConfig;
+    imageAI?: EndpointConfig;
+    summarizerAI?: EndpointConfig;
     utilityAI?: EndpointConfig;
     auxiliaryAI?: EndpointConfig;
-    sampling?: SamplingConfig;
 };
 
 export type ProviderConfig = {
@@ -52,7 +77,7 @@ export type AppSettings = {
     activePresetId: string;
     contextLimit: number;
     debugMode?: boolean;
-    theme?: 'light' | 'dark';
+    theme?: 'light' | 'dark' | 'system';
     showReasoning?: boolean;
     deepContextSearch?: boolean;
     autoExtractDivergences?: boolean;
@@ -70,9 +95,15 @@ export type AppSettings = {
     archiveRecallDepth?: 'lean' | 'standard' | 'deep';  // archive recall ceiling; default 'standard' (desktop). 'lean' = mobile parity (3/4/5)
     matureMode?: boolean;            // default false; gates mature-tier NPC traits/wants (NPC Agency Phase 2)
     aiTier?: AiTier;                 // 'lite' | 'pro' | 'max' — gates which turn stages run (Phase 4)
+    uiScale?: number;                // 0.7–1.3, default 1.0 — global UI zoom (ported from mobile settings)
+    embeddingModel?: 'standard' | 'high';  // kept for type parity with mobile; mainApp runs a single server-side embedder, so this is informational only
+    imageStylePrompt?: string;       // prepended to every image generation prompt
+    imageNegativePrompt?: string;    // negative prompt for image models that support it
+
+    // Two-tier providers (new) — reusable endpoint configs referenced by preset *AIProviderId
+    providers: LLMProvider[];
 
     // Legacy fields kept for migration only
-    providers?: ProviderConfig[];
     activeProviderId?: string;
     endpoint?: string;
     apiKey?: string;
