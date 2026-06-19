@@ -356,13 +356,13 @@ export function NPCLedgerModal() {
 
     // ── Render ────────────────────────────────────────────────────────────
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-void/80 backdrop-blur-sm p-4 sm:p-8" role="dialog" aria-modal="true" aria-label="NPC Ledger" onClick={toggleNPCLedger}>
+        <div className="fixed inset-0 z-50 flex flex-col bg-void/95 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="NPC Ledger" onClick={toggleNPCLedger}>
             <input ref={importRef} type="file" accept=".json" className="hidden" onChange={handleImportFile} />
 
-            <div className="bg-surface border border-border flex flex-col sm:flex-row w-full max-w-6xl h-full max-h-[850px] overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
+            <div className="bg-surface border border-border flex flex-col sm:flex-row w-full h-full overflow-hidden shadow-2xl" onClick={e => e.stopPropagation()}>
 
                 {/* Left Sidebar */}
-                <div className="w-full sm:w-1/3 md:w-80 border-b sm:border-b-0 sm:border-r border-border flex flex-col bg-void-lighter max-h-[40vh] sm:max-h-none shrink-0">
+                <div className="w-full sm:w-1/3 md:w-96 lg:w-[420px] border-b sm:border-b-0 sm:border-r border-border flex flex-col bg-void-lighter max-h-[40vh] sm:max-h-none shrink-0">
                     {/* Header */}
                     <div className="p-4 border-b border-border flex justify-between items-center bg-void">
                         <div className="flex items-center gap-2 text-terminal font-bold uppercase tracking-widest text-sm">
@@ -380,7 +380,7 @@ export function NPCLedgerModal() {
                             <button onClick={() => setSortOrder(prev => prev === 'none' ? 'az' : prev === 'az' ? 'za' : 'none')} className={`p-1.5 border border-border rounded transition-colors ${sortOrder !== 'none' ? 'bg-terminal text-void border-terminal' : 'text-text-dim hover:text-text-primary'}`} title={sortOrder === 'az' ? 'Sorted A→Z (click for Z→A)' : sortOrder === 'za' ? 'Sorted Z→A (click to clear)' : 'Sort alphabetically'}>
                                 {sortOrder === 'za' ? <ArrowUpZA size={14} /> : <ArrowDownAZ size={14} />}
                             </button>
-                            <button onClick={toggleNPCLedger} className="text-text-dim hover:text-text-primary p-1 sm:hidden"><X size={18} /></button>
+                            <button onClick={toggleNPCLedger} className="text-text-dim hover:text-text-primary p-1 sm:hidden shrink-0"><X size={18} /></button>
                         </div>
                     </div>
 

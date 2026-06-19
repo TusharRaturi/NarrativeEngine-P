@@ -17,7 +17,7 @@ export function NPCGalleryView({ npcLedger, selectedId, selectMode, checkedIds, 
     const archivedNpcs = npcLedger.filter(npc => npc.archived);
 
     return (
-        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3 content-start">
             {activeNpcs.length === 0 && archivedNpcs.length === 0 && (
                 <p className="text-text-dim text-xs text-center p-4 italic opacity-50 col-span-full">No records found.</p>
             )}
