@@ -1,4 +1,5 @@
-import type { NPCEntry, ArchiveIndexEntry } from '../types';
+import type { NPCEntry, ArchiveIndexEntry, DivergenceEntry } from '../types';
+import { parseKnownByToken, normalizeFaction } from './campaign-state/knowledgeScope';
 
 function affinityDescriptor(v: number): string {
     if (v <= 15) return 'Nemesis — actively hostile';
@@ -52,28 +53,65 @@ export function buildDriftAlert(npc: NPCEntry): string | null {
 
 export function buildKnowledgeBoundary(
     npc: NPCEntry,
-    archiveIndex: ArchiveIndexEntry[]
+    archiveIndex: ArchiveIndexEntry[],
+    divergenceFacts?: DivergenceEntry[]
 ): string {
-    if (!archiveIndex || archiveIndex.length === 0) return '';
+    const parts: string[] = [];
 
-    const witnessedSceneIds = new Set(
-        archiveIndex
-            .filter(e => (e.witnesses ?? []).some(w =>
-                w.toLowerCase() === npc.name.toLowerCase()
-            ))
-            .map(e => e.sceneId)
-    );
+    // ── Layer 1: scene-witness filter (existing behavior, unchanged) ──
+    if (archiveIndex && archiveIndex.length > 0) {
+        const witnessedSceneIds = new Set(
+            archiveIndex
+                .filter(e => (e.witnesses ?? []).some(w =>
+                    w.toLowerCase() === npc.name.toLowerCase()
+                ))
+                .map(e => e.sceneId)
+        );
 
-    const unknownEvents = archiveIndex.filter(
-        e => !witnessedSceneIds.has(e.sceneId) && e.importance && e.importance >= 6
-    );
+        const unknownEvents = archiveIndex.filter(
+            e => !witnessedSceneIds.has(e.sceneId) && e.importance && e.importance >= 6
+        );
 
-    if (unknownEvents.length === 0) return '';
+        if (unknownEvents.length > 0) {
+            const snippets = unknownEvents
+                .slice(0, 5)
+                .map(e => `Scene ${e.sceneId}: ${e.userSnippet}`)
+                .join('; ');
+            parts.push(`KNOWLEDGE LIMITS: This NPC was NOT present for: [${snippets}]. Do not reference these events in dialogue unless another character told them about it.`);
+        }
+    }
 
-    const snippets = unknownEvents
-        .slice(0, 5)
-        .map(e => `Scene ${e.sceneId}: ${e.userSnippet}`)
-        .join('; ');
+    // ── Layer 2: divergence-fact knownBy tokens (new, additive) ──
+    // Lists divergence facts this NPC does NOT know, so the LLM playing this NPC
+    // avoids referencing them in dialogue. Public facts (knownBy undefined) are
+    // excluded — everyone knows those. The 'player' token does not make a fact
+    // known to an NPC; faction:<name> matches the NPC's own faction.
+    if (divergenceFacts && divergenceFacts.length > 0) {
+        const npcFaction = npc.faction ? normalizeFaction(npc.faction) : '';
+        const unknownFacts: string[] = [];
+        for (const fact of divergenceFacts) {
+            if (fact.enabled === false) continue;
+            if (fact.knownBy === undefined) continue; // public — everyone knows
+            if (fact.knownBy.length === 0) {
+                // secret — nobody knows; treat as unknown to this NPC too
+                unknownFacts.push(fact.text);
+                continue;
+            }
+            let npcKnows = false;
+            for (const tok of fact.knownBy) {
+                const parsed = parseKnownByToken(tok);
+                if (!parsed) continue;
+                if (parsed.kind === 'npc' && parsed.id === npc.id) { npcKnows = true; break; }
+                if (parsed.kind === 'faction' && npcFaction && parsed.name === npcFaction) { npcKnows = true; break; }
+                // 'player' token: the player knows, but the NPC does not (unless another token grants it).
+            }
+            if (!npcKnows) unknownFacts.push(fact.text);
+        }
+        if (unknownFacts.length > 0) {
+            const snippets = unknownFacts.slice(0, 5).map(t => `[${t}]`).join(' ');
+            parts.push(`UNKNOWN FACTS: This NPC does not know: ${snippets}. Do not reference these in dialogue unless another character told them.`);
+        }
+    }
 
-    return `KNOWLEDGE LIMITS: This NPC was NOT present for: [${snippets}]. Do not reference these events in dialogue unless another character told them about it.`;
+    return parts.join('\n  ');
 }

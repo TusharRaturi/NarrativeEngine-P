@@ -101,6 +101,50 @@ export function GlobalSettingsTab() {
         </div>
       </div>
 
+      {/* AI Tier */}
+      <div className="bg-void p-3 border border-border rounded space-y-2">
+        <div>
+          <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">
+            AI Tier
+          </label>
+          <p className="text-[9px] text-text-dim leading-tight">
+            Lite: minimal background processing. Pro: agency + arc + scene-stakes (recommended). Max: all features including intro engine, reranker, deep scans.
+          </p>
+        </div>
+        <div className="flex border border-border overflow-hidden rounded">
+          {(['lite', 'pro', 'max'] as const).map(tier => (
+            <button
+              key={tier}
+              onClick={() => updateSettings({ aiTier: tier })}
+              className={`flex-1 py-1.5 text-[10px] uppercase tracking-wider transition-colors focus:outline-none ${(settings.aiTier ?? 'pro') === tier
+                ? 'bg-terminal text-void font-bold'
+                : 'bg-void text-text-dim hover:text-text-primary'
+              }`}
+            >
+              {tier}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Mature Mode */}
+      <div className="flex items-center justify-between bg-void p-3 border border-border rounded">
+        <div>
+          <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">
+            Mature Mode
+          </label>
+          <p className="text-[9px] text-text-dim max-w-[280px] leading-tight">
+            Gates mature-tier NPC traits and wants (violence, dark themes). Disable for all-ages play.
+          </p>
+        </div>
+        <button
+          onClick={() => updateSettings({ matureMode: !settings.matureMode })}
+          className={`relative w-10 h-5 rounded-full transition-colors focus:outline-none ${settings.matureMode ? 'bg-terminal' : 'bg-border'}`}
+        >
+          <div className={`absolute top-[2px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.matureMode ? 'translate-x-[22px]' : 'translate-x-[2px]'}`} />
+        </button>
+      </div>
+
       {/* Debug Mode */}
       <div className="flex items-center justify-between bg-void p-3 border border-border rounded">
         <label className="text-[11px] text-text-primary uppercase tracking-wider font-bold">

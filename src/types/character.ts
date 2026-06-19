@@ -91,10 +91,17 @@ export type NPCEntry = {
     exampleOutput: string;
     affinity: number;
     portrait?: string;
+    // ---- Agency-engine referenced fields (Phase 2 port; all optional → lazy migration) ----
+    isPC?: boolean;
+    tier?: 'recurring' | 'oneshot' | 'walkon';
+    condition?: 'healthy' | 'wounded' | 'critical' | 'dead';
     previousSnapshot?: {
         personality: string;
         voice: string;
         affinity: number;
+        personalityHex?: PersonalityHex;
+        pcRelation?: number;
+        skillRung?: number;
     };
     shiftNote?: string;
     shiftTurnCount?: number;
@@ -106,4 +113,58 @@ export type NPCEntry = {
     archived?: boolean;
     archivedAtTurn?: number;
     archivedReason?: string;
+    // ---- NPC Agency fields (Phase 1, all optional → lazy migration) ----
+    wants?: NPCWants;
+    personalityHex?: PersonalityHex;
+    traits?: string[];            // <=5, controlled vocab (see services/npc/agencyPools.ts)
+    region?: string;              // coarse location: 'academy' | 'Ryuten' | ...
+    haunt?: string;               // flavor only, for reports ('the garden')
+    relations?: RelationGraph;    // NPC->NPC sparse directed edges
+    pcRelation?: number;          // -3..+3 — dedicated NPC->PC slot (re-homed from affinity)
+    populated?: boolean;          // false/undefined = not yet generated (Phase-2 lazy fill)
+    agencyLocked?: boolean;       // true = player authors this NPC; skip agency updates
+    goalRecords?: Goal[];         // Phase-3 engine layer (hidden cols); seeded from wants.medium/long
+    // ---- NPC Agency Phase 4: power-rung ladder ----
+    skillRung?: number;           // 0..4 ladder position; undefined = not yet set (default Novice=0 on fill)
+    rungCeiling?: number;         // 0..4 talent cap; LLM-set once, default 3
+    // ---- NPC Agency Phase 4: promotion / audition ----
+    agencyActivity?: { value: number; tick: number };
 };
+
+// ---- NPC Agency (Phase 1: schema only — no dice/heat/karma/tick logic) ----
+
+// Personality hexagon: 6 spectrum axes, each stored -3..+3 (0 = neutral center).
+export type HexAxis = 'drive' | 'diligence' | 'boldness' | 'warmth' | 'empathy' | 'composure';
+export type PersonalityHex = Record<HexAxis, number>;
+
+// Tiered wants. Sits beside the legacy NPCDrives (seeded from it in Phase 2; not deleted).
+export type NPCWants = {
+    short: string[];   // needs/flavor pool draws; repeats allowed; no LLM
+    medium: string[];  // goal templates (pool); LLM-updated in Phase 2
+    long: string;      // single long goal; LLM-generated at creation (Phase 2)
+};
+
+// Scene danger gradient (Phase 3). Gates which goal tiers may tick: `dangerous` blocks
+// long-goals + relaxing.
+export type SceneStakes = 'calm' | 'tense' | 'dangerous';
+
+// ---- NPC Agency Phase 3: Goal records (hidden columns) ----
+export type GoalHorizon = 'med' | 'long';
+export type GoalState = 'active' | 'achieved' | 'blocked' | 'retired';
+export type Goal = {
+    text: string;                 // reaches LLM (display); the only payload-visible field
+    horizon: GoalHorizon;
+    tier: 'default' | 'mature';   // content gate
+    base_heat: number;            // Piece A
+    lastAdvancedTick: number;     // Piece A: neglect = now - this
+    failStreak: number;           // Piece B (karma, NEVER in payload)
+    progress: number;             // Piece C
+    quota: number;                // Piece C (scales with magnitude)
+    state: GoalState;
+    justifiedEventFlag?: boolean; // set by Crit Success, consumed by tier-cross (Piece C)
+};
+
+// Sparse, directed NPC->NPC relation graph. Key = target NPC id; absent key = Neutral (0).
+// Only non-neutral edges are stored. Each value -3..+3.
+export type RelationGraph = Record<string, number>;
+

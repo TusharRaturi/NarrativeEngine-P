@@ -14,6 +14,8 @@ import { useChapterSealing } from './hooks/useChapterSealing';
 import { useMessageEditor } from './hooks/useMessageEditor';
 import { UtilityCallStrip } from './UtilityCallStrip';
 import { CreateTroubleButton } from './CreateTroubleButton';
+import { ArcInjectorButton } from './ArcInjectorButton';
+import { PCCreationWizard } from './pc/PCCreationWizard';
 
 export function ChatArea() {
     const messages = useAppStore(s => s.messages);
@@ -63,6 +65,7 @@ export function ChatArea() {
     const [visibleCount, setVisibleCount] = useState(10);
     const [loadStep, setLoadStep] = useState(10);
     const [isSaving, setIsSaving] = useState(false);
+    const [showPCCreator, setShowPCCreator] = useState(false);
     const deepArmed = useAppStore(s => s.deepArmed);
     const setDeepArmed = useAppStore(s => s.setDeepArmed);
     const composerInjection = useAppStore(s => s.composerInjection);
@@ -313,9 +316,17 @@ export function ChatArea() {
                             <p className="text-text-dim text-xs uppercase tracking-widest">
                                 Awaiting transmission...
                             </p>
-                            <p className="text-text-dim/50 text-[11px]">
-                                Paste your lore in the context drawer, configure your LLM, and begin.
-                            </p>
+                            <div className="space-y-2">
+                                <button
+                                    onClick={() => setShowPCCreator(true)}
+                                    className="block w-full px-6 py-2.5 bg-terminal/20 text-terminal border border-terminal/30 rounded hover:bg-terminal/30 transition-colors text-[11px] uppercase tracking-widest"
+                                >
+                                    Create Character
+                                </button>
+                                <p className="text-text-dim/50 text-[10px]">
+                                    Or paste your lore in the context drawer, configure your LLM, and begin.
+                                </p>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -396,6 +407,9 @@ export function ChatArea() {
                 {activeCampaignId && (
                     <CreateTroubleButton provider={activeProvider} />
                 )}
+                {activeCampaignId && (
+                    <ArcInjectorButton />
+                )}
                 <button
                     onClick={handleOpenArchive}
                     disabled={!activeCampaignId}
@@ -475,6 +489,21 @@ export function ChatArea() {
                     </div>
                 </div>
             </div>
+
+            {showPCCreator && (
+                <PCCreationWizard
+                    onComplete={(result) => {
+                        useAppStore.getState().updateNPC(result.npcEntry.id, { ...result.npcEntry });
+                        useAppStore.getState().updateContext({
+                            characterProfile: result.characterProfile,
+                            characterProfileActive: true,
+                        });
+                        setShowPCCreator(false);
+                        toast.success(`Character "${result.npcEntry.name}" created!`);
+                    }}
+                    onCancel={() => setShowPCCreator(false)}
+                />
+            )}
         </div>
     );
 }

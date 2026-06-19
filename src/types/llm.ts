@@ -2,6 +2,8 @@
 
 export type ApiFormat = 'openai' | 'ollama' | 'claude' | 'gemini';
 
+export type AiTier = 'lite' | 'pro' | 'max';
+
 export type ThinkingEffort = 'off' | 'low' | 'medium' | 'high' | 'max';
 
 export type EndpointConfig = {
@@ -66,6 +68,8 @@ export type AppSettings = {
     enableArchivePlanner?: boolean;
     retrievalAlgorithm?: 'classic' | 'idf-rrf';
     archiveRecallDepth?: 'lean' | 'standard' | 'deep';  // archive recall ceiling; default 'standard' (desktop). 'lean' = mobile parity (3/4/5)
+    matureMode?: boolean;            // default false; gates mature-tier NPC traits/wants (NPC Agency Phase 2)
+    aiTier?: AiTier;                 // 'lite' | 'pro' | 'max' — gates which turn stages run (Phase 4)
 
     // Legacy fields kept for migration only
     providers?: ProviderConfig[];

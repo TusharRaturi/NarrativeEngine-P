@@ -51,6 +51,16 @@ export async function runPostTurnPipeline(
     const activeCampaignId = state.activeCampaignId!;
     const { displayInput, npcLedger } = state;
 
+    // ── Phase 2/3: clear agency + arc digests at the top so each is consumed exactly once ──
+    // The previous turn's digests were folded into the GM call we just made; clear them
+    // before fresh digests accumulate from this turn's agency + arc ticks.
+    if (state.context.agencyDigest) {
+        callbacks.updateContext({ agencyDigest: '' });
+    }
+    if (state.context.arcDigest) {
+        callbacks.updateContext({ arcDigest: '' });
+    }
+
     const results = await Promise.allSettled([
         runArchiveTrack(state, callbacks, displayInput, lastAssistantContent, allMsgs, activeCampaignId),
         runNPCTrack(state, callbacks, lastAssistantContent, allMsgs, npcLedger, activeCampaignId),
@@ -70,6 +80,39 @@ export async function runPostTurnPipeline(
         if (r.status === 'rejected') {
             console.warn('[PostTurn] Track failed:', r.reason);
         }
+    }
+
+    // ── NPC Agency Tick (Phase 2 port) ──
+    // Runs after archive/NPC/pressure tracks settle so newly-detected NPCs have profiles
+    // before they're ticked. Mutates NPC agency state in-place via callbacks.updateNPC;
+    // folds a digest into context.agencyDigest for the next GM call. Gated by aiTier in Phase 4.
+    // Also bumps activity for every NPC that was on-stage last turn so the deep tier tracks the
+    // player's active social circle (bumpOnStageActivity is unconditional — same pattern as the
+    // short-want lifecycle).
+    try {
+        const { runAgencyTick, bumpOnStageActivity } = await import('./npc/agency/agencyEngine');
+        bumpOnStageActivity(state, callbacks, npcLedger);
+        const { tierAllows } = await import('./turn/aiTier');
+        if (tierAllows(state.settings.aiTier, 'heartbeatTick')) {
+            runAgencyTick(state, callbacks, npcLedger, displayInput);
+        }
+    } catch (err) {
+        console.warn('[AgencyTick] Failed (non-fatal):', err);
+    }
+
+    // ── Arc Engine Tick (Phase 3 port) — sibling of the agency tick ──
+    // Rolls tempo per active arc, advances the ladder, runs stance scan against on-stage NPCs,
+    // builds the arcSurfaceLine, and folds it into context.arcDigest for the next GM call.
+    // Gated by aiTier in Phase 4. Zero LLM (the only LLM call is the spawn, fired manually
+    // via the ArcInjectorButton).
+    try {
+        const { tierAllows } = await import('./turn/aiTier');
+        if (tierAllows(state.settings.aiTier, 'arcTick')) {
+            const { runArcTick } = await import('./arc/arcEngine');
+            runArcTick(state, callbacks, displayInput, lastAssistantContent);
+        }
+    } catch (err) {
+        console.warn('[ArcTick] Failed (non-fatal):', err);
     }
 }
 

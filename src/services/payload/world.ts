@@ -68,6 +68,8 @@ export function buildWorld(opts: {
     chapters?: ArchiveChapter[];
     onStageNpcIds?: string[];
     loreRaw?: string;
+    agencyDigest?: string;
+    arcDigest?: string;
     budgetWorld: number;
     isDebug: boolean;
     collector: TraceCollector;
@@ -88,6 +90,8 @@ export function buildWorld(opts: {
         chapters,
         onStageNpcIds,
         loreRaw,
+        agencyDigest,
+        arcDigest,
         budgetWorld,
         isDebug,
         collector,
@@ -286,7 +290,8 @@ export function buildWorld(opts: {
                 const drift = buildDriftAlert(npc);
                 if (drift) line += ` | ${drift}`;
                 if (archiveIndex) {
-                    const boundary = buildKnowledgeBoundary(npc, archiveIndex);
+                    const divergenceFacts = divergenceRegister?.entries;
+                    const boundary = buildKnowledgeBoundary(npc, archiveIndex, divergenceFacts);
                     if (boundary) line += `\n  ${boundary}`;
                 }
                 return line;
@@ -295,6 +300,19 @@ export function buildWorld(opts: {
             const npcText = `[ACTIVE NPC CONTEXT]\n${npcLines.join('\n')}\n[END NPC CONTEXT]`;
             worldBlocks.push({ source: 'Active NPCs', content: npcText, tokens: countTokens(npcText), reason: `NPCs detected in context (${activeNPCs.length}, spotlit: ${spotlitNpc.name})` });
         }
+    }
+
+    // ── Phase 2/3: agency + arc digest fold ──
+    // Off-screen movement (NPC agency tick) and world undercurrent (Arc Engine tick) are
+    // short per-turn prose strings accumulated in post-turn and consumed once by the next GM
+    // call. Cleared at the top of runPostTurnPipeline after consumption.
+    if (agencyDigest) {
+        const text = `[OFF-SCREEN MOVEMENT]\n${agencyDigest}`;
+        worldBlocks.push({ source: 'Agency Digest', content: text, tokens: countTokens(text), reason: 'Off-screen NPC agency tick digest' });
+    }
+    if (arcDigest) {
+        const text = `[WORLD UNDERCURRENT]\n${arcDigest}`;
+        worldBlocks.push({ source: 'Arc Digest', content: text, tokens: countTokens(text), reason: 'Arc Engine surface line' });
     }
 
     // Divergence Register — extracted separately for cache_control: ephemeral

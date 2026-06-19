@@ -35,7 +35,7 @@ export function buildPayload(
     const collector = createTraceCollector(isDebug);
     const { rulesBudget, budgetMap } = computeBudgets(limit, settings.rulesBudgetPct, !!deepContextSummary);
     const { stableContent, stableTokens } = buildStable({ settings, context, sceneNumber, relevantRules, rulesManifest, rulesBudget, budgetStable: budgetMap.stable, collector });
-    const { worldContent, currentWorldTokens, divergenceContent, divergenceTokens } = buildWorld({ history, userMessage, condensedUpToIndex, relevantLore, npcLedger, archiveRecall, recommendedNPCNames, semanticFactText, archiveIndex, timelineEvents, deepContextSummary, divergenceRegister, chapters, onStageNpcIds, loreRaw: context.loreRaw, budgetWorld: budgetMap.world, isDebug, collector });
+    const { worldContent, currentWorldTokens, divergenceContent, divergenceTokens } = buildWorld({ history, userMessage, condensedUpToIndex, relevantLore, npcLedger, archiveRecall, recommendedNPCNames, semanticFactText, archiveIndex, timelineEvents, deepContextSummary, divergenceRegister, chapters, onStageNpcIds, loreRaw: context.loreRaw, agencyDigest: context.agencyDigest, arcDigest: context.arcDigest, budgetWorld: budgetMap.world, isDebug, collector });
     const { volatileContent, volatileTokens } = buildVolatile({ context, inventoryCategories, profileFields, budgetVolatile: budgetMap.volatile, collector });
     const fitted = buildHistory({ history, condensedUpToIndex, userMessage, limit, stableTokens: stableTokens + divergenceTokens, currentWorldTokens, volatileTokens, context, collector });
 

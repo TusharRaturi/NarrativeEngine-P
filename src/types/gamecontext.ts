@@ -1,7 +1,10 @@
 // ─── Game Context / Pipeline / Session Types ─────────────────────────────
 
-import type { InventoryItem, CharacterProfile, InventoryItemCategory } from './character';
+import type { InventoryItem, CharacterProfile, InventoryItemCategory, SceneStakes } from './character';
+export type { SceneStakes };
 import type { LoreChunk, RuleChunkMeta } from './lore';
+import type { ArcRecord } from './arc';
+export type { ArcRecord };
 
 export type PipelinePhase =
     | 'idle'
@@ -138,6 +141,25 @@ export type GameContext = {
     npcIntroConfig?: NpcIntroConfig;        // config block
     rulesChunkMeta?: Record<string, RuleChunkMeta>;
     rulesChunks?: LoreChunk[];
+    // ---- NPC Agency & Combat / Tier contexts ----
+    agencyTick?: number;          // monotonic tick counter (heartbeat/timeskip advance it)
+    agencyHeartbeatDC?: number;   // escalating-DC pity timer (mirrors surpriseDC)
+    lastSceneStakes?: SceneStakes;     // last parsed/fallback scene stakes
+    agencyDigest?: string;             // player-visible tick digest, folded into next GM call
+    arcDigest?: string;                // Arc Engine: current-rung surface line, folded into next GM call
+    arcs?: ArcRecord[];                // Arc Engine (System 2): active + retired arcs for this campaign
+    combatModeActive?: boolean;        // combat master switch (Phase 7 wiring; type-only now)
+    combatConfig?: {                   // combat tuning knobs (Phase 7 wiring; type-only now)
+        mookJitterRange?: number;
+        defaultWeaponDie?: number;
+        recoveryBands?: Record<'healthy' | 'wounded' | 'critical', number>;
+        combatAutoDetect?: boolean;
+        autoEnterThreshold?: number;
+        askThreshold?: number;
+        confirmOnBorderline?: boolean;
+        combatKeywords?: string[];
+    };
+    statLabelMap?: Record<string, string>;
 };
 
 export type OpenAITool = {
@@ -248,6 +270,8 @@ function extractList(str: string, header: string): string[] {
 }
 
 export function migrateLegacyContext(ctx: Partial<GameContext>): GameContext {
+    // Note: Agency fields (agencyTick, agencyHeartbeatDC, lastSceneStakes, agencyDigest, arcDigest, etc.)
+    // are not initialized here; they are lazy-migrated in Phase 2.
     const base: GameContext = {
         loreRaw: '',
         rulesRaw: '',

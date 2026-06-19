@@ -2,6 +2,7 @@ import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveCh
 import { countTokens } from './tokenizer';
 import { toast } from '../components/Toast';
 import { llmCall } from '../utils/llmCall';
+import { isKnownToAnyOnStage } from './campaign-state/knowledgeScope';
 
 export const EMPTY_REGISTER: DivergenceRegister = {
     entries: [],
@@ -180,9 +181,17 @@ export function renderRegisterForPayload(
     }
 
     const onStageEntries = activeEntries;
+    // Off-stage view: facts an off-stage NPC would know. Resolves the knownBy token
+    // grammar (npc:<id>, faction:<name>, player, bare ID) via knowledgeScope.
+    //   - undefined knownBy → public → off-stage NPCs know it (include)
+    //   - [] → secret → nobody knows it (exclude)
+    //   - 'player' token alone → only the player knows it; off-stage NPCs do not (exclude)
+    //   - 'npc:<id>' / bare id → include iff that NPC is off-stage
+    //   - 'faction:<name>' → include iff some off-stage NPC is in that faction
+    const offStageNpcIds = [...offStageSet];
     const offStageEntries = activeEntries.filter(e => {
         if (e.knownBy === undefined) return true;
-        return e.knownBy.some(id => offStageSet.has(id));
+        return isKnownToAnyOnStage(e.knownBy, offStageNpcIds, npcLedger ?? []);
     });
 
     const sections: string[] = [];
