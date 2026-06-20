@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { deriveDefaultMeta, extractHeaderKeywords, extractBoldKeywords } from '../rules/rulesIndexer';
 import { retrieveRelevantRules } from '../rules/rulesRetriever';
-import { buildPayload } from '../payloadBuilder';
+import { buildPayload } from '../payload/payloadBuilder';
 import type { LoreChunk, RuleChunkMeta, GameContext, AppSettings } from '../../types';
 
 describe('Rules Indexer Helpers', () => {
