@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { useShallow } from 'zustand/react/shallow';
 import { countTokens } from '../services/tokenizer';
-import { DEFAULT_RULES } from '../services/defaultRules';
+import { DEFAULT_RULES } from '../services/rules/defaultRules';
 import {
     minifyBookkeepingStub,
 } from '../services/contextMinifier';

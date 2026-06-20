@@ -1,6 +1,6 @@
 import type { AppSettings, GameContext, LoreChunk } from '../../types';
 import { countTokens } from '../tokenizer';
-import { DEFAULT_RULES } from '../defaultRules';
+import { DEFAULT_RULES } from '../rules/defaultRules';
 import type { TraceCollector } from './traceCollector';
 
 const TOOL_MODE_ACTION_RESOLUTION = `### ACTION RESOLUTION

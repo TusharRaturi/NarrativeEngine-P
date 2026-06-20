@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { buildPayload } from '../payloadBuilder';
-import { DEFAULT_RULES } from '../defaultRules';
+import { DEFAULT_RULES } from '../rules/defaultRules';
 import type {
     GameContext,
     AppSettings,

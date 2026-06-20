@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { retrieveRelevantLore } from '../loreRetriever';
-import { retrieveRelevantRules } from '../rulesRetriever';
+import { retrieveRelevantRules } from '../rules/rulesRetriever';
 import type { LoreChunk, RuleChunkMeta } from '../../types';
 
 // ─── Shared fixtures ─────────────────────────────────────────────────────

@@ -1,6 +1,6 @@
-import type { LoreChunk, ChatMessage, RuleChunkMeta } from '../types';
-import { computeIdf, fuseRRF } from './retrieval/lexicalFusion';
-import { makeScanTextGetter } from './retrieval/retrievalCore';
+import type { LoreChunk, ChatMessage, RuleChunkMeta } from '../../types';
+import { computeIdf, fuseRRF } from '../retrieval/lexicalFusion';
+import { makeScanTextGetter } from '../retrieval/retrievalCore';
 
 function stripChunkPrefix(header: string): string {
     return header.replace(/\[CHUNK:\s*[A-Z_]+[—\-\s]*\]/i, '').trim();

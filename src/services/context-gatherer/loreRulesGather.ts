@@ -1,7 +1,7 @@
 import type { LoreChunk } from '../../types';
 import type { TurnState } from '../turnOrchestrator';
 import { retrieveRelevantLore } from '../loreRetriever';
-import { retrieveRelevantRules } from '../rulesRetriever';
+import { retrieveRelevantRules } from '../rules/rulesRetriever';
 import type { SemanticCandidates } from './semanticCandidates';
 
 export type LoreRulesResult = {

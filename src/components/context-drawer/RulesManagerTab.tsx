@@ -3,7 +3,7 @@ import { X, Plus, RotateCcw } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import type { LoreChunk, RuleChunkMeta } from '../../types';
 import { chunkLoreFile } from '../../services/loreChunker';
-import { indexRules, deriveDefaultMeta, type IndexingProgress } from '../../services/rulesIndexer';
+import { indexRules, deriveDefaultMeta, type IndexingProgress } from '../../services/rules/rulesIndexer';
 
 type ChunkWithMeta = {
     chunk: LoreChunk;

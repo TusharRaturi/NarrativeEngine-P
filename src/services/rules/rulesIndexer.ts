@@ -1,8 +1,8 @@
-import type { LoreChunk, RuleChunkMeta, EndpointConfig, ProviderConfig } from '../types';
-import { chunkLoreFile } from './loreChunker';
-import { api } from './apiClient';
-import { llmCall } from '../utils/llmCall';
-import { extractJsonRobust } from './jsonExtract';
+import type { LoreChunk, RuleChunkMeta, EndpointConfig, ProviderConfig } from '../../types';
+import { chunkLoreFile } from '../loreChunker';
+import { api } from '../apiClient';
+import { llmCall } from '../../utils/llmCall';
+import { extractJsonRobust } from '../jsonExtract';
 
 const STOP_WORDS = new Set([
     'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'has', 'her',
