@@ -1,8 +1,8 @@
 import type { EndpointConfig, ProviderConfig, ThinkingEffort } from '../types';
-import { getQueueForEndpoint, type LLMCallPriority } from '../services/llmRequestQueue';
+import { getQueueForEndpoint, type LLMCallPriority } from '../services/llm/llmRequestQueue';
 import { getApiFormat, getChatUrl, buildChatHeaders, buildChatBody, extractContent } from './llmApiHelper';
-import { startUtilityCall } from '../services/utilityCallTracker';
-import { recordCacheUsage, type LLMUsage } from '../services/cacheTelemetry';
+import { startUtilityCall } from '../services/llm/utilityCallTracker';
+import { recordCacheUsage, type LLMUsage } from '../services/llm/cacheTelemetry';
 
 const MAX_RETRIES = 3;
 const DEFAULT_RETRY_DELAY_MS = 300;

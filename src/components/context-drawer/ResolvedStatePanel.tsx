@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { ChevronDown, ChevronUp, Plus, X, Globe } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
-import { api } from '../../services/apiClient';
+import { api } from '../../services/llm/apiClient';
 import { queryTimeline } from '../../services/timelineResolver';
 import { TIMELINE_PREDICATES } from '../../types';
 import { toast } from '../Toast';

@@ -1,6 +1,6 @@
 import type { EndpointConfig, ProviderConfig } from '../types';
-import type { OpenAIMessage } from './llmService';
-import { sendMessage } from './llmService';
+import type { OpenAIMessage } from './llm/llmService';
+import { sendMessage } from './llm/llmService';
 import { extractJson } from './infrastructure/jsonExtract';
 
 /**

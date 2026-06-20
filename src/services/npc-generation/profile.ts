@@ -1,5 +1,5 @@
 import type { EndpointConfig, ProviderConfig, ChatMessage, NPCEntry } from '../../types';
-import type { OpenAIMessage } from '../llmService';
+import type { OpenAIMessage } from '../llm/llmService';
 import { uid } from '../../utils/uid';
 import { sendMessageAndParseJson } from './shared';
 

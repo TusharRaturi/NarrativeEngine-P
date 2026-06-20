@@ -1,7 +1,7 @@
 import type { ChatMessage, NPCEntry } from '../types';
 import type { TurnState, TurnCallbacks } from './turnOrchestrator';
 import { useAppStore } from '../store/useAppStore';
-import { api } from './apiClient';
+import { api } from './llm/apiClient';
 import { CHAPTER_SCENE_SOFT_CAP } from '../types';
 import { rateImportance } from './importanceRater';
 import { sealChapterCombined } from './saveFileEngine';

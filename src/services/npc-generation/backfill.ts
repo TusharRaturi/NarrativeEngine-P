@@ -1,5 +1,5 @@
 import type { EndpointConfig, ProviderConfig, ChatMessage, NPCEntry } from '../../types';
-import type { OpenAIMessage } from '../llmService';
+import type { OpenAIMessage } from '../llm/llmService';
 import { sendMessageAndParseJson } from './shared';
 
 export async function backfillNPCDrives(

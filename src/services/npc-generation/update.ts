@@ -1,5 +1,5 @@
 import type { EndpointConfig, ProviderConfig, ChatMessage, NPCEntry, PersonalityHex, HexAxis, RelationGraph } from '../../types';
-import type { OpenAIMessage } from '../llmService';
+import type { OpenAIMessage } from '../llm/llmService';
 import { sendMessageAndParseJson } from './shared';
 import { relationBand, describeHex } from '../npc/agency/agencyBands';
 import { hexDelta } from '../npc/agency/agencyDrift';

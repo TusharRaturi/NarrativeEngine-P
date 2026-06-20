@@ -1,4 +1,4 @@
-import { api } from './apiClient';
+import { api } from './llm/apiClient';
 import { API_BASE as API } from '../lib/apiBase';
 import { safeSceneNum } from '../utils/helpers';
 import type { ArchiveChapter, ArchiveIndexEntry, ChatMessage, CondenserState } from '../types';

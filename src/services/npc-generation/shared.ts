@@ -1,6 +1,6 @@
 import type { EndpointConfig, ProviderConfig } from '../../types';
-import type { OpenAIMessage } from '../llmService';
-import { sendMessage } from '../llmService';
+import type { OpenAIMessage } from '../llm/llmService';
+import { sendMessage } from '../llm/llmService';
 import { extractJson } from '../infrastructure/jsonExtract';
 
 export const RETRY_SUFFIX = '\n\nIMPORTANT: Your previous response was not valid JSON. Respond with ONLY valid JSON. No markdown fences, no comments, no trailing commas, no extra text before or after the JSON.';

@@ -7,7 +7,7 @@ import type {
     DivergenceRegister,
     DivergenceEntry,
 } from '../../types';
-import type { OpenAIMessage } from '../llmService';
+import type { OpenAIMessage } from '../llm/llmService';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 6 ORACLE — cast-aware divergence cache-prefix split.

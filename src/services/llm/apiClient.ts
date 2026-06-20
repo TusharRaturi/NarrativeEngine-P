@@ -1,6 +1,6 @@
-import type { AppSettings, ArchiveChapter, ArchiveIndexEntry, SemanticFact, EntityEntry, BackupMeta, TimelineEvent, SceneEvent } from '../types';
+import type { AppSettings, ArchiveChapter, ArchiveIndexEntry, SemanticFact, EntityEntry, BackupMeta, TimelineEvent, SceneEvent } from '../../types';
 
-import { API_BASE as API } from '../lib/apiBase';
+import { API_BASE as API } from '../../lib/apiBase';
 
 export const api = {
     archive: {

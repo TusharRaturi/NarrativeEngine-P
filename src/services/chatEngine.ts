@@ -3,7 +3,7 @@
 
 export { buildPayload } from './payloadBuilder';
 export { extractJson } from './infrastructure/jsonExtract';
-export { sendMessage, testConnection } from './llmService';
-export type { OpenAIMessage } from './llmService';
+export { sendMessage, testConnection } from './llm/llmService';
+export type { OpenAIMessage } from './llm/llmService';
 export { generateNPCProfile, updateExistingNPCs, generateNPCPortrait, backfillNPCDrives } from './npcGeneration';
 export { populateEngineTags } from './tagGeneration';

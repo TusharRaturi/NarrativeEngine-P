@@ -1,4 +1,4 @@
-import { api } from '../../services/apiClient';
+import { api } from '../../services/llm/apiClient';
 import { generateChapterSummary } from '../../services/saveFileEngine';
 import { shouldAutoSeal } from '../../services/archiveChapterEngine';
 import { pruneChapterEntries } from '../../services/divergenceRegister';

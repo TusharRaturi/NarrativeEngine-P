@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
-import { useUtilityCalls, clearHistory } from '../../services/utilityCallTracker';
-import type { UtilityCallStatus } from '../../services/utilityCallTracker';
-import { useCacheTelemetry, hitRatio, totalsForDay, clearCacheTelemetry } from '../../services/cacheTelemetry';
+import { useUtilityCalls, clearHistory } from '../../services/llm/utilityCallTracker';
+import type { UtilityCallStatus } from '../../services/llm/utilityCallTracker';
+import { useCacheTelemetry, hitRatio, totalsForDay, clearCacheTelemetry } from '../../services/llm/cacheTelemetry';
 import { useSceneStakesFallbackCount, resetSceneStakesFallbackCount } from '../../services/sceneStakesTelemetry';
 
 function CacheTelemetrySection() {

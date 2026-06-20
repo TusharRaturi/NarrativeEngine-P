@@ -10,7 +10,7 @@ describe('utilityCallTracker', () => {
     });
 
     it('startUtilityCall creates a running call', async () => {
-        const { startUtilityCall, getActiveCalls, clearHistory } = await import('../utilityCallTracker');
+        const { startUtilityCall, getActiveCalls, clearHistory } = await import('../llm/utilityCallTracker');
         clearHistory();
         const handle = startUtilityCall('test-call', 'test-endpoint', 60000);
         const active = getActiveCalls();
@@ -21,7 +21,7 @@ describe('utilityCallTracker', () => {
     });
 
     it('settleSuccess moves call to history', async () => {
-        const { startUtilityCall, getActiveCalls, getCallHistory, clearHistory } = await import('../utilityCallTracker');
+        const { startUtilityCall, getActiveCalls, getCallHistory, clearHistory } = await import('../llm/utilityCallTracker');
         clearHistory();
         // Clear active from any prior tests
         for (const call of getActiveCalls()) {
@@ -36,7 +36,7 @@ describe('utilityCallTracker', () => {
     });
 
     it('settleError records error', async () => {
-        const { startUtilityCall, getCallHistory, clearHistory } = await import('../utilityCallTracker');
+        const { startUtilityCall, getCallHistory, clearHistory } = await import('../llm/utilityCallTracker');
         clearHistory();
         const handle = startUtilityCall('err-test', 'ep', 60000);
         handle.settleError('timeout', 'took too long');
@@ -47,7 +47,7 @@ describe('utilityCallTracker', () => {
     });
 
     it('extend moves the deadline forward', async () => {
-        const { startUtilityCall, getActiveCalls, clearHistory } = await import('../utilityCallTracker');
+        const { startUtilityCall, getActiveCalls, clearHistory } = await import('../llm/utilityCallTracker');
         clearHistory();
         const handle = startUtilityCall('extend-test', 'ep', 10000);
         const before = getActiveCalls().find(c => c.label === 'extend-test')!;
@@ -60,7 +60,7 @@ describe('utilityCallTracker', () => {
     });
 
     it('extendCall (standalone) clones rather than mutating in place', async () => {
-        const { startUtilityCall, extendCall, getActiveCalls, clearHistory } = await import('../utilityCallTracker');
+        const { startUtilityCall, extendCall, getActiveCalls, clearHistory } = await import('../llm/utilityCallTracker');
         clearHistory();
         const handle = startUtilityCall('extend-call-test', 'ep', 10000);
         const origDeadline = getActiveCalls().find(c => c.label === 'extend-call-test')!.deadline;
@@ -71,7 +71,7 @@ describe('utilityCallTracker', () => {
     });
 
     it('history caps at 50 entries', async () => {
-        const { startUtilityCall, getCallHistory, clearHistory } = await import('../utilityCallTracker');
+        const { startUtilityCall, getCallHistory, clearHistory } = await import('../llm/utilityCallTracker');
         clearHistory();
         for (let i = 0; i < 55; i++) {
             const h = startUtilityCall(`cap-${i}`, 'ep', 10000);
@@ -81,7 +81,7 @@ describe('utilityCallTracker', () => {
     });
 
     it('snapshotRef is updated synchronously in emit', async () => {
-        const { useUtilityCalls } = await import('../utilityCallTracker');
+        const { useUtilityCalls } = await import('../llm/utilityCallTracker');
         expect(typeof useUtilityCalls).toBe('function');
     });
 });

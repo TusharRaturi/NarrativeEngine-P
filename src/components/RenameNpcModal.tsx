@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X, Replace, Loader2 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import { api } from '../services/apiClient';
+import { api } from '../services/llm/apiClient';
 import { toast } from './Toast';
 
 export function RenameNpcModal() {

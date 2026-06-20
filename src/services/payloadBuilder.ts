@@ -1,5 +1,5 @@
 import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, PayloadTrace, TimelineEvent, DebugSection, InventoryItemCategory, DivergenceRegister, ArchiveChapter, PinnedExcerpt } from '../types';
-import type { OpenAIMessage } from './llmService';
+import type { OpenAIMessage } from './llm/llmService';
 import { createTraceCollector } from './payload/traceCollector';
 import { computeBudgets } from './payload/budgets';
 import { buildStable } from './payload/stable';

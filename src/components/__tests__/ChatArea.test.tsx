@@ -108,7 +108,7 @@ vi.mock('../../services/saveFileEngine', () => ({
     generateChapterSummary: vi.fn(async () => null),
 }));
 
-vi.mock('../../services/apiClient', () => ({
+vi.mock('../../services/llm/apiClient', () => ({
     api: {
         archive: {
             open: vi.fn(async () => {}),

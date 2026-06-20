@@ -1,7 +1,7 @@
-import type { EndpointConfig, ProviderConfig, SamplingConfig, ThinkingEffort } from '../types';
-import { uid } from '../utils/uid';
+import type { EndpointConfig, ProviderConfig, SamplingConfig, ThinkingEffort } from '../../types';
+import { uid } from '../../utils/uid';
 import { getQueueForEndpoint } from './llmRequestQueue';
-import { getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, getApiFormat, extractStreamDelta, extractStreamToolCall } from '../utils/llmApiHelper';
+import { getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, getApiFormat, extractStreamDelta, extractStreamToolCall } from '../../utils/llmApiHelper';
 import { recordCacheUsage, type LLMUsage } from './cacheTelemetry';
 
 const STORY_LABEL = 'story-generation';

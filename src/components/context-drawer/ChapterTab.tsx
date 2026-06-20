@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { BookOpen, Plus, Loader2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
-import { api } from '../../services/apiClient';
+import { api } from '../../services/llm/apiClient';
 import { ChapterCard } from './ChapterCard';
 import { ResolvedStatePanel } from './ResolvedStatePanel';
 import { runCombinedSeal } from '../../services/postTurnPipeline';

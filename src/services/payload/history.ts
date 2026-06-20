@@ -1,5 +1,5 @@
 import type { ChatMessage, GameContext } from '../../types';
-import type { OpenAIMessage } from '../llmService';
+import type { OpenAIMessage } from '../llm/llmService';
 import { countTokens } from '../infrastructure/tokenizer';
 import type { TraceCollector } from './traceCollector';
 

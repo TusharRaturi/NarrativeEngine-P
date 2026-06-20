@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Loader2, RefreshCw } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { getEmbeddingStatus, runBackfill } from '../../services/backfillRunner';
-import { api } from '../../services/apiClient';
+import { api } from '../../services/llm/apiClient';
 import { API_BASE } from '../../lib/apiBase';
 import { toast } from '../Toast';
 import type { BackfillStatus } from '../../services/backfillRunner';

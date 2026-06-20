@@ -4,7 +4,7 @@ import { get as idbGet, set as idbSet } from 'idb-keyval';
 import { encryptSettingsProviders, decryptSettingsProviders, decryptSettingsPresets } from '../../services/infrastructure/settingsCrypto';
 import { uid } from '../../utils/uid';
 import { toast } from '../../components/Toast';
-import { api } from '../../services/apiClient';
+import { api } from '../../services/llm/apiClient';
 
 import { API_BASE as API } from '../../lib/apiBase';
 

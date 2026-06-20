@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { TurnState, TurnCallbacks } from '../turnOrchestrator';
 import type { GameContext, ChatMessage } from '../../types';
 
-vi.mock('../apiClient', () => ({
+vi.mock('../llm/apiClient', () => ({
     api: {
         archive: {
             append: vi.fn(),
@@ -38,7 +38,7 @@ vi.mock('../characterProfileParser', () => ({ scanCharacterProfile: vi.fn() }));
 vi.mock('../inventoryParser', () => ({ scanInventory: vi.fn() }));
 
 import { runPostTurnPipeline } from '../postTurnPipeline';
-import { api } from '../apiClient';
+import { api } from '../llm/apiClient';
 import { backgroundQueue } from '../infrastructure/backgroundQueue';
 import { extractNPCNames, validateNPCCandidates, classifyNPCNames } from '../npcDetector';
 
