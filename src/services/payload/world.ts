@@ -1,6 +1,6 @@
 import type { ChatMessage, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, TimelineEvent, DivergenceRegister, DivergenceEntry, ArchiveChapter, SceneEvent } from '../../types';
 import { countTokens } from '../infrastructure/tokenizer';
-import { buildBehaviorDirective, buildDriftAlert, buildKnowledgeBoundary } from '../npcBehaviorDirective';
+import { buildBehaviorDirective, buildDriftAlert, buildKnowledgeBoundary } from '../npc/npcBehaviorDirective';
 import { minifyLoreChunk, minifyNPC } from '../contextMinifier';
 import { resolveTimeline, formatResolvedForContext } from '../timelineResolver';
 import { renderRegisterForPayload } from '../divergenceRegister';

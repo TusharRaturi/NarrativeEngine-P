@@ -21,7 +21,7 @@ vi.mock('../infrastructure/backgroundQueue', () => ({
     backgroundQueue: { push: vi.fn().mockResolvedValue(undefined) },
 }));
 vi.mock('../importanceRater', () => ({ rateImportance: vi.fn().mockResolvedValue(3) }));
-vi.mock('../npcDetector', () => ({
+vi.mock('../npc/npcDetector', () => ({
     extractNPCNames: vi.fn().mockReturnValue([]),
     classifyNPCNames: vi.fn().mockReturnValue({ newNames: [], existingNpcs: [] }),
     validateNPCCandidates: vi.fn().mockResolvedValue([]),
@@ -40,7 +40,7 @@ vi.mock('../inventoryParser', () => ({ scanInventory: vi.fn() }));
 import { runPostTurnPipeline } from '../postTurnPipeline';
 import { api } from '../llm/apiClient';
 import { backgroundQueue } from '../infrastructure/backgroundQueue';
-import { extractNPCNames, validateNPCCandidates, classifyNPCNames } from '../npcDetector';
+import { extractNPCNames, validateNPCCandidates, classifyNPCNames } from '../npc/npcDetector';
 
 const mockApi = vi.mocked(api);
 const mockBQ = vi.mocked(backgroundQueue);

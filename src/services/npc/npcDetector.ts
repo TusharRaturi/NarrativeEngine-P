@@ -1,7 +1,7 @@
-import type { NPCEntry, EndpointConfig, ProviderConfig } from '../types';
-import { llmCall } from '../utils/llmCall';
-import { extractJson } from './chatEngine';
-import TITLES from '../data/titles.json';
+import type { NPCEntry, EndpointConfig, ProviderConfig } from '../../types';
+import { llmCall } from '../../utils/llmCall';
+import { extractJson } from '../chatEngine';
+import TITLES from '../../data/titles.json';
 
 const TITLES_SET = new Set(TITLES.map(t => t.toLowerCase()));
 const NAME_CONNECTIVES = new Set(['of', 'the', 'von', 'de', 'di', 'al', 'el', 'ibn', 'bin']);

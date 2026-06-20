@@ -1,5 +1,5 @@
-import type { NPCEntry, ArchiveIndexEntry, DivergenceEntry } from '../types';
-import { parseKnownByToken, normalizeFaction } from './campaign-state/knowledgeScope';
+import type { NPCEntry, ArchiveIndexEntry, DivergenceEntry } from '../../types';
+import { parseKnownByToken, normalizeFaction } from '../campaign-state/knowledgeScope';
 
 function affinityDescriptor(v: number): string {
     if (v <= 15) return 'Nemesis — actively hostile';

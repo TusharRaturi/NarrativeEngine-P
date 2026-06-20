@@ -1,5 +1,5 @@
-import type { EndpointConfig, ProviderConfig, ChatMessage, ArchiveIndexEntry, ArchiveChapter, NPCEntry } from '../types';
-import { llmCall } from '../utils/llmCall';
+import type { EndpointConfig, ProviderConfig, ChatMessage, ArchiveIndexEntry, ArchiveChapter, NPCEntry } from '../../types';
+import { llmCall } from '../../utils/llmCall';
 
 export async function generateTroubleOptions(
     provider: EndpointConfig | ProviderConfig,

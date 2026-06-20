@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { extractNPCNames } from '../npcDetector';
+import { extractNPCNames } from '../npc/npcDetector';
 
 describe('extractNPCNames — 7-pass detection', () => {
 
@@ -147,7 +147,7 @@ describe('extractNPCNames — 7-pass detection', () => {
         vi.doMock('../../utils/llmCall', () => ({
             llmCall: vi.fn().mockRejectedValue(new Error('network offline')),
         }));
-        const { validateNPCCandidates } = await import('../npcDetector?t=fail-closed');
+        const { validateNPCCandidates } = await import('../npc/npcDetector?t=fail-closed');
         const provider = { endpoint: 'http://localhost', model: 'test' } as any;
         const result = await validateNPCCandidates(provider, ['Aldric', 'Maren'], 'Some context');
         expect(result).toEqual([]);

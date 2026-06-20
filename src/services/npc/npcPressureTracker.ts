@@ -1,4 +1,4 @@
-import type { NPCEntry, NPCPressureHistory } from '../types';
+import type { NPCEntry, NPCPressureHistory } from '../../types';
 
 const DECAY_RATE = 0.1;
 const MAX_HISTORY = 50;
