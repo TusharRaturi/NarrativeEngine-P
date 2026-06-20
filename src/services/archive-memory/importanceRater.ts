@@ -1,5 +1,5 @@
-import type { ChatMessage, ProviderConfig, EndpointConfig } from '../types';
-import { llmCall } from '../utils/llmCall';
+import type { ChatMessage, ProviderConfig, EndpointConfig } from '../../types';
+import { llmCall } from '../../utils/llmCall';
 
 const IMPORTANCE_PROMPT = `Rate the narrative importance of the scene below on a 1-5 scale.
 

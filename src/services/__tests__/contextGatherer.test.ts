@@ -7,7 +7,7 @@ vi.mock('../archiveMemory', () => ({
     retrieveArchiveMemory: vi.fn().mockReturnValue([]),
     fetchArchiveScenes: vi.fn().mockResolvedValue([]),
 }));
-vi.mock('../archiveChapterEngine', () => ({
+vi.mock('../archive-memory/archiveChapterEngine', () => ({
     rankChapters: vi.fn().mockReturnValue([]),
     recallWithChapterFunnel: vi.fn().mockResolvedValue([]),
     shouldAutoSeal: vi.fn().mockReturnValue(false),

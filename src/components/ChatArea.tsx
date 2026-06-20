@@ -8,7 +8,7 @@ import type { InventoryProposal, InventoryItem, InventoryItemCategory } from '..
 import { set } from 'idb-keyval';
 import { toast } from './Toast';
 import { debouncedSaveCampaignState } from '../store/slices/campaignSlice';
-import { rollbackArchiveFrom, openArchive as openArchiveFn } from '../services/archiveManager';
+import { rollbackArchiveFrom, openArchive as openArchiveFn } from '../services/archive-memory/archiveManager';
 import { MessageBubble } from './MessageBubble';
 import { GenerationProgress } from './GenerationProgress';
 import { useCondenser } from './hooks/useCondenser';

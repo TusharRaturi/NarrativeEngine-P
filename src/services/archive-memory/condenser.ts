@@ -1,5 +1,5 @@
-import type { ChatMessage } from '../types';
-import { countTokens } from './infrastructure/tokenizer';
+import type { ChatMessage } from '../../types';
+import { countTokens } from '../infrastructure/tokenizer';
 
 const VERBATIM_WINDOW = 10;
 

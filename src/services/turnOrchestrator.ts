@@ -1,4 +1,4 @@
-import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from './condenser';
+import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from './archive-memory/condenser';
 import { useAppStore } from '../store/useAppStore';
 import type { AppSettings, GameContext, ChatMessage, NPCEntry, LoreChunk, CondenserState, ArchiveIndexEntry, TimelineEvent, EndpointConfig, ProviderConfig, ArchiveChapter, SamplingConfig, PipelinePhase, DivergenceRegister, ThinkingEffort, InventoryProposal } from '../types';
 import { uid } from '../utils/uid';

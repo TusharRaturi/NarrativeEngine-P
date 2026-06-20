@@ -11,7 +11,7 @@ import type {
 } from '../../types';
 import { llmCall } from '../../utils/llmCall';
 import { searchLoreByQuery } from './loreRetriever';
-import { deepArchiveScan } from '../deepArchiveSearch';
+import { deepArchiveScan } from '../archive-memory/deepArchiveSearch';
 import { extractJsonRobust } from '../infrastructure/jsonExtract';
 
 export type LoreCheckInput = {

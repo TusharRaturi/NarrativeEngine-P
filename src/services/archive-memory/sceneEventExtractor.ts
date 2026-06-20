@@ -1,6 +1,6 @@
-import type { EndpointConfig, ProviderConfig, SceneEvent, SceneEventType } from '../types';
-import { llmCall } from '../utils/llmCall';
-import { extractJsonRobust } from './infrastructure/jsonExtract';
+import type { EndpointConfig, ProviderConfig, SceneEvent, SceneEventType } from '../../types';
+import { llmCall } from '../../utils/llmCall';
+import { extractJsonRobust } from '../infrastructure/jsonExtract';
 
 export async function extractSceneEvents(
     provider: EndpointConfig | ProviderConfig,

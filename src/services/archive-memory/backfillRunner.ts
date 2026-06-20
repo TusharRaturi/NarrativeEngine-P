@@ -1,4 +1,4 @@
-import { API_BASE as API } from '../lib/apiBase';
+import { API_BASE as API } from '../../lib/apiBase';
 
 export type BackfillStatus = {
     scenes: { total: number; current: number; stale: number };

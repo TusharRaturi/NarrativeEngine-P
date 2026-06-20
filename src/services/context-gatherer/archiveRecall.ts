@@ -1,8 +1,8 @@
 import type { ArchiveScene, ArchiveChapter } from '../../types';
 import type { TurnState } from '../turnOrchestrator';
 import { recallArchiveScenes, retrieveArchiveMemory, fetchArchiveScenes } from '../archiveMemory';
-import { rankChapters, recallWithChapterFunnel } from '../archiveChapterEngine';
-import { runArchivePlanner } from '../archivePlanner';
+import { rankChapters, recallWithChapterFunnel } from '../archive-memory/archiveChapterEngine';
+import { runArchivePlanner } from '../archive-memory/archivePlanner';
 import { getDivergenceSceneIds, EMPTY_REGISTER, buildSceneMap } from '../campaign-state/divergenceRegister';
 import type { SemanticCandidates } from './semanticCandidates';
 

@@ -20,7 +20,7 @@ vi.mock('../llm/apiClient', () => ({
 vi.mock('../infrastructure/backgroundQueue', () => ({
     backgroundQueue: { push: vi.fn().mockResolvedValue(undefined) },
 }));
-vi.mock('../importanceRater', () => ({ rateImportance: vi.fn().mockResolvedValue(3) }));
+vi.mock('../archive-memory/importanceRater', () => ({ rateImportance: vi.fn().mockResolvedValue(3) }));
 vi.mock('../npc/npcDetector', () => ({
     extractNPCNames: vi.fn().mockReturnValue([]),
     classifyNPCNames: vi.fn().mockReturnValue({ newNames: [], existingNpcs: [] }),

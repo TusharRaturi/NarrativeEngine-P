@@ -10,7 +10,7 @@ import {
     recallWithChapterFunnel,
     MAX_LLM_ITERATIONS,
     MAX_CONFIRMED_CHAPTERS,
-} from '../archiveChapterEngine';
+} from '../archive-memory/archiveChapterEngine';
 import { retrieveArchiveMemory } from '../archiveMemory';
 import type { ArchiveChapter, ArchiveIndexEntry } from '../../types';
 

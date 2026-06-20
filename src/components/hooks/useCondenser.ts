@@ -1,5 +1,5 @@
 import { useCallback } from 'react';
-import { computeTrimIndex, getVerbatimWindow } from '../../services/condenser';
+import { computeTrimIndex, getVerbatimWindow } from '../../services/archive-memory/condenser';
 import type { ChatMessage, CondenserState } from '../../types';
 
 interface UseCondenserDeps {
