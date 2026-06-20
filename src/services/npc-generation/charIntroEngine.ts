@@ -1,5 +1,5 @@
-import type { GameContext, CharacterIntroEntry, ChatMessage, EndpointConfig, ProviderConfig } from '../types';
-import { llmCall } from '../utils/llmCall';
+import type { GameContext, CharacterIntroEntry, ChatMessage, EndpointConfig, ProviderConfig } from '../../types';
+import { llmCall } from '../../utils/llmCall';
 
 export type CharIntroResult = {
     tag: string;

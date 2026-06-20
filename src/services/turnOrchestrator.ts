@@ -127,7 +127,7 @@ export async function runTurn(
         const seenNpcNames = new Set((npcLedger ?? []).map((n: NPCEntry) => n.name.toLowerCase()));
         try {
             const auxProvider = useAppStore.getState().getActiveAuxiliaryEndpoint() ?? provider;
-            const { rollCharacterIntroEngine } = await import('./charIntroEngine');
+            const { rollCharacterIntroEngine } = await import('./npc-generation/charIntroEngine');
             const introResult = await rollCharacterIntroEngine(
                 context,
                 seenNpcNames,
