@@ -1,5 +1,5 @@
 import type { LoreChunk, RuleChunkMeta, EndpointConfig, ProviderConfig } from '../../types';
-import { chunkLoreFile } from '../loreChunker';
+import { chunkLoreFile } from '../lore/loreChunker';
 import { api } from '../llm/apiClient';
 import { llmCall } from '../../utils/llmCall';
 import { extractJsonRobust } from '../infrastructure/jsonExtract';

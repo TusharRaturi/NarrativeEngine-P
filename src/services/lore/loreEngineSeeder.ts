@@ -1,4 +1,4 @@
-import type { LoreChunk, EngineSeed } from '../types';
+import type { LoreChunk, EngineSeed } from '../../types';
 
 export function extractEngineSeeds(chunks: LoreChunk[]): EngineSeed {
     const seed: EngineSeed = {

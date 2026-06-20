@@ -1,6 +1,6 @@
-import type { LoreChunk, ChatMessage } from '../types';
-import { computeIdf, fuseRRF } from './retrieval/lexicalFusion';
-import { getCachedKeywordRegex as getKeywordRegex, makeScanTextGetter } from './retrieval/retrievalCore';
+import type { LoreChunk, ChatMessage } from '../../types';
+import { computeIdf, fuseRRF } from '../retrieval/lexicalFusion';
+import { getCachedKeywordRegex as getKeywordRegex, makeScanTextGetter } from '../retrieval/retrievalCore';
 
 // ─── Group Competition ────────────────────────────────────────────────────
 function applyGroupCompetition(

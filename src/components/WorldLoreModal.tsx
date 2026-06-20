@@ -5,7 +5,7 @@ import type { WorldLoreDraft } from '../types';
 import { uid } from '../utils/uid';
 import { AccordionList } from './AccordionList';
 import { LoreTextarea } from './LoreTextarea';
-import { downloadMarkdown } from '../services/worldLoreExport';
+import { downloadMarkdown } from '../services/lore/worldLoreExport';
 import { LoreImportReviewModal } from './LoreImportReviewModal';
 
 const FLAT_SECTIONS: { key: keyof WorldLoreDraft; label: string; placeholder: string }[] = [

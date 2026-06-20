@@ -1,7 +1,7 @@
-import type { LoreChunk, EndpointConfig, ProviderConfig } from '../types';
-import { llmCall } from '../utils/llmCall';
-import { saveLoreChunks } from '../store/campaignStore';
-import { extractJsonRobust } from './infrastructure/jsonExtract';
+import type { LoreChunk, EndpointConfig, ProviderConfig } from '../../types';
+import { llmCall } from '../../utils/llmCall';
+import { saveLoreChunks } from '../../store/campaignStore';
+import { extractJsonRobust } from '../infrastructure/jsonExtract';
 
 const BATCH_SIZE = 8;
 const CONTENT_PREVIEW_CHARS = 300;

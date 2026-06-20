@@ -1,14 +1,14 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { GameContext } from '../../types';
 
-vi.mock('../loreRetriever', () => ({
+vi.mock('../lore/loreRetriever', () => ({
     searchLoreByQuery: vi.fn(),
     retrieveRelevantLore: vi.fn(),
 }));
 vi.mock('../../utils/uid', () => ({ uid: vi.fn().mockReturnValue('note-uid') }));
 
 import { handleLoreTool, handleNotebookTool, TOOL_DEFINITIONS } from '../toolHandlers';
-import { searchLoreByQuery } from '../loreRetriever';
+import { searchLoreByQuery } from '../lore/loreRetriever';
 
 const mockSearchLore = vi.mocked(searchLoreByQuery);
 

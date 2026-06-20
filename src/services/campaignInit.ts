@@ -3,9 +3,9 @@ import {
     saveLoreChunks, getNPCLedger, saveNPCLedger,
     loadCampaignState, saveCampaignState,
 } from '../store/campaignStore';
-import { chunkLoreFile } from './loreChunker';
-import { extractEngineSeeds } from './loreEngineSeeder';
-import { parseNPCsFromLore } from './loreNPCParser';
+import { chunkLoreFile } from './lore/loreChunker';
+import { extractEngineSeeds } from './lore/loreEngineSeeder';
+import { parseNPCsFromLore } from './lore/loreNPCParser';
 import {
     DEFAULT_SURPRISE_TYPES, DEFAULT_SURPRISE_TONES,
     DEFAULT_ENCOUNTER_TYPES, DEFAULT_ENCOUNTER_TONES,
@@ -50,7 +50,7 @@ export async function initializeCampaignState(params: {
             const { useAppStore } = await import('../store/useAppStore');
             const utilityEndpointForEnrichment = useAppStore.getState().getActiveUtilityEndpoint();
             if (utilityEndpointForEnrichment?.endpoint) {
-                import('./loreKeywordEnricher').then(({ enrichLoreKeywords }) => {
+                import('./lore/loreKeywordEnricher').then(({ enrichLoreKeywords }) => {
                     enrichLoreKeywords(campaignId, chunks, utilityEndpointForEnrichment)
                         .catch(err => console.warn('[LoreEnricher] Background enrichment failed:', err));
                 }).catch(() => {});

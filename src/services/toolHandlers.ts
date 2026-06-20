@@ -1,5 +1,5 @@
 import type { GameContext, LoreChunk, DiceConfig, InventoryProposal } from '../types';
-import { searchLoreByQuery } from './loreRetriever';
+import { searchLoreByQuery } from './lore/loreRetriever';
 import { uid } from '../utils/uid';
 import { mapTier } from './diceTier';
 

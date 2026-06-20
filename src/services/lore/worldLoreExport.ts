@@ -1,4 +1,4 @@
-import type { WorldLoreDraft } from '../types';
+import type { WorldLoreDraft } from '../../types';
 
 const FLAT_SECTIONS: { key: keyof WorldLoreDraft; header: string }[] = [
     { key: 'background', header: 'World Background' },

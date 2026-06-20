@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Plus, Users, LayoutGrid, List, CheckSquare, Upload, Download, BookOpen, Trash2, Search, ArrowDownAZ, ArrowUpZA, Sparkles } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { generateNPCPortrait, updateExistingNPCs } from '../services/chatEngine';
-import { parseNPCsFromLore } from '../services/loreNPCParser';
+import { parseNPCsFromLore } from '../services/lore/loreNPCParser';
 import { downloadImageToLocal } from '../services/infrastructure/assetService';
 import type { NPCEntry, NPCVisualProfile } from '../types';
 import { DEFAULT_VISUAL_PROFILE } from '../types';

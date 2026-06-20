@@ -9,7 +9,7 @@ vi.mock('../../store/campaignStore', () => ({
 
 import { llmCall } from '../../utils/llmCall';
 import { saveLoreChunks } from '../../store/campaignStore';
-import { enrichLoreKeywords } from '../loreKeywordEnricher';
+import { enrichLoreKeywords } from '../lore/loreKeywordEnricher';
 import type { LoreChunk } from '../../types';
 
 const mockLlmCall = vi.mocked(llmCall);

@@ -15,7 +15,7 @@ vi.mock('../archiveChapterEngine', () => ({
 vi.mock('../contextRecommender', () => ({
     recommendContext: vi.fn().mockResolvedValue({ relevantNPCNames: [], relevantLoreIds: [] }),
 }));
-vi.mock('../loreRetriever', () => ({
+vi.mock('../lore/loreRetriever', () => ({
     retrieveRelevantLore: vi.fn().mockReturnValue([]),
     searchLoreByQuery: vi.fn().mockReturnValue([]),
 }));

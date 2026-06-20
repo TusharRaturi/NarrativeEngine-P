@@ -1,5 +1,5 @@
-import { llmCall } from '../utils/llmCall';
-import { useAppStore } from '../store/useAppStore';
+import { llmCall } from '../../utils/llmCall';
+import { useAppStore } from '../../store/useAppStore';
 
 export class AuxNotConfiguredError extends Error {
     constructor() {

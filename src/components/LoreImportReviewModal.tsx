@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { X, Loader2, ChevronDown, ChevronRight } from 'lucide-react';
-import { classifyPastedLore, ALL_CATEGORIES, CATEGORY_LABELS, type ClassifiedChunk, type ClassifiedCategory } from '../services/worldLoreImport';
-import { AuxNotConfiguredError } from '../services/worldLoreAI';
+import { classifyPastedLore, ALL_CATEGORIES, CATEGORY_LABELS, type ClassifiedChunk, type ClassifiedCategory } from '../services/lore/worldLoreImport';
+import { AuxNotConfiguredError } from '../services/lore/worldLoreAI';
 import { toast } from './Toast';
 import type { WorldLoreDraft } from '../types';
 

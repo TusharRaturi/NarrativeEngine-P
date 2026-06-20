@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { retrieveRelevantLore } from '../loreRetriever';
+import { retrieveRelevantLore } from '../lore/loreRetriever';
 import { retrieveRelevantRules } from '../rules/rulesRetriever';
 import type { LoreChunk, RuleChunkMeta } from '../../types';
 

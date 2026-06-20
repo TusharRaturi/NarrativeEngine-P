@@ -1,5 +1,5 @@
-import { llmCall } from '../utils/llmCall';
-import { useAppStore } from '../store/useAppStore';
+import { llmCall } from '../../utils/llmCall';
+import { useAppStore } from '../../store/useAppStore';
 import { AuxNotConfiguredError } from './worldLoreAI';
 
 export type ClassifiedCategory =

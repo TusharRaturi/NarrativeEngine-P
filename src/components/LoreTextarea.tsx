@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from 'react';
 import { Sparkles, Wand, Loader2 } from 'lucide-react';
-import { formatLoreText, expandLoreText, AuxNotConfiguredError } from '../services/worldLoreAI';
+import { formatLoreText, expandLoreText, AuxNotConfiguredError } from '../services/lore/worldLoreAI';
 import { toast } from './Toast';
 
 type LoreTextareaProps = {

@@ -1,5 +1,5 @@
-import type { LoreChunk, LoreCategory } from '../types';
-import { countTokens } from './infrastructure/tokenizer';
+import type { LoreChunk, LoreCategory } from '../../types';
+import { countTokens } from '../infrastructure/tokenizer';
 
 const LORE_CHUNK_MAX = 3000;
 const LORE_WINDOW_SIZE = 2000;

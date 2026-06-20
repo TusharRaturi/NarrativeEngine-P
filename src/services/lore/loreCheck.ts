@@ -8,11 +8,11 @@ import type {
     LoreCheckCitation,
     LoreCheckVerdict,
     LoreCheckCategory,
-} from '../types';
-import { llmCall } from '../utils/llmCall';
+} from '../../types';
+import { llmCall } from '../../utils/llmCall';
 import { searchLoreByQuery } from './loreRetriever';
-import { deepArchiveScan } from './deepArchiveSearch';
-import { extractJsonRobust } from './infrastructure/jsonExtract';
+import { deepArchiveScan } from '../deepArchiveSearch';
+import { extractJsonRobust } from '../infrastructure/jsonExtract';
 
 export type LoreCheckInput = {
     utilityEndpoint: EndpointConfig;
