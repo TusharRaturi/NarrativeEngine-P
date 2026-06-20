@@ -1,7 +1,7 @@
 import type { NPCEntry, LoreChunk } from '../../types';
 import type { TurnState } from '../turnOrchestrator';
 import { API_BASE as API } from '../../lib/apiBase';
-import { rerankCandidates, type RerankCandidate } from '../semanticReranker';
+import { rerankCandidates, type RerankCandidate } from '../retrieval/semanticReranker';
 import { llmCall } from '../../utils/llmCall';
 import { extractJsonRobust } from '../infrastructure/jsonExtract';
 

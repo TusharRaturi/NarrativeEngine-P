@@ -1,7 +1,7 @@
 import type { ArchiveChapter } from '../../types';
 import type { TurnState } from '../turnOrchestrator';
 import { deepArchiveScan } from '../deepArchiveSearch';
-import { queryFacts, formatFactsForContext } from '../semanticMemory';
+import { queryFacts, formatFactsForContext } from '../retrieval/semanticMemory';
 
 export type DeepSearchDeps = {
     deepSearchThisTurn: boolean;

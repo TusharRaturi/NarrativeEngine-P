@@ -5,8 +5,8 @@ vi.mock('../../utils/llmCall', () => ({
 }));
 
 import { llmCall } from '../../utils/llmCall';
-import { rerankCandidates } from '../semanticReranker';
-import type { RerankCandidate } from '../semanticReranker';
+import { rerankCandidates } from '../retrieval/semanticReranker';
+import type { RerankCandidate } from '../retrieval/semanticReranker';
 
 const mockLlmCall = vi.mocked(llmCall);
 
