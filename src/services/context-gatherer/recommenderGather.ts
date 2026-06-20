@@ -1,6 +1,6 @@
 import type { ArchiveChapter } from '../../types';
-import type { TurnState } from '../turnOrchestrator';
-import { recommendContext } from '../contextRecommender';
+import type { TurnState } from '../turn/turnOrchestrator';
+import { recommendContext } from '../turn/contextRecommender';
 
 export type RecommenderResult = {
     recommendedNPCNames: string[] | undefined;

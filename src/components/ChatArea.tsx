@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Send, Save, Loader2, Zap, Scroll, Edit2, X, Square, Search, Check, Package } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import { runTurn } from '../services/turnOrchestrator';
+import { runTurn } from '../services/turn/turnOrchestrator';
 import { uid } from '../utils/uid';
 import type { InventoryProposal, InventoryItem, InventoryItemCategory } from '../types';
 import { set } from 'idb-keyval';

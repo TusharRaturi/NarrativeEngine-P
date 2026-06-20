@@ -1,6 +1,6 @@
 import type { SceneStakes, EndpointConfig, ProviderConfig } from '../../types';
 import { llmCall } from '../../utils/llmCall';
-import { recordSceneStakesFallback } from '../sceneStakesTelemetry';
+import { recordSceneStakesFallback } from './sceneStakesTelemetry';
 
 // Phase 2 port: mobile used a shared infrastructure/utilityPrompts module for these constant
 // sections; desktop has no equivalent shared module. Inlined here (small + only used by this

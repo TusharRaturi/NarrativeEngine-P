@@ -1,7 +1,7 @@
-import type { EndpointConfig, ProviderConfig } from '../types';
-import type { OpenAIMessage } from './llm/llmService';
-import { sendMessage } from './llm/llmService';
-import { extractJson } from './infrastructure/jsonExtract';
+import type { EndpointConfig, ProviderConfig } from '../../types';
+import type { OpenAIMessage } from '../llm/llmService';
+import { sendMessage } from '../llm/llmService';
+import { extractJson } from '../infrastructure/jsonExtract';
 
 /**
  * AI-powered tag population for Surprise & World engines.

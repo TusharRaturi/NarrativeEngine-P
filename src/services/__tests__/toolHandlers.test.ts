@@ -7,7 +7,7 @@ vi.mock('../lore/loreRetriever', () => ({
 }));
 vi.mock('../../utils/uid', () => ({ uid: vi.fn().mockReturnValue('note-uid') }));
 
-import { handleLoreTool, handleNotebookTool, TOOL_DEFINITIONS } from '../toolHandlers';
+import { handleLoreTool, handleNotebookTool, TOOL_DEFINITIONS } from '../turn/toolHandlers';
 import { searchLoreByQuery } from '../lore/loreRetriever';
 
 const mockSearchLore = vi.mocked(searchLoreByQuery);

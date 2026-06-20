@@ -1,5 +1,5 @@
 import type { ArchiveChapter } from '../../types';
-import type { TurnState } from '../turnOrchestrator';
+import type { TurnState } from '../turn/turnOrchestrator';
 import { deepArchiveScan } from '../archive-memory/deepArchiveSearch';
 import { queryFacts, formatFactsForContext } from '../retrieval/semanticMemory';
 

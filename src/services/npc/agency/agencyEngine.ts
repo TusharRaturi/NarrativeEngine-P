@@ -9,7 +9,7 @@
 //     INPUT_DELIMITER) are inlined since desktop has no shared infrastructure/utilityPrompts module.
 
 import type { NPCEntry, SceneStakes } from '../../../types';
-import type { TurnState, TurnCallbacks } from '../../turnOrchestrator';
+import type { TurnState, TurnCallbacks } from '../../turn/turnOrchestrator';
 import { uid } from '../../../utils/uid';
 import { llmCall } from '../../../utils/llmCall';
 import { backgroundQueue } from '../../infrastructure/backgroundQueue';

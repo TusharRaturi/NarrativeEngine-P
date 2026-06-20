@@ -3,13 +3,13 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 vi.mock('../../utils/llmCall', () => ({
     llmCall: vi.fn(),
 }));
-vi.mock('../contextMinifier', () => ({
+vi.mock('../turn/contextMinifier', () => ({
     buildInventoryIndex: vi.fn(() => '(empty inventory)'),
     buildProfileIndex: vi.fn(() => '(empty profile)'),
 }));
 
 import { llmCall } from '../../utils/llmCall';
-import { recommendContext } from '../contextRecommender';
+import { recommendContext } from '../turn/contextRecommender';
 import type { EndpointConfig } from '../../types';
 
 const mockLlmCall = vi.mocked(llmCall);

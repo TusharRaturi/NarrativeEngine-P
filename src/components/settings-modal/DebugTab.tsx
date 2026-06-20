@@ -4,7 +4,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { useUtilityCalls, clearHistory } from '../../services/llm/utilityCallTracker';
 import type { UtilityCallStatus } from '../../services/llm/utilityCallTracker';
 import { useCacheTelemetry, hitRatio, totalsForDay, clearCacheTelemetry } from '../../services/llm/cacheTelemetry';
-import { useSceneStakesFallbackCount, resetSceneStakesFallbackCount } from '../../services/sceneStakesTelemetry';
+import { useSceneStakesFallbackCount, resetSceneStakesFallbackCount } from '../../services/turn/sceneStakesTelemetry';
 
 function CacheTelemetrySection() {
     const rollup = useCacheTelemetry();

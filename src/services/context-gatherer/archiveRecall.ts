@@ -1,5 +1,5 @@
 import type { ArchiveScene, ArchiveChapter } from '../../types';
-import type { TurnState } from '../turnOrchestrator';
+import type { TurnState } from '../turn/turnOrchestrator';
 import { recallArchiveScenes, retrieveArchiveMemory, fetchArchiveScenes } from '../archiveMemory';
 import { rankChapters, recallWithChapterFunnel } from '../archive-memory/archiveChapterEngine';
 import { runArchivePlanner } from '../archive-memory/archivePlanner';

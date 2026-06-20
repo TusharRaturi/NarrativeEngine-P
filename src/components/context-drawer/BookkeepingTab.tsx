@@ -7,7 +7,7 @@ import {
     minifyBookkeepingStub,
     minifySelectedInventory,
     minifySelectedProfile,
-} from '../../services/contextMinifier';
+} from '../../services/turn/contextMinifier';
 import { toast } from '../Toast';
 import type { EndpointConfig, ProviderConfig, InventoryItemCategory, InventoryItem } from '../../types';
 

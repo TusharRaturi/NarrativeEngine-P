@@ -6,7 +6,7 @@
 //     module (signature matches mobile's).
 
 import type { ArcRecord, DivergenceEntry } from '../../types';
-import type { TurnState, TurnCallbacks } from '../turnOrchestrator';
+import type { TurnState, TurnCallbacks } from '../turn/turnOrchestrator';
 import { uid } from '../../utils/uid';
 import { mergeSealEntries } from '../campaign-state/divergenceRegister';
 

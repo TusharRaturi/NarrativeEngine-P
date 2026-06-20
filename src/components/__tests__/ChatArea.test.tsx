@@ -93,11 +93,11 @@ vi.mock('../../store/useAppStore', () => {
     return { useAppStore };
 });
 
-vi.mock('../../services/turnOrchestrator', () => ({
+vi.mock('../../services/turn/turnOrchestrator', () => ({
     runTurn: vi.fn(async () => {}),
 }));
 
-vi.mock('../../services/condenser', () => ({
+vi.mock('../../services/archive-memory/condenser', () => ({
     shouldCondense: vi.fn(() => false),
     computeTrimIndex: vi.fn(() => -1),
     getCondenseBudgetRatio: vi.fn(() => 0.75),
@@ -140,12 +140,12 @@ vi.mock('../Toast', () => ({
     toast: { success: vi.fn(), error: vi.fn(), info: vi.fn(), warning: vi.fn() },
 }));
 
-vi.mock('../../services/archiveChapterEngine', () => ({
+vi.mock('../../services/archive-memory/archiveChapterEngine', () => ({
     shouldAutoSeal: vi.fn(() => ({ shouldSeal: false, reason: '' })),
 }));
 
 import { useAppStore } from '../../store/useAppStore';
-import { runTurn } from '../../services/turnOrchestrator';
+import { runTurn } from '../../services/turn/turnOrchestrator';
 
 function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
     return {

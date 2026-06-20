@@ -25,7 +25,7 @@ global.fetch = vi.fn().mockResolvedValue({
     ok: false,
 } as Response);
 
-import { gatherContext } from '../contextGatherer';
+import { gatherContext } from '../turn/contextGatherer';
 import { fetchArchiveScenes } from '../archiveMemory';
 
 const mockFetchArchiveScenes = vi.mocked(fetchArchiveScenes);

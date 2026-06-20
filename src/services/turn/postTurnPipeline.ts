@@ -1,20 +1,20 @@
-import type { ChatMessage, NPCEntry } from '../types';
+import type { ChatMessage, NPCEntry } from '../../types';
 import type { TurnState, TurnCallbacks } from './turnOrchestrator';
-import { useAppStore } from '../store/useAppStore';
-import { api } from './llm/apiClient';
-import { CHAPTER_SCENE_SOFT_CAP } from '../types';
-import { rateImportance } from './archive-memory/importanceRater';
-import { sealChapterCombined } from './saveFileEngine';
-import { backgroundQueue } from './infrastructure/backgroundQueue';
-import { extractSceneEvents } from './archive-memory/sceneEventExtractor';
-import { extractNPCNames, classifyNPCNames, validateNPCCandidates } from './npc/npcDetector';
-import { generateNPCProfile, updateExistingNPCs, backfillNPCDrives } from './chatEngine';
-import { scanPressure, buildPressurePatch, shouldArchiveNPC, findArchivedToRestore } from './npc/npcPressureTracker';
-import { scanCharacterProfile } from './characterProfileParser';
-import { scanInventory } from './inventoryParser';
-import { toast } from '../components/Toast';
-import { mergeSealEntries, EMPTY_REGISTER } from './campaign-state/divergenceRegister';
-import { saveDivergenceRegister } from '../store/campaignStore';
+import { useAppStore } from '../../store/useAppStore';
+import { api } from '../llm/apiClient';
+import { CHAPTER_SCENE_SOFT_CAP } from '../../types';
+import { rateImportance } from '../archive-memory/importanceRater';
+import { sealChapterCombined } from '../saveFileEngine';
+import { backgroundQueue } from '../infrastructure/backgroundQueue';
+import { extractSceneEvents } from '../archive-memory/sceneEventExtractor';
+import { extractNPCNames, classifyNPCNames, validateNPCCandidates } from '../npc/npcDetector';
+import { generateNPCProfile, updateExistingNPCs, backfillNPCDrives } from '../chatEngine';
+import { scanPressure, buildPressurePatch, shouldArchiveNPC, findArchivedToRestore } from '../npc/npcPressureTracker';
+import { scanCharacterProfile } from '../characterProfileParser';
+import { scanInventory } from '../inventoryParser';
+import { toast } from '../../components/Toast';
+import { mergeSealEntries, EMPTY_REGISTER } from '../campaign-state/divergenceRegister';
+import { saveDivergenceRegister } from '../../store/campaignStore';
 
 const PRESENT_HEADER_RE = /👥\s*\[Present\]\s*(.+)/i;
 
@@ -90,9 +90,9 @@ export async function runPostTurnPipeline(
     // player's active social circle (bumpOnStageActivity is unconditional — same pattern as the
     // short-want lifecycle).
     try {
-        const { runAgencyTick, bumpOnStageActivity } = await import('./npc/agency/agencyEngine');
+        const { runAgencyTick, bumpOnStageActivity } = await import('../npc/agency/agencyEngine');
         bumpOnStageActivity(state, callbacks, npcLedger);
-        const { tierAllows } = await import('./turn/aiTier');
+        const { tierAllows } = await import('./aiTier');
         if (tierAllows(state.settings.aiTier, 'heartbeatTick')) {
             runAgencyTick(state, callbacks, npcLedger, displayInput);
         }
@@ -106,9 +106,9 @@ export async function runPostTurnPipeline(
     // Gated by aiTier in Phase 4. Zero LLM (the only LLM call is the spawn, fired manually
     // via the ArcInjectorButton).
     try {
-        const { tierAllows } = await import('./turn/aiTier');
+        const { tierAllows } = await import('./aiTier');
         if (tierAllows(state.settings.aiTier, 'arcTick')) {
-            const { runArcTick } = await import('./arc/arcEngine');
+            const { runArcTick } = await import('../arc/arcEngine');
             runArcTick(state, callbacks, displayInput, lastAssistantContent);
         }
     } catch (err) {
@@ -236,7 +236,7 @@ async function runArchiveTrack(
 
 export async function runCombinedSeal(
     provider: { endpoint: string; apiKey: string; modelName: string; apiFormat?: string },
-    chapter: import('../types').ArchiveChapter,
+    chapter: import('../../types').ArchiveChapter,
     activeCampaignId: string,
     state: TurnState,
     callbacks: TurnCallbacks,
@@ -371,7 +371,7 @@ async function runNPCTrack(
     callbacks: TurnCallbacks,
     lastAssistantContent: string,
     allMsgs: ChatMessage[],
-    npcLedger: import('../types').NPCEntry[],
+    npcLedger: import('../../types').NPCEntry[],
     activeCampaignId: string
 ): Promise<void> {
     const excludeNames = npcLedger.flatMap(npc => {
@@ -445,7 +445,7 @@ async function runPressureTrack(
     state: TurnState,
     callbacks: TurnCallbacks,
     displayInput: string,
-    npcLedger: import('../types').NPCEntry[],
+    npcLedger: import('../../types').NPCEntry[],
     activeCampaignId: string,
     lastAssistantContent: string
 ): Promise<void> {

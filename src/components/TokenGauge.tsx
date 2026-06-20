@@ -5,7 +5,7 @@ import { countTokens } from '../services/infrastructure/tokenizer';
 import { DEFAULT_RULES } from '../services/rules/defaultRules';
 import {
     minifyBookkeepingStub,
-} from '../services/contextMinifier';
+} from '../services/turn/contextMinifier';
 import { countRegisterTokens } from '../services/campaign-state/divergenceRegister';
 
 export function TokenGauge() {

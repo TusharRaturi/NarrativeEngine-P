@@ -8,7 +8,7 @@
  * Original lore files stay human-readable; this is transport-only.
  */
 
-import type { LoreChunk, NPCEntry } from '../types';
+import type { LoreChunk, NPCEntry } from '../../types';
 
 /**
  * Strip markdown formatting from a block of text.
@@ -169,7 +169,7 @@ export function minifyNPCBlock(npcs: NPCEntry[]): string {
     return `[NPC_CTX]\n${lines}\n[/NPC_CTX]`;
 }
 
-import type { InventoryItem, InventoryItemCategory, CharacterProfile } from '../types';
+import type { InventoryItem, InventoryItemCategory, CharacterProfile } from '../../types';
 
 const CATEGORY_ORDER: InventoryItemCategory[] = ['equipped', 'weapon', 'armor', 'consumable', 'key', 'currency', 'misc'];
 

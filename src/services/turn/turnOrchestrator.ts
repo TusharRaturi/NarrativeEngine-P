@@ -1,11 +1,11 @@
-import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from './archive-memory/condenser';
-import { useAppStore } from '../store/useAppStore';
-import type { AppSettings, GameContext, ChatMessage, NPCEntry, LoreChunk, CondenserState, ArchiveIndexEntry, TimelineEvent, EndpointConfig, ProviderConfig, ArchiveChapter, SamplingConfig, PipelinePhase, DivergenceRegister, ThinkingEffort, InventoryProposal } from '../types';
-import { uid } from '../utils/uid';
-import { buildPayload, sendMessage } from './chatEngine';
-import { rollEngines, rollDiceFairness } from './engine/engineRolls';
-import { toast } from '../components/Toast';
-import { sanitizePayloadForApi } from './lib/payloadSanitizer';
+import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from '../archive-memory/condenser';
+import { useAppStore } from '../../store/useAppStore';
+import type { AppSettings, GameContext, ChatMessage, NPCEntry, LoreChunk, CondenserState, ArchiveIndexEntry, TimelineEvent, EndpointConfig, ProviderConfig, ArchiveChapter, SamplingConfig, PipelinePhase, DivergenceRegister, ThinkingEffort, InventoryProposal } from '../../types';
+import { uid } from '../../utils/uid';
+import { buildPayload, sendMessage } from '../chatEngine';
+import { rollEngines, rollDiceFairness } from '../engine/engineRolls';
+import { toast } from '../../components/Toast';
+import { sanitizePayloadForApi } from '../lib/payloadSanitizer';
 import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool, handleProposeInventoryTool, handleInitiateCombatTool } from './toolHandlers';
 import { gatherContext } from './contextGatherer';
 import { runPostTurnPipeline } from './postTurnPipeline';
@@ -64,7 +64,7 @@ export type TurnState = {
     sampling?: SamplingConfig;
     deepSearchThisTurn?: boolean;
     divergenceRegister?: DivergenceRegister;
-    pinnedExcerpts?: import('../types').PinnedExcerpt[];
+    pinnedExcerpts?: import('../../types').PinnedExcerpt[];
 };
 
 
@@ -127,7 +127,7 @@ export async function runTurn(
         const seenNpcNames = new Set((npcLedger ?? []).map((n: NPCEntry) => n.name.toLowerCase()));
         try {
             const auxProvider = useAppStore.getState().getActiveAuxiliaryEndpoint() ?? provider;
-            const { rollCharacterIntroEngine } = await import('./npc-generation/charIntroEngine');
+            const { rollCharacterIntroEngine } = await import('../npc-generation/charIntroEngine');
             const introResult = await rollCharacterIntroEngine(
                 context,
                 seenNpcNames,
@@ -161,7 +161,7 @@ export async function runTurn(
         semanticFactText,
         archiveIndex,
         timelineEvents,
-        inventoryCategories as (import('../types').InventoryItemCategory | 'equipped')[] | undefined,
+        inventoryCategories as (import('../../types').InventoryItemCategory | 'equipped')[] | undefined,
         profileFields as string[] | undefined,
         deepContextSummary,
         state.divergenceRegister,
@@ -241,7 +241,7 @@ export async function runTurn(
                         content: loreEngineText || "",
                         reasoning_content: reasoningContent || undefined,
                         tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('./chatEngine').OpenAIMessage);
+                    } as unknown as import('../chatEngine').OpenAIMessage);
 
                     const { toolResult: loreResult } = handleLoreTool(toolCall.arguments, { loreChunks, notebook: state.context.notebook });
 
@@ -261,7 +261,7 @@ export async function runTurn(
                         content: loreResult,
                         name: toolCall.name,
                         tool_call_id: toolCall.id
-                    } as unknown as import('./chatEngine').OpenAIMessage);
+                    } as unknown as import('../chatEngine').OpenAIMessage);
 
                     retryTimer = setTimeout(() => {
                         retryTimer = null;
@@ -294,7 +294,7 @@ export async function runTurn(
                         content: nbEngineText || "",
                         reasoning_content: reasoningContent || undefined,
                         tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('./chatEngine').OpenAIMessage);
+                    } as unknown as import('../chatEngine').OpenAIMessage);
 
                     const { toolResult: notebookResult, updatedNotebook } = handleNotebookTool(toolCall.arguments, { loreChunks, notebook: state.context.notebook });
                     callbacks.updateContext({ notebook: updatedNotebook });
@@ -315,7 +315,7 @@ export async function runTurn(
                         content: notebookResult,
                         name: toolCall.name,
                         tool_call_id: toolCall.id
-                    } as unknown as import('./chatEngine').OpenAIMessage);
+                    } as unknown as import('../chatEngine').OpenAIMessage);
 
                     retryTimer = setTimeout(() => {
                         retryTimer = null;
@@ -348,7 +348,7 @@ export async function runTurn(
                         content: diceEngineText || "",
                         reasoning_content: reasoningContent || undefined,
                         tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('./chatEngine').OpenAIMessage);
+                    } as unknown as import('../chatEngine').OpenAIMessage);
 
                     const { toolResult: diceResult } = handleDiceTool(toolCall.arguments, { diceConfig: context.diceConfig });
 
@@ -368,7 +368,7 @@ export async function runTurn(
                         content: diceResult,
                         name: toolCall.name,
                         tool_call_id: toolCall.id
-                    } as unknown as import('./chatEngine').OpenAIMessage);
+                    } as unknown as import('../chatEngine').OpenAIMessage);
 
                     retryTimer = setTimeout(() => {
                         retryTimer = null;
@@ -401,7 +401,7 @@ export async function runTurn(
                         content: invEngineText || "",
                         reasoning_content: reasoningContent || undefined,
                         tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('./chatEngine').OpenAIMessage);
+                    } as unknown as import('../chatEngine').OpenAIMessage);
 
                     const { toolResult: invResult, proposal } = handleProposeInventoryTool(toolCall.arguments);
                     callbacks.stageInventoryProposal?.(proposal);
@@ -422,7 +422,7 @@ export async function runTurn(
                         content: invResult,
                         name: toolCall.name,
                         tool_call_id: toolCall.id
-                    } as unknown as import('./chatEngine').OpenAIMessage);
+                    } as unknown as import('../chatEngine').OpenAIMessage);
 
                     retryTimer = setTimeout(() => {
                         retryTimer = null;
@@ -458,7 +458,7 @@ export async function runTurn(
                         content: combatEngineText || "",
                         reasoning_content: reasoningContent || undefined,
                         tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('./chatEngine').OpenAIMessage);
+                    } as unknown as import('../chatEngine').OpenAIMessage);
 
                     const { toolResult: combatResult } = handleInitiateCombatTool(toolCall.arguments);
 
@@ -478,7 +478,7 @@ export async function runTurn(
                         content: combatResult,
                         name: toolCall.name,
                         tool_call_id: toolCall.id
-                    } as unknown as import('./chatEngine').OpenAIMessage);
+                    } as unknown as import('../chatEngine').OpenAIMessage);
 
                     retryTimer = setTimeout(() => {
                         retryTimer = null;

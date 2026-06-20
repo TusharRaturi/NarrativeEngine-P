@@ -1,6 +1,6 @@
 import type { GameContext, InventoryItemCategory } from '../../types';
 import { countTokens } from '../infrastructure/tokenizer';
-import { minifyBookkeepingStub, minifySelectedInventory, minifySelectedProfile } from '../contextMinifier';
+import { minifyBookkeepingStub, minifySelectedInventory, minifySelectedProfile } from '../turn/contextMinifier';
 import type { TraceCollector } from './traceCollector';
 
 export function buildVolatile(opts: {

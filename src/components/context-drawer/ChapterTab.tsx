@@ -4,7 +4,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { api } from '../../services/llm/apiClient';
 import { ChapterCard } from './ChapterCard';
 import { ResolvedStatePanel } from './ResolvedStatePanel';
-import { runCombinedSeal } from '../../services/postTurnPipeline';
+import { runCombinedSeal } from '../../services/turn/postTurnPipeline';
 import { toast } from '../Toast';
 import type { ArchiveChapter } from '../../types';
 

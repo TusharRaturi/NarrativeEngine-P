@@ -6,4 +6,4 @@ export { extractJson } from './infrastructure/jsonExtract';
 export { sendMessage, testConnection } from './llm/llmService';
 export type { OpenAIMessage } from './llm/llmService';
 export { generateNPCProfile, updateExistingNPCs, generateNPCPortrait, backfillNPCDrives } from './npcGeneration';
-export { populateEngineTags } from './tagGeneration';
+export { populateEngineTags } from './turn/tagGeneration';

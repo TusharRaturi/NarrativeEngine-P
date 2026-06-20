@@ -1,5 +1,5 @@
 import type { NPCEntry, LoreChunk } from '../../types';
-import type { TurnState } from '../turnOrchestrator';
+import type { TurnState } from '../turn/turnOrchestrator';
 import { API_BASE as API } from '../../lib/apiBase';
 import { rerankCandidates, type RerankCandidate } from '../retrieval/semanticReranker';
 import { llmCall } from '../../utils/llmCall';
