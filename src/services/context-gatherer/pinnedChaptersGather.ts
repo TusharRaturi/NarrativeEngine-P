@@ -1,7 +1,7 @@
 import type { ArchiveScene, ArchiveChapter } from '../../types';
 import type { TurnState } from '../turnOrchestrator';
 import { retrieveArchiveMemory, fetchArchiveScenes } from '../archiveMemory';
-import { getDivergenceSceneIds, EMPTY_REGISTER } from '../divergenceRegister';
+import { getDivergenceSceneIds, EMPTY_REGISTER } from '../campaign-state/divergenceRegister';
 import type { SemanticCandidates } from './semanticCandidates';
 
 export type PinnedChaptersDeps = {

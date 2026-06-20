@@ -3,7 +3,7 @@ import { X, Sparkles, Loader2 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { sendMessage } from '../services/llm/llmService';
 import { extractJson } from '../services/infrastructure/jsonExtract';
-import { CATEGORY_LABELS, coerceCategory } from '../services/divergenceRegister';
+import { CATEGORY_LABELS, coerceCategory } from '../services/campaign-state/divergenceRegister';
 import { uid } from '../utils/uid';
 import { toast } from './Toast';
 import type { DivergenceCategory, DivergenceEntry } from '../types';

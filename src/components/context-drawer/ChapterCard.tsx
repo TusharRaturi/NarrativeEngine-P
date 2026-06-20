@@ -5,7 +5,7 @@ import {
 } from 'lucide-react';
 import type { ArchiveChapter, TimelineEvent } from '../../types';
 import { TimelineDotRow } from './TimelineDotRow';
-import { getEventsByChapter } from '../../services/timelineResolver';
+import { getEventsByChapter } from '../../services/campaign-state/timelineResolver';
 import { CHAPTER_SCENE_SOFT_CAP } from '../../types';
 
 function SummaryText({ text }: { text: string }) {

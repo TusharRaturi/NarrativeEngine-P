@@ -1,7 +1,7 @@
-import type { DivergenceRegister, DivergenceEntry, NPCEntry, ArchiveChapter, EndpointConfig, ProviderConfig } from '../types';
-import { llmCall } from '../utils/llmCall';
+import type { DivergenceRegister, DivergenceEntry, NPCEntry, ArchiveChapter, EndpointConfig, ProviderConfig } from '../../types';
+import { llmCall } from '../../utils/llmCall';
 import { CATEGORY_LABELS } from './divergenceRegister';
-import { extractJsonRobust } from './infrastructure/jsonExtract';
+import { extractJsonRobust } from '../infrastructure/jsonExtract';
 
 export type DedupGroup = {
     bucketLabel: string;

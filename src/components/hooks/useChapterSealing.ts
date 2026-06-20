@@ -1,7 +1,7 @@
 import { api } from '../../services/llm/apiClient';
 import { generateChapterSummary } from '../../services/saveFileEngine';
 import { shouldAutoSeal } from '../../services/archiveChapterEngine';
-import { pruneChapterEntries } from '../../services/divergenceRegister';
+import { pruneChapterEntries } from '../../services/campaign-state/divergenceRegister';
 import { saveDivergenceRegister } from '../../store/campaignStore';
 import { useAppStore } from '../../store/useAppStore';
 import { toast } from '../Toast';

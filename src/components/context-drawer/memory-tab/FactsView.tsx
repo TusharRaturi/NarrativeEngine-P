@@ -2,9 +2,9 @@ import { useState, useRef } from 'react';
 import { Edit2, Check, Pin, PinOff, ChevronDown, ChevronUp, Trash2, Sparkles, Loader2 } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import type { DivergenceCategory, DivergenceEntry } from '../../../types';
-import { EMPTY_REGISTER, CATEGORY_LABELS } from '../../../services/divergenceRegister';
-import { runFactClustering } from '../../../services/factClusterer';
-import { runFactDedup, type DedupResult, type DedupCancelled } from '../../../services/factDeduper';
+import { EMPTY_REGISTER, CATEGORY_LABELS } from '../../../services/campaign-state/divergenceRegister';
+import { runFactClustering } from '../../../services/campaign-state/factClusterer';
+import { runFactDedup, type DedupResult, type DedupCancelled } from '../../../services/campaign-state/factDeduper';
 import { DedupReviewModal } from '../../DedupReviewModal';
 
 type FactsSubView = 'chapter' | 'topic';

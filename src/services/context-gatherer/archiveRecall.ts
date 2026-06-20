@@ -3,7 +3,7 @@ import type { TurnState } from '../turnOrchestrator';
 import { recallArchiveScenes, retrieveArchiveMemory, fetchArchiveScenes } from '../archiveMemory';
 import { rankChapters, recallWithChapterFunnel } from '../archiveChapterEngine';
 import { runArchivePlanner } from '../archivePlanner';
-import { getDivergenceSceneIds, EMPTY_REGISTER, buildSceneMap } from '../divergenceRegister';
+import { getDivergenceSceneIds, EMPTY_REGISTER, buildSceneMap } from '../campaign-state/divergenceRegister';
 import type { SemanticCandidates } from './semanticCandidates';
 
 export type ArchiveRecallDeps = {

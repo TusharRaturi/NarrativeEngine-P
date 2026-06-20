@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
-import { EMPTY_REGISTER, countRegisterTokens } from '../../services/divergenceRegister';
+import { EMPTY_REGISTER, countRegisterTokens } from '../../services/campaign-state/divergenceRegister';
 import { FactsView } from './memory-tab/FactsView';
 import { ReviewView } from './memory-tab/ReviewView';
 

@@ -13,7 +13,7 @@ import { scanPressure, buildPressurePatch, shouldArchiveNPC, findArchivedToResto
 import { scanCharacterProfile } from './characterProfileParser';
 import { scanInventory } from './inventoryParser';
 import { toast } from '../components/Toast';
-import { mergeSealEntries, EMPTY_REGISTER } from './divergenceRegister';
+import { mergeSealEntries, EMPTY_REGISTER } from './campaign-state/divergenceRegister';
 import { saveDivergenceRegister } from '../store/campaignStore';
 
 const PRESENT_HEADER_RE = /👥\s*\[Present\]\s*(.+)/i;

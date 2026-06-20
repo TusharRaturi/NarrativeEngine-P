@@ -25,7 +25,7 @@ import {
     getEntriesForNpc,
     migrateV1ToV2,
     countRegisterTokens,
-} from '../divergenceRegister';
+} from '../campaign-state/divergenceRegister';
 
 function makeEntry(overrides: Partial<DivergenceEntry> = {}): DivergenceEntry {
     return {

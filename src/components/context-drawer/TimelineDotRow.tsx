@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { X } from 'lucide-react';
 import type { ArchiveChapter, TimelineEvent } from '../../types';
-import { getEventsByScene, maxImportanceForScene } from '../../services/timelineResolver';
+import { getEventsByScene, maxImportanceForScene } from '../../services/campaign-state/timelineResolver';
 
 interface TimelineDotRowProps {
     chapter: ArchiveChapter;

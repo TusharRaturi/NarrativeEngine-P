@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { X, Loader2, StopCircle } from 'lucide-react';
-import type { DedupGroup } from '../services/factDeduper';
+import type { DedupGroup } from '../services/campaign-state/factDeduper';
 import type { DivergenceEntry } from '../types';
 
 type DedupReviewModalProps = {

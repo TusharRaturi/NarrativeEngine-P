@@ -6,7 +6,7 @@ import { DEFAULT_RULES } from '../services/rules/defaultRules';
 import {
     minifyBookkeepingStub,
 } from '../services/contextMinifier';
-import { countRegisterTokens } from '../services/divergenceRegister';
+import { countRegisterTokens } from '../services/campaign-state/divergenceRegister';
 
 export function TokenGauge() {
     const { context, settings, condenser, inventoryItems, characterProfileData, divergenceRegister } = useAppStore(

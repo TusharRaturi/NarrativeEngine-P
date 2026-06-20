@@ -2,8 +2,8 @@ import type { ChatMessage, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry,
 import { countTokens } from '../infrastructure/tokenizer';
 import { buildBehaviorDirective, buildDriftAlert, buildKnowledgeBoundary } from '../npc/npcBehaviorDirective';
 import { minifyLoreChunk, minifyNPC } from '../contextMinifier';
-import { resolveTimeline, formatResolvedForContext } from '../timelineResolver';
-import { renderRegisterForPayload } from '../divergenceRegister';
+import { resolveTimeline, formatResolvedForContext } from '../campaign-state/timelineResolver';
+import { renderRegisterForPayload } from '../campaign-state/divergenceRegister';
 import { isKnownToAnyOnStage, parseKnownByToken } from '../campaign-state/knowledgeScope';
 import type { TraceCollector } from './traceCollector';
 

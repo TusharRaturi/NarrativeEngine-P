@@ -2,7 +2,7 @@ import type { ProviderConfig, EndpointConfig, DivergenceEntry, SceneEvent, Scene
 import { countTokens } from '../infrastructure/tokenizer';
 import { extractJson } from '../infrastructure/jsonExtract';
 import { llmCall } from '../../utils/llmCall';
-import { DIVERGENCE_CATEGORIES, CATEGORY_DEFINITIONS, coerceCategory } from '../divergenceRegister';
+import { DIVERGENCE_CATEGORIES, CATEGORY_DEFINITIONS, coerceCategory } from '../campaign-state/divergenceRegister';
 import { uid } from '../../utils/uid';
 import { truncateScenesToBudget } from './shared';
 import { parseChapterSummaryOutput } from './chapterSummary';

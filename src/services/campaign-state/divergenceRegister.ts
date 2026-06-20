@@ -1,8 +1,8 @@
-import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, EndpointConfig, ProviderConfig } from '../types';
-import { countTokens } from './infrastructure/tokenizer';
-import { toast } from '../components/Toast';
-import { llmCall } from '../utils/llmCall';
-import { isKnownToAnyOnStage } from './campaign-state/knowledgeScope';
+import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, EndpointConfig, ProviderConfig } from '../../types';
+import { countTokens } from '../infrastructure/tokenizer';
+import { toast } from '../../components/Toast';
+import { llmCall } from '../../utils/llmCall';
+import { isKnownToAnyOnStage } from './knowledgeScope';
 
 export const EMPTY_REGISTER: DivergenceRegister = {
     entries: [],
@@ -108,7 +108,7 @@ export function mergeSealEntries(
 
 export function renderRegisterForPayload(
     register: DivergenceRegister,
-    chapters?: import('../types').ArchiveChapter[],
+    chapters?: import('../../types').ArchiveChapter[],
     onStageNpcIds?: string[],
     npcLedger?: NPCEntry[],
     publicOnly = false

@@ -4,7 +4,7 @@ import { NPCPortraitSection } from './NPCPortraitSection';
 import type { NPCEntry, NPCVisualProfile, NPCBehavioralTrigger, DivergenceCategory, HexAxis } from '../../types';
 import { DEFAULT_VISUAL_PROFILE } from '../../types';
 import { useAppStore } from '../../store/useAppStore';
-import { getEntriesForNpc, CATEGORY_LABELS, EMPTY_REGISTER } from '../../services/divergenceRegister';
+import { getEntriesForNpc, CATEGORY_LABELS, EMPTY_REGISTER } from '../../services/campaign-state/divergenceRegister';
 import { TRAIT_NAMES, TRAIT_VOCAB } from '../../services/npc/agency/agencyPools';
 import { hexBand, relationBand } from '../../services/npc/agency/agencyBands';
 

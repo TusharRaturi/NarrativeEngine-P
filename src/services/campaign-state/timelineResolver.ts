@@ -1,5 +1,5 @@
-import type { TimelineEvent } from '../types';
-import { SUPERSEDE_RULES } from '../types';
+import type { TimelineEvent } from '../../types';
+import { SUPERSEDE_RULES } from '../../types';
 
 export type ResolvedTruth = TimelineEvent;
 
