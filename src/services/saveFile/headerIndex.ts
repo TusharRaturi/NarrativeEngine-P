@@ -1,5 +1,5 @@
 import type { ChatMessage, GameContext, ProviderConfig, EndpointConfig } from '../../types';
-import { countTokens } from '../tokenizer';
+import { countTokens } from '../infrastructure/tokenizer';
 import { llmCall } from '../../utils/llmCall';
 
 const BATCH_TOKEN_LIMIT = 100_000; // max tokens per LLM call for save engine

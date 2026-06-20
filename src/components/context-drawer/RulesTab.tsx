@@ -3,7 +3,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { PayloadTraceView } from '../PayloadTraceView';
 import { SceneNoteEditor } from '../SceneNoteEditor';
 import { TokenCounter } from './TokenCounter';
-import { countTokens } from '../../services/tokenizer';
+import { countTokens } from '../../services/infrastructure/tokenizer';
 
 const RULES_LIMIT = 5000;
 

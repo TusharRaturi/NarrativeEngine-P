@@ -11,7 +11,7 @@
 import type { EndpointConfig, NPCEntry, LoreChunk, ChatMessage, ArchiveChapter, InventoryItem, CharacterProfile, InventoryItemCategory } from '../types';
 import { llmCall } from '../utils/llmCall';
 import { buildInventoryIndex, buildProfileIndex } from './contextMinifier';
-import { extractJsonRobust } from './jsonExtract';
+import { extractJsonRobust } from './infrastructure/jsonExtract';
 
 export type RecommenderResult = {
     relevantNPCNames: string[];   // NPC names the model considers relevant

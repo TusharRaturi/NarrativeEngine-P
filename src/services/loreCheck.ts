@@ -12,7 +12,7 @@ import type {
 import { llmCall } from '../utils/llmCall';
 import { searchLoreByQuery } from './loreRetriever';
 import { deepArchiveScan } from './deepArchiveSearch';
-import { extractJsonRobust } from './jsonExtract';
+import { extractJsonRobust } from './infrastructure/jsonExtract';
 
 export type LoreCheckInput = {
     utilityEndpoint: EndpointConfig;

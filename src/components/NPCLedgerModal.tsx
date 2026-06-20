@@ -3,7 +3,7 @@ import { X, Plus, Users, LayoutGrid, List, CheckSquare, Upload, Download, BookOp
 import { useAppStore } from '../store/useAppStore';
 import { generateNPCPortrait, updateExistingNPCs } from '../services/chatEngine';
 import { parseNPCsFromLore } from '../services/loreNPCParser';
-import { downloadImageToLocal } from '../services/assetService';
+import { downloadImageToLocal } from '../services/infrastructure/assetService';
 import type { NPCEntry, NPCVisualProfile } from '../types';
 import { DEFAULT_VISUAL_PROFILE } from '../types';
 import { toast } from './Toast';

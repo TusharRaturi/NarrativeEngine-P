@@ -1,6 +1,6 @@
 import type { EndpointConfig, ProviderConfig, ArchiveIndexEntry } from '../types';
 import { llmCall } from '../utils/llmCall';
-import { extractJsonRobust } from './jsonExtract';
+import { extractJsonRobust } from './infrastructure/jsonExtract';
 
 export async function runArchivePlanner(
     provider: EndpointConfig | ProviderConfig,

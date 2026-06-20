@@ -1,6 +1,6 @@
 import type { ChatMessage, GameContext } from '../../types';
 import type { OpenAIMessage } from '../llmService';
-import { countTokens } from '../tokenizer';
+import { countTokens } from '../infrastructure/tokenizer';
 import type { TraceCollector } from './traceCollector';
 
 export function buildHistory(opts: {

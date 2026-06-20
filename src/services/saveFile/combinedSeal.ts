@@ -1,6 +1,6 @@
 import type { ProviderConfig, EndpointConfig, DivergenceEntry, SceneEvent, SceneEventType } from '../../types';
-import { countTokens } from '../tokenizer';
-import { extractJson } from '../jsonExtract';
+import { countTokens } from '../infrastructure/tokenizer';
+import { extractJson } from '../infrastructure/jsonExtract';
 import { llmCall } from '../../utils/llmCall';
 import { DIVERGENCE_CATEGORIES, CATEGORY_DEFINITIONS, coerceCategory } from '../divergenceRegister';
 import { uid } from '../../utils/uid';

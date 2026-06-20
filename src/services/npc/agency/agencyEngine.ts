@@ -12,7 +12,7 @@ import type { NPCEntry, SceneStakes } from '../../../types';
 import type { TurnState, TurnCallbacks } from '../../turnOrchestrator';
 import { uid } from '../../../utils/uid';
 import { llmCall } from '../../../utils/llmCall';
-import { backgroundQueue } from '../../backgroundQueue';
+import { backgroundQueue } from '../../infrastructure/backgroundQueue';
 
 import { HEARTBEAT_DC, GOAL_BASE_DC, COLLISION_TANGLE_PROB, type Band } from './agencyConstants';
 import { rollHeartbeat, buildProximityRoster } from './agencyHeartbeat';

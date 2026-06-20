@@ -2,7 +2,7 @@ import type { StateCreator } from 'zustand';
 import type { ArchiveIndexEntry, ChatMessage, CondenserState, GameContext, DivergenceRegister, DivergenceEntry, DivergenceCategory, TopicClusters, PinnedExcerpt } from '../../types';
 import { debouncedSaveCampaignState } from './campaignSlice';
 import { uid } from '../../utils/uid';
-import { countTokens } from '../../services/tokenizer';
+import { countTokens } from '../../services/infrastructure/tokenizer';
 
 const PINNED_EXCERPTS_TOKEN_CAP = 3000;
 

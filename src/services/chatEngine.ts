@@ -2,7 +2,7 @@
 // All existing imports like `import { buildPayload, sendMessage } from './chatEngine'` continue to work.
 
 export { buildPayload } from './payloadBuilder';
-export { extractJson } from './jsonExtract';
+export { extractJson } from './infrastructure/jsonExtract';
 export { sendMessage, testConnection } from './llmService';
 export type { OpenAIMessage } from './llmService';
 export { generateNPCProfile, updateExistingNPCs, generateNPCPortrait, backfillNPCDrives } from './npcGeneration';

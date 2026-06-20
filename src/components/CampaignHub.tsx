@@ -7,7 +7,7 @@ import {
 } from '../store/campaignStore';
 import { hydrateCampaign } from '../store/campaignHydrator';
 import { API_BASE as API } from '../lib/apiBase';
-import { backgroundQueue } from '../services/backgroundQueue';
+import { backgroundQueue } from '../services/infrastructure/backgroundQueue';
 import type { Campaign } from '../types';
 import { useCampaignForm } from './hooks/useCampaignForm';
 import { CampaignFormModal } from './CampaignFormModal';

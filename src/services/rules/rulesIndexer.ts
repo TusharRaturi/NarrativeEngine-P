@@ -2,7 +2,7 @@ import type { LoreChunk, RuleChunkMeta, EndpointConfig, ProviderConfig } from '.
 import { chunkLoreFile } from '../loreChunker';
 import { api } from '../apiClient';
 import { llmCall } from '../../utils/llmCall';
-import { extractJsonRobust } from '../jsonExtract';
+import { extractJsonRobust } from '../infrastructure/jsonExtract';
 
 const STOP_WORDS = new Set([
     'the', 'and', 'for', 'are', 'but', 'not', 'you', 'all', 'can', 'has', 'her',

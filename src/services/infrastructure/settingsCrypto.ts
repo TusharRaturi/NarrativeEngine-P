@@ -10,7 +10,7 @@
  */
 
 import { get as idbGet, set as idbSet } from 'idb-keyval';
-import type { AIPreset, LLMProvider } from '../types';
+import type { AIPreset, LLMProvider } from '../../types';
 
 const IDB_DEVICE_KEY = 'nn_device_key';
 const ENC_PREFIX = 'enc:';

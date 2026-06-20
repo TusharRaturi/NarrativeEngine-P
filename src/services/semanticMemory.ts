@@ -1,5 +1,5 @@
 import type { SemanticFact, NPCEntry } from '../types';
-import { countTokens } from './tokenizer';
+import { countTokens } from './infrastructure/tokenizer';
 import { PROPER_NOUN_STOP_WORDS } from '../utils/stopWords';
 
 export function extractContextEntities(

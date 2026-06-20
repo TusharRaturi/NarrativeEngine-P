@@ -3,7 +3,7 @@ import type { TurnState } from '../turnOrchestrator';
 import { API_BASE as API } from '../../lib/apiBase';
 import { rerankCandidates, type RerankCandidate } from '../semanticReranker';
 import { llmCall } from '../../utils/llmCall';
-import { extractJsonRobust } from '../jsonExtract';
+import { extractJsonRobust } from '../infrastructure/jsonExtract';
 
 const CALLBACK_REGEX = /\b(remember|earlier|back when|before|previously|that .*(we|i) (did|met|fought|saw|found|got))\b/i;
 

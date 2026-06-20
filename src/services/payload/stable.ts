@@ -1,5 +1,5 @@
 import type { AppSettings, GameContext, LoreChunk } from '../../types';
-import { countTokens } from '../tokenizer';
+import { countTokens } from '../infrastructure/tokenizer';
 import { DEFAULT_RULES } from '../rules/defaultRules';
 import type { TraceCollector } from './traceCollector';
 

@@ -1,5 +1,5 @@
 import type { GameContext, InventoryItemCategory } from '../../types';
-import { countTokens } from '../tokenizer';
+import { countTokens } from '../infrastructure/tokenizer';
 import { minifyBookkeepingStub, minifySelectedInventory, minifySelectedProfile } from '../contextMinifier';
 import type { TraceCollector } from './traceCollector';
 

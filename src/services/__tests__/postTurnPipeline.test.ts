@@ -17,7 +17,7 @@ vi.mock('../apiClient', () => ({
         },
     },
 }));
-vi.mock('../backgroundQueue', () => ({
+vi.mock('../infrastructure/backgroundQueue', () => ({
     backgroundQueue: { push: vi.fn().mockResolvedValue(undefined) },
 }));
 vi.mock('../importanceRater', () => ({ rateImportance: vi.fn().mockResolvedValue(3) }));
@@ -39,7 +39,7 @@ vi.mock('../inventoryParser', () => ({ scanInventory: vi.fn() }));
 
 import { runPostTurnPipeline } from '../postTurnPipeline';
 import { api } from '../apiClient';
-import { backgroundQueue } from '../backgroundQueue';
+import { backgroundQueue } from '../infrastructure/backgroundQueue';
 import { extractNPCNames, validateNPCCandidates, classifyNPCNames } from '../npcDetector';
 
 const mockApi = vi.mocked(api);

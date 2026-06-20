@@ -1,7 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { indexRules, computeRulesThreshold } from '../services/rules/rulesIndexer';
-import { countTokens } from '../services/tokenizer';
+import { countTokens } from '../services/infrastructure/tokenizer';
 
 function fnv1a(str: string): number {
     let hash = 0x811c9dc5;

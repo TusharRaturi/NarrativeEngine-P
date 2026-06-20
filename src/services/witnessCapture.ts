@@ -1,6 +1,6 @@
 import type { NPCEntry, EndpointConfig } from '../types';
 import { llmCall } from '../utils/llmCall';
-import { extractJson } from './jsonExtract';
+import { extractJson } from './infrastructure/jsonExtract';
 
 export function extractNpcIdsFromBody(text: string, npcLedger: NPCEntry[]): string[] {
     const lower = text.toLowerCase();

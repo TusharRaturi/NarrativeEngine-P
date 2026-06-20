@@ -1,7 +1,7 @@
 import type { StateCreator } from 'zustand';
 import type { AppSettings, LLMProvider, AIPreset, ApiFormat, AiTier } from '../../types';
 import { get as idbGet, set as idbSet } from 'idb-keyval';
-import { encryptSettingsProviders, decryptSettingsProviders, decryptSettingsPresets } from '../../services/settingsCrypto';
+import { encryptSettingsProviders, decryptSettingsProviders, decryptSettingsPresets } from '../../services/infrastructure/settingsCrypto';
 import { uid } from '../../utils/uid';
 import { toast } from '../../components/Toast';
 import { api } from '../../services/apiClient';

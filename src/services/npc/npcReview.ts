@@ -1,6 +1,6 @@
 import type { NPCEntry, EndpointConfig, ProviderConfig } from '../../types';
 import { llmCall } from '../../utils/llmCall';
-import { extractJsonRobust } from '../jsonExtract';
+import { extractJsonRobust } from '../infrastructure/jsonExtract';
 
 export type NPCReviewCandidate = {
     id: string;

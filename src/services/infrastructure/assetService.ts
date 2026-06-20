@@ -1,4 +1,4 @@
-import { API_BASE as API, ASSET_BASE } from '../lib/apiBase';
+import { API_BASE as API, ASSET_BASE } from '../../lib/apiBase';
 
 /**
  * Downloads a remote image and saves it locally.

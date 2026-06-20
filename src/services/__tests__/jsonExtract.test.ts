@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractJsonRobust, extractJson } from '../jsonExtract';
+import { extractJsonRobust, extractJson } from '../infrastructure/jsonExtract';
 
 describe('extractJsonRobust', () => {
     describe('object root', () => {

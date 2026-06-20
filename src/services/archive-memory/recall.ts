@@ -1,5 +1,5 @@
 import type { ArchiveIndexEntry, ArchiveScene, ChatMessage, NPCEntry } from '../../types';
-import { countTokens } from '../tokenizer';
+import { countTokens } from '../infrastructure/tokenizer';
 import { API_BASE as API } from '../../lib/apiBase';
 import { safeSceneNum } from '../../utils/helpers';
 import { fuseRRF } from '../retrieval/lexicalFusion';

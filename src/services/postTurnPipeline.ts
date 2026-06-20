@@ -5,7 +5,7 @@ import { api } from './apiClient';
 import { CHAPTER_SCENE_SOFT_CAP } from '../types';
 import { rateImportance } from './importanceRater';
 import { sealChapterCombined } from './saveFileEngine';
-import { backgroundQueue } from './backgroundQueue';
+import { backgroundQueue } from './infrastructure/backgroundQueue';
 import { extractSceneEvents } from './sceneEventExtractor';
 import { extractNPCNames, classifyNPCNames, validateNPCCandidates } from './npcDetector';
 import { generateNPCProfile, updateExistingNPCs, backfillNPCDrives } from './chatEngine';

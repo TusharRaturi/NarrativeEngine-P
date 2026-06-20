@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useAppStore } from '../../store/useAppStore';
 import { scanInventory } from '../../services/inventoryParser';
 import { scanCharacterProfile } from '../../services/characterProfileParser';
-import { countTokens } from '../../services/tokenizer';
+import { countTokens } from '../../services/infrastructure/tokenizer';
 import {
     minifyBookkeepingStub,
     minifySelectedInventory,

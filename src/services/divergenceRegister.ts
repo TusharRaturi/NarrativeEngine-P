@@ -1,5 +1,5 @@
 import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, EndpointConfig, ProviderConfig } from '../types';
-import { countTokens } from './tokenizer';
+import { countTokens } from './infrastructure/tokenizer';
 import { toast } from '../components/Toast';
 import { llmCall } from '../utils/llmCall';
 import { isKnownToAnyOnStage } from './campaign-state/knowledgeScope';

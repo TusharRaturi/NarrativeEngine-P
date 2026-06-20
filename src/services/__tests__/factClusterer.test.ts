@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { extractJsonRobust } from '../jsonExtract';
+import { extractJsonRobust } from '../infrastructure/jsonExtract';
 
 // Validate that factClusterer's {groups} shape works with the shared helper after migration
 describe('factClusterer extractJsonRobust migration', () => {
