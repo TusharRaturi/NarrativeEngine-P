@@ -1,4 +1,4 @@
-import type { DiceConfig } from '../types';
+import type { DiceConfig } from '../../types';
 
 const DEFAULT_DICE_CONFIG: DiceConfig = {
     catastrophe: 2,

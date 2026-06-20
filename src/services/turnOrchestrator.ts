@@ -3,7 +3,7 @@ import { useAppStore } from '../store/useAppStore';
 import type { AppSettings, GameContext, ChatMessage, NPCEntry, LoreChunk, CondenserState, ArchiveIndexEntry, TimelineEvent, EndpointConfig, ProviderConfig, ArchiveChapter, SamplingConfig, PipelinePhase, DivergenceRegister, ThinkingEffort, InventoryProposal } from '../types';
 import { uid } from '../utils/uid';
 import { buildPayload, sendMessage } from './chatEngine';
-import { rollEngines, rollDiceFairness } from './engineRolls';
+import { rollEngines, rollDiceFairness } from './engine/engineRolls';
 import { toast } from '../components/Toast';
 import { sanitizePayloadForApi } from './lib/payloadSanitizer';
 import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool, handleProposeInventoryTool, handleInitiateCombatTool } from './toolHandlers';

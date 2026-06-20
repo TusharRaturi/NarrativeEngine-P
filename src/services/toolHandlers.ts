@@ -1,7 +1,7 @@
 import type { GameContext, LoreChunk, DiceConfig, InventoryProposal } from '../types';
 import { searchLoreByQuery } from './lore/loreRetriever';
 import { uid } from '../utils/uid';
-import { mapTier } from './diceTier';
+import { mapTier } from './engine/diceTier';
 
 // ── Constants ─────────────────────────────────────────────────────────
 const MAX_NOTEBOOK_OPS = 5;

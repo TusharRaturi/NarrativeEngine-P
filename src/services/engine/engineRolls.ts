@@ -1,11 +1,11 @@
-import type { GameContext } from '../types';
+import type { GameContext } from '../../types';
 import { mapTier } from './diceTier';
 import { 
     DEFAULT_SURPRISE_TYPES, DEFAULT_SURPRISE_TONES, 
     DEFAULT_ENCOUNTER_TYPES, DEFAULT_ENCOUNTER_TONES, 
     DEFAULT_WORLD_WHAT, DEFAULT_WORLD_WHERE, 
     DEFAULT_WORLD_WHO, DEFAULT_WORLD_WHY 
-} from '../store/useAppStore';
+} from '../../store/useAppStore';
 
 export type EngineRollResult = {
     appendToInput: string;
