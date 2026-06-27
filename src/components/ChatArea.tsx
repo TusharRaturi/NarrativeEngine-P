@@ -142,6 +142,10 @@ export function ChatArea() {
         const useDeepSearch = deepSearch || deepArmed;
         if (deepArmed) setDeepArmed(false);
 
+        // Consume the armed dice mode (cleared whether or not a roll was set this turn).
+        const useArmedRoll = useAppStore.getState().armedRoll;
+        useAppStore.getState().setArmedRoll(null);
+
         if (!overrideText) {
             setInput('');
             resetTextareaHeight();
@@ -180,6 +184,7 @@ export function ChatArea() {
             divergenceRegister: storeSnapshot.divergenceRegister,
             onStageNpcIds: storeSnapshot.onStageNpcIds,
             pinnedExcerpts: storeSnapshot.pinnedExcerpts,
+            armedRoll: useArmedRoll,
             getFreshAuxiliaryProvider: () => {
                 const aux = useAppStore.getState().getActiveAuxiliaryEndpoint();
                 return aux?.modelName ? aux : useAppStore.getState().getActiveStoryEndpoint();
@@ -224,7 +229,7 @@ export function ChatArea() {
         getMessages: () => useAppStore.getState().messages,
     };
 
-    const { editingMessageId, startEditing, cancelEditing, handleEditSubmit, handleRegenerate } = useMessageEditor({
+    const { editingMessageId, startEditing, cancelEditing, handleEditSubmit, handleRegenerate, handleDeleteOutput } = useMessageEditor({
         messages,
         input,
         setInput,
@@ -235,6 +240,9 @@ export function ChatArea() {
         updateMessageContent: (id, content) => useAppStore.getState().updateMessageContent(id, content),
         onAfterEdit: (text) => handleSend(text),
         onAfterRegenerate: (text) => handleSend(text),
+        activeCampaignId,
+        deleteMessage,
+        archiveDeps,
     });
 
     // Phase 6: apply a confirmed GM inventory proposal as a real delta on the ledger.
@@ -394,7 +402,7 @@ export function ChatArea() {
                         debugMode={!!settings.debugMode}
                         onStartEdit={startEditing}
                         onRegenerate={handleRegenerate}
-                        onDelete={(id) => deleteMessage(id)}
+                        onDelete={(id) => handleDeleteOutput(id)}
                     />
                 ))}
 

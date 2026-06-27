@@ -16,7 +16,7 @@ import {
     DEFAULT_STATS,
 } from '../../services/engine/pcCreationScript';
 import type { StatKey, CreationQuestion, Archetype, StatBlock } from '../../services/engine/pcCreationScript';
-import type { NPCEntry, CharacterProfile } from '../../types';
+import type { NPCEntry, CharacterProfile, CharacterProfileState } from '../../types';
 import { uid } from '../../utils/uid';
 import { WorldPrimerPanel } from './WorldPrimerPanel';
 import { toast } from '../Toast';
@@ -25,7 +25,7 @@ type WizardStep = 'questions' | 'stats' | 'review';
 
 export type PCCreationResult = {
     npcEntry: NPCEntry;
-    characterProfile: string;
+    characterProfile: CharacterProfileState;
     characterProfileData: CharacterProfile;
 };
 
@@ -188,10 +188,33 @@ export function PCCreationWizard({ onComplete, onCancel }: {
             });
 
             // Write the structured profile into desktop's characterProfileData slot
-            // (context.characterProfileData) and enable the legacy text field too.
+            // (context.characterProfileData) and seed the WO-G CharacterProfileState
+            // (context.characterProfile) with identity + one concept trait. The legacy
+            // profileText is frozen as legacyNotes (storage-only, never injected).
+            const seedTraits = answers.concept ? [{
+                id: uid(),
+                subject: pcEntry.name,
+                category: 'party_facts' as const,
+                text: answers.concept,
+                importance: 7,
+                eventTags: ['other' as const],
+                sceneEstablished: '',
+                superseded: false,
+                source: 'seed' as const,
+            }] : [];
+            const profileState: CharacterProfileState = {
+                identity: {
+                    name: pcEntry.name,
+                    class: answers.archetype || undefined,
+                    archetype: selectedArchetype || undefined,
+                },
+                stats: allocation.stats,
+                activeTraits: seedTraits,
+                legacyNotes: profileText,
+            };
             setCharacterProfileData(profileData);
             updateContext({
-                characterProfile: profileText,
+                characterProfile: profileState,
                 characterProfileActive: true,
             });
 
@@ -204,7 +227,7 @@ export function PCCreationWizard({ onComplete, onCancel }: {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (pcEntry as any).stats = allocation.stats;
 
-            onComplete({ npcEntry: pcEntry, characterProfile: profileText, characterProfileData: profileData });
+            onComplete({ npcEntry: pcEntry, characterProfile: profileState, characterProfileData: profileData });
         } catch (err) {
             console.error('[PC Creation] Commit failed:', err);
             toast.error('Character creation failed');

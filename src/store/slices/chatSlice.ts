@@ -6,6 +6,68 @@ import { countTokens } from '../../services/infrastructure/tokenizer';
 
 const PINNED_EXCERPTS_TOKEN_CAP = 3000;
 
+// WO-J (8879041): the lore-check / rename selection is captured from the RENDERED bubble
+// text, which has markdown stripped and NPC name brackets removed. The stored content
+// still holds raw markdown, so a literal `content.includes(selectedText)` misses whenever
+// the span contains formatting. locateRawSpan normalises the raw content the same way the
+// renderer does (drop * _ ` # [ ] and collapse whitespace) while keeping an index map back
+// to raw offsets, so we can find and splice the real span even when it was formatted.
+const MD_MARKER = /[*_`[\]#]/;
+
+function normalizeWithMap(raw: string): { norm: string; start: number[]; end: number[] } {
+    const norm: string[] = [];
+    const start: number[] = [];
+    const end: number[] = [];
+    let i = 0;
+    while (i < raw.length) {
+        const c = raw[i];
+        if (/\s/.test(c)) {
+            const runStart = i;
+            while (i < raw.length && /\s/.test(raw[i])) i++;
+            norm.push(' ');
+            start.push(runStart);
+            end.push(i);
+            continue;
+        }
+        if (MD_MARKER.test(c)) { i++; continue; }
+        norm.push(c);
+        start.push(i);
+        end.push(i + 1);
+        i++;
+    }
+    return { norm: norm.join(''), start, end };
+}
+
+function normalizeLoose(s: string): string {
+    return s.replace(/[*_`[\]#]/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * Find the raw [start, end) span in `raw` corresponding to `target`, tolerating the
+ * markdown/bracket/whitespace differences introduced by rendering. Returns null if
+ * the target can't be located even loosely (e.g. the text was already edited away).
+ */
+export function locateRawSpan(raw: string, target: string): { start: number; end: number } | null {
+    if (!target) return null;
+    const exact = raw.indexOf(target);
+    if (exact !== -1) return { start: exact, end: exact + target.length };
+
+    const targetNorm = normalizeLoose(target);
+    if (!targetNorm) return null;
+
+    const { norm, start, end } = normalizeWithMap(raw);
+    const idx = norm.indexOf(targetNorm);
+    if (idx === -1) return null;
+
+    let s = start[idx];
+    let e = end[idx + targetNorm.length - 1];
+    // Swallow markdown markers that hug the span but were dropped during normalisation
+    // (e.g. the leading "[**" of an NPC name), so they aren't orphaned after splicing.
+    while (s > 0 && MD_MARKER.test(raw[s - 1])) s--;
+    while (e < raw.length && MD_MARKER.test(raw[e])) e++;
+    return { start: s, end: e };
+}
+
 // ── Slice type ─────────────────────────────────────────────────────────
 
 export type ChatSlice = {
@@ -15,7 +77,8 @@ export type ChatSlice = {
     updateLastAssistant: (content: string) => void;
     updateLastMessage: (patch: Partial<ChatMessage>) => void;
     updateMessageContent: (id: string, content: string) => void;
-    replaceMessageText: (messageId: string, oldText: string, newText: string) => void;
+    /** Returns true if the span was located and spliced; false if the original text could not be found. */
+    replaceMessageText: (messageId: string, oldText: string, newText: string) => boolean;
     deleteMessage: (id: string) => void;
     deleteMessagesFrom: (id: string) => void;
     setStreaming: (v: boolean) => void;
@@ -55,6 +118,14 @@ export type ChatSlice = {
     openRenameModal: (text: string) => void;
     closeRenameModal: () => void;
     renameAcrossMessages: (from: string, to: string) => number;
+    /**
+     * First-name-only rename on the LATEST assistant message. Replaces the leading
+     * token of `from` (e.g. "Pell" from "Pell Gravatt") with the leading token of
+     * `to` in the most recent GM narration only. Whole-word, case-insensitive.
+     * Returns 1 if the last assistant message was touched, 0 otherwise. Single-token
+     * `from` (no surname) returns 0 — full-name tier already handles that case.
+     */
+    renameFirstNameInLatestAssistant: (from: string, to: string) => number;
 };
 
 // ── Cross-slice dependencies ───────────────────────────────────────────
@@ -250,18 +321,34 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
             debouncedSaveCampaignState();
             return { messages: msgs };
         }),
-    replaceMessageText: (messageId, oldText, newText) =>
+    replaceMessageText: (messageId, oldText, newText) => {
+        let applied = false;
         set((s) => {
             const msgs = s.messages.map(msg => {
                 if (msg.id !== messageId) return msg;
-                const content = typeof msg.content === 'string'
-                    ? msg.content.replace(oldText, newText)
-                    : msg.content;
-                return { ...msg, content };
+                const next = { ...msg };
+                if (typeof msg.content === 'string') {
+                    const span = locateRawSpan(msg.content, oldText);
+                    if (span) {
+                        next.content = msg.content.slice(0, span.start) + newText + msg.content.slice(span.end);
+                        applied = true;
+                    }
+                }
+                if (typeof msg.displayContent === 'string') {
+                    const span = locateRawSpan(msg.displayContent, oldText);
+                    if (span) {
+                        next.displayContent = msg.displayContent.slice(0, span.start) + newText + msg.displayContent.slice(span.end);
+                        applied = true;
+                    }
+                }
+                return next;
             });
+            if (!applied) return {};
             debouncedSaveCampaignState();
             return { messages: msgs };
-        }),
+        });
+        return applied;
+    },
     deleteMessage: (id) =>
         set((s) => {
             const msgs = s.messages.filter(m => m.id !== id);
@@ -345,6 +432,45 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
                 return next;
             });
             if (changed === 0) return {};
+            debouncedSaveCampaignState();
+            return { messages: msgs };
+        });
+        return changed;
+    },
+    renameFirstNameInLatestAssistant: (from, to) => {
+        const fromTrim = from.trim();
+        const toTrim = to.trim();
+        if (!fromTrim || !toTrim) return 0;
+        const firstName = fromTrim.split(/\s+/)[0];
+        const replacement = toTrim.split(/\s+/)[0];
+        // Single-token `from` has no separate first-name tier — the full-name
+        // pass (renameAcrossMessages) already covered it.
+        if (!firstName || !replacement || fromTrim.split(/\s+/).length === 1) return 0;
+        const pat = `\\b${firstName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`;
+        let changed = 0;
+        set((s) => {
+            // Find the LAST assistant message (not messages[length-1] — that may be
+            // a trailing system message).
+            let lastIdx = -1;
+            for (let i = s.messages.length - 1; i >= 0; i--) {
+                if (s.messages[i].role === 'assistant') { lastIdx = i; break; }
+            }
+            if (lastIdx === -1) return {};
+            const m = s.messages[lastIdx];
+            const next = { ...m };
+            let touched = false;
+            if (typeof m.content === 'string') {
+                const rep = m.content.replace(new RegExp(pat, 'gi'), replacement);
+                if (rep !== m.content) { next.content = rep; touched = true; }
+            }
+            if (typeof m.displayContent === 'string') {
+                const rep = m.displayContent.replace(new RegExp(pat, 'gi'), replacement);
+                if (rep !== m.displayContent) { next.displayContent = rep; touched = true; }
+            }
+            if (!touched) return {};
+            const msgs = s.messages.slice();
+            msgs[lastIdx] = next;
+            changed = 1;
             debouncedSaveCampaignState();
             return { messages: msgs };
         });

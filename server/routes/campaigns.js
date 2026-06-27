@@ -85,12 +85,42 @@ export function createCampaignsRouter() {
         ensureDirs();
         const filePath = path.join(CAMPAIGNS_DIR, `${req.params.id}.state.json`);
         const { context, messages, condenser } = req.body;
+        // pinnedExcerpts is optional on CampaignState, but this is a full-record overwrite —
+        // a caller that *omits* the field would silently wipe the user's pinned memories
+        // (Header.handleExit / CampaignHub edits did exactly this). Guard: when the field is
+        // undefined (omitted, not an explicit [] clear), preserve whatever is already persisted.
+        // The hot turn path always passes pinnedExcerpts explicitly, so this extra read never
+        // fires there. (cda15f4)
+        let pinnedExcerpts = req.body.pinnedExcerpts;
+        if (pinnedExcerpts === undefined) {
+            const prev = fs.existsSync(filePath) ? readJson(filePath, null) : null;
+            if (prev && Array.isArray(prev.pinnedExcerpts) && prev.pinnedExcerpts.length > 0) {
+                pinnedExcerpts = prev.pinnedExcerpts;
+            }
+        }
         const safe = {
             context,
             condenser,
             messages: (messages || []).map(({ debugPayload: _dp, ...msg }) => msg),
+            pinnedExcerpts,
         };
         writeJson(filePath, safe);
+
+        // B5 — bump lastPlayedAt on turn-commit (state save), not just on open/edit. The stamp
+        // otherwise reads "last opened" and breaks the recency sort in listCampaigns. Touches
+        // only the meta record; non-fatal on meta-write failure (the state save above already
+        // succeeded). One small extra write per turn.
+        try {
+            const metaPath = path.join(CAMPAIGNS_DIR, `${req.params.id}.json`);
+            const meta = readJson(metaPath, null);
+            if (meta && meta.id) {
+                meta.lastPlayedAt = Date.now();
+                writeJson(metaPath, meta);
+            }
+        } catch (metaErr) {
+            console.warn(`[API] Non-fatal: failed to bump lastPlayedAt for ${req.params.id}:`, metaErr);
+        }
+
         res.json({ ok: true });
     }));
 

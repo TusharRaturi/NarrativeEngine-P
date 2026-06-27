@@ -198,7 +198,7 @@ export const defaultContext: GameContext = {
     continuePrompt: '',
     inventory: '',
     inventoryLastScene: 'Never',
-    characterProfile: '',
+    characterProfile: { identity: {}, activeTraits: [] },
     characterProfileLastScene: 'Never',
     inventoryItems: DEFAULT_INVENTORY,
     characterProfileData: DEFAULT_CHARACTER_PROFILE,
@@ -441,7 +441,7 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
         const s = get();
         const matches = (n: NPCEntry, key: string) => {
             const names = [n.name, ...(n.aliases || '').split(',')].map(x => x.trim().toLowerCase());
-            return names.includes(key) || n.name?.trim().toLowerCase().startsWith(key + ' ');
+            return names.includes(key);
         };
         const fromNpc = s.npcLedger.find(n => matches(n, fromKey));
         if (!fromNpc) return 'none';

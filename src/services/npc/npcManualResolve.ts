@@ -13,9 +13,11 @@ export type NpcResolution =
 export function normalizeSelection(raw: string): string {
     if (!raw) return '';
     let s = raw.replace(/\s+/g, ' ').trim();
-    s = s.replace(/^[\s"'([{]+/, '').replace(/[\s"')\].,;:!?]+$/, '');
+    // strip surrounding quotes / brackets / parens / trailing sentence punctuation. Full quote
+    // set (ASCII + curly) so quoted/possessive selections resolve correctly. (cleanup 1db00ad)
+    s = s.replace(/^[\s"'‘’“”([{]+/, '').replace(/[\s"'‘’“”\]).,;:!?]+$/, '');
     s = s.replace(/\*+/g, '');
-    s = s.replace(/['']s$/i, '');
+    s = s.replace(/['’]s$/i, '');
     s = s.trim();
     let parts = s.split(' ').filter(Boolean);
     if (parts.length > 1 && LEADING_ARTICLES.has(parts[0].toLowerCase())) {

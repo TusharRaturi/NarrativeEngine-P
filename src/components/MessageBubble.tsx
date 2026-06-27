@@ -4,6 +4,22 @@ import { Edit2, RotateCcw, Trash2, Loader2 } from 'lucide-react';
 import type { ChatMessage, DebugSection } from '../types';
 import { DebugPayloadView } from './DebugPayloadView';
 
+// WO-J: NPC names arrive wrapped in [Name] / [**Name**] brackets so the ledger detector
+// can read them out of the raw content. Render them as inline **bold** markdown instead of
+// literal bracketed text, so the name flows inside the surrounding paragraph. The brackets
+// only live in the display copy; the raw stored content the detector reads is untouched.
+const NAME_BRACKET_RE = /\[\*{0,2}\s*([A-Za-z][A-Za-z0-9 _.'-]*[A-Za-z0-9.])\s*\*{0,2}\]/g;
+
+function looksLikeSystemTag(s: string): boolean {
+    return s.includes(':') || s.includes('SURPRISE') || s.includes('ENCOUNTER') || s.includes('WORLD_EVENT');
+}
+
+function inlineNameBrackets(text: string): string {
+    return text.replace(NAME_BRACKET_RE, (full, inner: string) =>
+        looksLikeSystemTag(inner) ? full : `**${inner.trim()}**`
+    );
+}
+
 interface MessageBubbleProps {
     message: ChatMessage;
     isStreaming: boolean;
@@ -107,7 +123,7 @@ export function MessageBubble({
                             </div>
                         </details>
                     )}
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{markdownContent}</ReactMarkdown>
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{inlineNameBrackets(markdownContent)}</ReactMarkdown>
                     {hasSummary && (
                         <div className="mt-2 pl-3 border-l-2 border-terminal/30 text-[10px] text-text-dim">
                             <div className="uppercase tracking-widest text-terminal/60 mb-1">Generated Output:</div>

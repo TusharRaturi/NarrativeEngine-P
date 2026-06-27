@@ -73,9 +73,18 @@ export function sealChapter(
     const lastScene = parseInt(openChapter.sceneRange[1], 10);
     const nextScene = String(lastScene + 1).padStart(3, '0');
 
+    // B4 — dedupe sceneIds on seal and reconcile sceneCount so the two always agree. The
+    // boundary scene could otherwise be recorded twice (backfill seeds the fresh open
+    // chapter's empty sceneIds from its sceneRange, then the next append pushes the same id
+    // again). Array.from(new Set(...)) cleans up any pre-existing dups in saves. Main's server
+    // append path doesn't currently maintain sceneIds (only sceneCount), so this is a defensive
+    // no-op for empty arrays — but it protects the contract if sceneIds gets populated later.
+    const dedupedSceneIds = Array.from(new Set(openChapter.sceneIds ?? []));
     // Seal the open chapter
     const sealed: ArchiveChapter = {
         ...openChapter,
+        sceneIds: dedupedSceneIds,
+        sceneCount: dedupedSceneIds.length > 0 ? dedupedSceneIds.length : openChapter.sceneCount,
         sealedAt: Date.now(),
     };
 

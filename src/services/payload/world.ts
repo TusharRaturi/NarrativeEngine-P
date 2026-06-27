@@ -1,6 +1,7 @@
-import type { ChatMessage, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, TimelineEvent, DivergenceRegister, DivergenceEntry, ArchiveChapter, SceneEvent } from '../../types';
+import type { ChatMessage, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, TimelineEvent, DivergenceRegister, DivergenceEntry, ArchiveChapter, SceneEvent, SceneEventType } from '../../types';
 import { countTokens } from '../infrastructure/tokenizer';
-import { buildBehaviorDirective, buildDriftAlert, buildKnowledgeBoundary } from '../npc/npcBehaviorDirective';
+import { buildDriftAlert, buildKnowledgeBoundary } from '../npc/npcBehaviorDirective';
+import { relationBand, describeHex } from '../npc/agency/agencyBands';
 import { minifyLoreChunk, minifyNPC } from '../turn/contextMinifier';
 import { resolveTimeline, formatResolvedForContext } from '../campaign-state/timelineResolver';
 import { renderRegisterForPayload } from '../campaign-state/divergenceRegister';
@@ -9,6 +10,75 @@ import type { TraceCollector } from './traceCollector';
 
 const RECENT_SCENE_WINDOW = 3;      // mobile used 2; desktop can see a touch deeper
 const SCENE_EVENTS_TOKEN_BUDGET = 350; // mobile rationed ~200; desktop has headroom
+
+// ── WO-G: NPC payload tiering helpers ──
+// Core tier (always injected): affinity, personality hex, current goal — the
+// "GM is never starved" floor. Extended tier (scene-tagged): goals, boundaries,
+// triggers, voice, example, drift, inner state — filtered by fieldTags ∩ planner.
+
+function fieldTagMatches(
+    fieldName: string,
+    fieldTags: Partial<Record<string, SceneEventType[]>> | undefined,
+    plannerTags: Set<SceneEventType> | null,
+): boolean {
+    if (!fieldTags) return true;
+    if (!plannerTags) return true;
+    const tags = fieldTags[fieldName];
+    if (!tags || tags.length === 0) return true;
+    return tags.some(t => plannerTags.has(t));
+}
+
+function buildCoreDirective(npc: NPCEntry): string {
+    const parts: string[] = [];
+    const affinityLabel = npc.pcRelation !== undefined ? relationBand(npc.pcRelation) : undefined;
+    if (affinityLabel) parts.push(`[Aff: ${affinityLabel}]`);
+    if (npc.personalityHex) parts.push(`Personality: ${describeHex(npc.personalityHex)}`);
+    if (npc.wants?.short?.[0]) {
+        const s = npc.wants.short[0];
+        parts.push(`NOW: ${s.length > 40 ? s.substring(0, 40) + '\u2026' : s}`);
+    } else if (npc.drives?.sceneWant) {
+        const sw = npc.drives.sceneWant;
+        parts.push(`NOW: ${sw.length > 40 ? sw.substring(0, 40) + '\u2026' : sw}`);
+    }
+    return parts.length > 0 ? `PLAY AS: ${parts.join(' | ')}` : '';
+}
+
+function buildExtendedDirective(
+    npc: NPCEntry,
+    plannerTags: Set<SceneEventType> | null,
+): string {
+    const parts: string[] = [];
+    if (npc.wants?.long) {
+        parts.push(`GOAL: ${npc.wants.long.length > 80 ? npc.wants.long.substring(0, 80) + '\u2026' : npc.wants.long}`);
+    }
+    if (npc.wants?.medium?.[0]) {
+        const m = npc.wants.medium[0];
+        parts.push(`PURSUING: ${m.length > 60 ? m.substring(0, 60) + '\u2026' : m}`);
+    } else if (npc.drives && !npc.wants) {
+        const driveParts: string[] = [];
+        if (npc.drives.sessionWant) driveParts.push(npc.drives.sessionWant.length > 80 ? npc.drives.sessionWant.substring(0, 80) + '\u2026' : npc.drives.sessionWant);
+        if (npc.drives.coreWant) driveParts.push(npc.drives.coreWant.length > 80 ? npc.drives.coreWant.substring(0, 80) + '\u2026' : npc.drives.coreWant);
+        if (driveParts.length > 0) parts.push(`WANTS: ${driveParts.join(' \u2190 ')}`);
+    }
+    if (npc.hardBoundaries?.length && fieldTagMatches('hardBoundaries', npc.fieldTags, plannerTags)) {
+        parts.push(`WON'T: ${npc.hardBoundaries.map(b => b.length > 40 ? b.substring(0, 40) + '\u2026' : b).join('; ')}`);
+    }
+    if (npc.softBoundaries?.length && fieldTagMatches('softBoundaries', npc.fieldTags, plannerTags)) {
+        parts.push(`RESENTS: ${npc.softBoundaries.map(b => b.length > 40 ? b.substring(0, 40) + '\u2026' : b).join('; ')}`);
+    }
+    if (npc.behavioralTriggers?.length && fieldTagMatches('behavioralTriggers', npc.fieldTags, plannerTags)) {
+        for (const t of npc.behavioralTriggers) {
+            parts.push(`ON "${t.keyword}": ${t.shift.length > 50 ? t.shift.substring(0, 50) + '\u2026' : t.shift}`);
+        }
+    }
+    if (npc.voice && fieldTagMatches('voice', npc.fieldTags, plannerTags)) {
+        parts.push(`Voice: ${npc.voice.length > 60 ? npc.voice.substring(0, 60) + '\u2026' : npc.voice}`);
+    }
+    if (npc.exampleOutput && fieldTagMatches('exampleOutput', npc.fieldTags, plannerTags)) {
+        parts.push(`Example: ${npc.exampleOutput.length > 80 ? npc.exampleOutput.substring(0, 80) + '\u2026' : npc.exampleOutput}`);
+    }
+    return parts.length > 0 ? parts.join(' | ') : '';
+}
 
 function renderSceneEvents(events: SceneEvent[]): string {
     if (!events || events.length === 0) return '';
@@ -25,33 +95,6 @@ function renderSceneEvents(events: SceneEvent[]): string {
         .join('\n');
 }
 
-
-function computeNPCSalience(npc: NPCEntry, scanText: string): number {
-    let score = 0;
-    const lower = scanText.toLowerCase();
-    const name = npc.name.toLowerCase();
-    const aliases = (npc.aliases || '').split(',').map(a => a.trim().toLowerCase()).filter(Boolean);
-    const patterns = [name, ...aliases];
-
-    for (const p of patterns) {
-        const escaped = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        const regex = new RegExp(escaped, 'g');
-        const matches = lower.match(regex);
-        if (matches) score += matches.length * 2;
-    }
-
-    if (npc.drives?.sceneWant) score += 1;
-    if (npc.pressure?.engaged) score += npc.pressure.engaged * 1.5;
-    if (npc.pressure?.ignored) score += npc.pressure.ignored * 2;
-
-    if (npc.behavioralTriggers) {
-        for (const trigger of npc.behavioralTriggers) {
-            if (lower.includes(trigger.keyword.toLowerCase())) score += 4;
-        }
-    }
-
-    return score;
-}
 
 export function buildWorld(opts: {
     history: ChatMessage[];
@@ -72,9 +115,11 @@ export function buildWorld(opts: {
     agencyDigest?: string;
     arcDigest?: string;
     budgetWorld: number;
+    npcBudgetFloor: number;
+    plannerEventTypes?: SceneEventType[];
     isDebug: boolean;
     collector: TraceCollector;
-}): { worldContent: string; currentWorldTokens: number; divergenceContent: string; divergenceTokens: number } {
+}): { worldContent: string; currentWorldTokens: number; divergenceContent: string; divergenceTokens: number; plannerEventTypes: SceneEventType[] } {
     const {
         history,
         userMessage,
@@ -94,6 +139,8 @@ export function buildWorld(opts: {
         agencyDigest,
         arcDigest,
         budgetWorld,
+        npcBudgetFloor,
+        plannerEventTypes: plannerEventTypesOpt,
         isDebug,
         collector,
     } = opts;
@@ -102,6 +149,9 @@ export function buildWorld(opts: {
     const worldBlocks: { source: string; content: string; tokens: number; reason: string }[] = [];
     let divergenceRegText = '';
     let divergenceTokens = 0;
+    // WO-G: derive plannerEventTypes — explicit param wins; otherwise derive from
+    // recent scene events (the desktop adaptation of mobile's turn-time planner).
+    let plannerEventTypes: SceneEventType[] = plannerEventTypesOpt ?? [];
 
     // Archive Recall
     if (archiveRecall && archiveRecall.length > 0) {
@@ -137,7 +187,10 @@ export function buildWorld(opts: {
         }
 
         if (filteredRecall.length > 0) {
-            const text = `[ARCHIVE RECALL — VERBATIM PAST SCENES]\n${filteredRecall.map(s => `[SCENE #${s.sceneId}]\n${s.content}`).join('\n\n')}\n[END ARCHIVE RECALL]`;
+            // WO-F (2be3ad5) — drop the internal scene number from the header so it never leaks
+            // into the GM prompt. The scene id is a storage detail; the AI should recall scenes by
+            // content, not by number (and surgical deletes can leave gaps that would confuse it).
+            const text = `[ARCHIVE RECALL — VERBATIM PAST SCENES]\n${filteredRecall.map(s => `[PAST SCENE]\n${s.content}`).join('\n\n')}\n[END ARCHIVE RECALL]`;
             worldBlocks.push({ source: 'Archive Recall', content: text, tokens: countTokens(text), reason: `Verbatim history (${filteredRecall.length} scenes)` });
         }
 
@@ -149,6 +202,14 @@ export function buildWorld(opts: {
             if (entry?.events) {
                 allEvents.push(...entry.events);
             }
+        }
+        // WO-G: if no explicit plannerEventTypes, derive from recent scene events.
+        if (plannerEventTypes.length === 0 && allEvents.length > 0) {
+            const typeSet = new Set<SceneEventType>();
+            for (const ev of allEvents) {
+                if (ev.eventType) typeSet.add(ev.eventType);
+            }
+            plannerEventTypes = [...typeSet];
         }
         if (allEvents.length > 0) {
             const sortedEvents = allEvents
@@ -257,49 +318,58 @@ export function buildWorld(opts: {
         }
 
         if (activeNPCs.length > 0) {
-            const scanText = history.slice(-10).map(m => m.content || '').join(' ') + ' ' + userMessage;
-            const scored = activeNPCs.map(npc => ({ npc, score: computeNPCSalience(npc, scanText) }));
-            scored.sort((a, b) => b.score - a.score);
-            const spotlitNpc = scored[0].npc;
+            const plannerTags = plannerEventTypes.length > 0 ? new Set(plannerEventTypes) : null;
+            const npcSegments: { npcId: string; content: string; tokens: number }[] = [];
 
-            const npcLines = activeNPCs.map(npc => {
-                const isSpotlit = npc.id === spotlitNpc.id;
-                let line = minifyNPC(npc);
-                const directive = buildBehaviorDirective(npc);
-                if (directive) line += ` | ${directive}`;
+            for (const npc of activeNPCs) {
+                // Core tier — always injected.
+                const coreParts: string[] = [minifyNPC(npc)];
+                const coreDirective = buildCoreDirective(npc);
+                if (coreDirective) coreParts.push(coreDirective);
+                const coreLine = coreParts.join(' | ');
 
-                if (isSpotlit && npc.drives) {
-                    const driveParts: string[] = [];
-                    if (npc.drives.coreWant) driveParts.push(`CoreWant: ${npc.drives.coreWant}`);
-                    if (npc.drives.sessionWant) driveParts.push(`SessionWant: ${npc.drives.sessionWant}`);
-                    if (npc.drives.sceneWant) driveParts.push(`SceneWant: ${npc.drives.sceneWant}`);
-                    if (driveParts.length) line += `\n  DRIVES: ${driveParts.join(' | ')}`;
-                }
-
-                if (isSpotlit && npc.behavioralTriggers && npc.behavioralTriggers.length > 0) {
-                    const triggerTexts = npc.behavioralTriggers.map(t => `if "${t.keyword}" → ${t.shift}`);
-                    line += `\n  TRIGGERS: ${triggerTexts.join('; ')}`;
-                }
-
-                if (isSpotlit && npc.hardBoundaries && npc.hardBoundaries.length > 0) {
-                    line += `\n  HARD LIMITS: ${npc.hardBoundaries.join('; ')}`;
-                }
-                if (isSpotlit && npc.softBoundaries && npc.softBoundaries.length > 0) {
-                    line += `\n  SOFT LIMITS: ${npc.softBoundaries.join('; ')}`;
-                }
-
+                // Extended tier — scene-tagged.
+                const extParts: string[] = [];
+                const extDirective = buildExtendedDirective(npc, plannerTags);
+                if (extDirective) extParts.push(extDirective);
                 const drift = buildDriftAlert(npc);
-                if (drift) line += ` | ${drift}`;
-                if (archiveIndex) {
+                if (drift && fieldTagMatches('drift', npc.fieldTags, plannerTags)) extParts.push(drift);
+                if (archiveIndex && fieldTagMatches('knowledgeBoundary', npc.fieldTags, plannerTags)) {
                     const divergenceFacts = divergenceRegister?.entries;
                     const boundary = buildKnowledgeBoundary(npc, archiveIndex, divergenceFacts);
-                    if (boundary) line += `\n  ${boundary}`;
+                    if (boundary) extParts.push(boundary);
                 }
-                return line;
-            });
+                const extLine = extParts.length > 0 ? extParts.join(' | ') : '';
+                const fullLine = extLine ? `${coreLine} | ${extLine}` : coreLine;
+                npcSegments.push({ npcId: npc.id, content: fullLine, tokens: countTokens(fullLine) });
+            }
 
-            const npcText = `[ACTIVE NPC CONTEXT]\n${npcLines.join('\n')}\n[END NPC CONTEXT]`;
-            worldBlocks.push({ source: 'Active NPCs', content: npcText, tokens: countTokens(npcText), reason: `NPCs detected in context (${activeNPCs.length}, spotlit: ${spotlitNpc.name})` });
+            // On-stage NPC↔NPC relations (sparse, directed). Main's relations are numeric
+            // meters (-100..+100); render as a signed integer arrow.
+            const onStageSet = new Set(onStageNpcIds ?? []);
+            const present = activeNPCs.filter(n => onStageSet.has(n.id));
+            const relationLines: string[] = [];
+            for (let i = 0; i < present.length; i++) {
+                for (let j = 0; j < present.length; j++) {
+                    if (i === j) continue;
+                    const a = present[i], b = present[j];
+                    const r = a.relations?.[b.name];
+                    if (typeof r === 'number' && r !== 0) {
+                        relationLines.push(`${a.name}\u2192${b.name}: ${r > 0 ? '+' : ''}${r}`);
+                    }
+                }
+            }
+            const relationBlock = relationLines.length > 0
+                ? `\n[ON-STAGE RELATIONS]\n${relationLines.join('\n')}`
+                : '';
+
+            const npcText = `[ACTIVE NPC CONTEXT]\n${npcSegments.map(s => s.content).join('\n')}${relationBlock}\n[END NPC CONTEXT]`;
+            worldBlocks.push({
+                source: 'Active NPCs',
+                content: npcText,
+                tokens: countTokens(npcText),
+                reason: `NPCs detected in context (${activeNPCs.length}, tiered core+extended)`,
+            });
         }
     }
 
@@ -374,7 +444,7 @@ export function buildWorld(opts: {
         if (regText) {
             divergenceRegText = regText;
             divergenceTokens = countTokens(regText);
-            collector.addTrace({ source: 'Established Facts', classification: 'world_context', tokens: divergenceTokens, reason: `Campaign canon — public facts (${divergenceRegister.entries.length} entries)`, included: true, position: 'system_cacheable' });
+            collector.addTrace({ source: 'Established Facts', classification: 'world_context', tokens: divergenceTokens, reason: `Campaign canon — public facts (${divergenceRegister.entries.length} entries)`, included: true, position: 'system_cacheable', preview: regText });
             collector.addSection({ label: 'Established Facts', role: 'system', tokens: divergenceTokens, content: regText, classification: 'world_context' });
         }
     }
@@ -383,23 +453,59 @@ export function buildWorld(opts: {
         worldBlocks.push({ source: 'Semantic Facts', content: semanticFactText, tokens: countTokens(semanticFactText), reason: 'Injected verified facts' });
     }
 
-    // --- 4. Budget & Trim World Context ---
+    // --- 4. Budget & Trim World Context (two-phase: NPC floor decoupled) ---
     // Divergence is emitted as its own (high-priority, cacheable) system message but draws from
     // the same world allocation, so reserve its tokens up front rather than letting the trimmable
     // blocks consume the full budget and overrun once divergence is added back in payloadBuilder.
-    const trimBudget = Math.max(0, budgetWorld - divergenceTokens);
+    //
+    // Phase 2 (877c6eb): the [ACTIVE NPC CONTEXT] block gets a guaranteed `npcBudgetFloor` slice,
+    // decoupled from the world budget so lore/archive pressure can never starve the scene's
+    // actors. The NPC block is trimmed first against its floor; any unused floor flows back to
+    // the general world pool for the remaining blocks. Fixes the packing-order problem where NPCs
+    // (packed mid-stream) could be starved by lore pressure.
+    const npcBlockIndex = worldBlocks.findIndex(b => b.source === 'Active NPCs');
+    const npcBlock = npcBlockIndex >= 0 ? worldBlocks[npcBlockIndex] : null;
+
     let worldContent = '';
     let currentWorldTokens = 0;
-    for (const block of worldBlocks) {
-        if (currentWorldTokens + block.tokens <= trimBudget) {
+
+    // Phase 1: the NPC block (if present) is admitted against its dedicated floor. Unused floor
+    // flows back to the world pool. If the block exceeds the floor it still gets admitted (NPCs
+    // are the headline of a scene) but the overflow counts against the general world budget.
+    let npcFloorUsed = 0;
+    if (npcBlock) {
+        if (npcBlock.tokens <= npcBudgetFloor) {
+            worldContent = npcBlock.content;
+            currentWorldTokens = npcBlock.tokens;
+            npcFloorUsed = npcBlock.tokens;
+            collector.addTrace({ source: npcBlock.source, classification: 'world_context', tokens: npcBlock.tokens, reason: npcBlock.reason, included: true, position: 'system_dynamic' });
+            collector.addSection({ label: npcBlock.source, role: 'system', tokens: npcBlock.tokens, content: npcBlock.content, classification: 'world_context' });
+        } else {
+            // Block exceeds the floor — admit it whole (NPCs headline the scene) but the overflow
+            // counts against the world budget; the remaining blocks get the residual.
+            worldContent = npcBlock.content;
+            currentWorldTokens = npcBlock.tokens;
+            npcFloorUsed = npcBudgetFloor; // only the floor portion is "decoupled"; overflow is on the world budget
+            collector.addTrace({ source: npcBlock.source, classification: 'world_context', tokens: npcBlock.tokens, reason: `${npcBlock.reason} (exceeded ${npcBudgetFloor}t NPC floor; overflow charged to world budget)`, included: true, position: 'system_dynamic' });
+            collector.addSection({ label: npcBlock.source, role: 'system', tokens: npcBlock.tokens, content: npcBlock.content, classification: 'world_context' });
+        }
+    }
+    // Unused NPC floor flows back to the world pool.
+    const worldPoolAfterNpc = Math.max(0, budgetWorld - divergenceTokens - npcFloorUsed);
+
+    // Phase 2: trim the remaining blocks against the residual world pool.
+    for (let i = 0; i < worldBlocks.length; i++) {
+        if (i === npcBlockIndex) continue; // already admitted
+        const block = worldBlocks[i];
+        if (currentWorldTokens + block.tokens <= worldPoolAfterNpc + npcFloorUsed) {
             worldContent += (worldContent ? '\n\n' : '') + block.content;
             currentWorldTokens += block.tokens;
             collector.addTrace({ source: block.source, classification: 'world_context', tokens: block.tokens, reason: block.reason, included: true, position: 'system_dynamic' });
             collector.addSection({ label: block.source, role: 'system', tokens: block.tokens, content: block.content, classification: 'world_context' });
         } else {
-            collector.addTrace({ source: block.source, classification: 'world_context', tokens: block.tokens, reason: `Dropped: Exceeds World budget (${trimBudget} t after ${divergenceTokens} t divergence reserve)`, included: false, position: 'system_dynamic' });
+            collector.addTrace({ source: block.source, classification: 'world_context', tokens: block.tokens, reason: `Dropped: Exceeds World budget (${worldPoolAfterNpc + npcFloorUsed} t residual after ${divergenceTokens} t divergence reserve + ${npcFloorUsed} t NPC floor)`, included: false, position: 'system_dynamic' });
         }
     }
 
-    return { worldContent, currentWorldTokens, divergenceContent: divergenceRegText, divergenceTokens };
+    return { worldContent, currentWorldTokens, divergenceContent: divergenceRegText, divergenceTokens, plannerEventTypes };
 }

@@ -48,44 +48,97 @@ describe('buildBehaviorDirective — affinity descriptor bands', () => {
         [100, 'Devoted — deep loyalty'],
     ];
     for (const [aff, label] of cases) {
-        it(`affinity ${aff} -> "[Affinity: ${label}]"`, () => {
-            const out = buildBehaviorDirective(baseNPC({ affinity: aff }));
-            expect(out).toContain(`[Affinity: ${label}]`);
+        it(`affinity ${aff} -> "[Aff: ${label}]" (legacy fallback when pcRelation undefined)`, () => {
+            // A hex-less legacy NPC: directive uses affinityDescriptor fallback, no Personality band line.
+            const out = buildBehaviorDirective(baseNPC({ affinity: aff, personalityHex: undefined }));
+            expect(out).toContain(`[Aff: ${label}]`);
         });
     }
 });
 
-describe('buildBehaviorDirective — assembly of parts', () => {
-    it('minimal NPC (no personality/voice/example) -> just "PLAY AS: [Affinity: ...]"', () => {
-        const out = buildBehaviorDirective(baseNPC({ personality: '', disposition: '', voice: '', exampleOutput: '' }));
-        expect(out).toBe('PLAY AS: [Affinity: Neutral]');
+describe('buildBehaviorDirective — assembly of parts (legacy hex-less NPC)', () => {
+    it('minimal NPC (no personality/voice/example, no hex) -> just "PLAY AS: [Aff: ...]"', () => {
+        const out = buildBehaviorDirective(baseNPC({ personality: '', disposition: '', voice: '', exampleOutput: '', personalityHex: undefined }));
+        expect(out).toBe('PLAY AS: [Aff: Neutral]');
     });
-    it('personality field is appended after the affinity bracket, joined by " | "', () => {
-        const out = buildBehaviorDirective(baseNPC({ personality: 'stoic and watchful' }));
-        expect(out).toBe('PLAY AS: [Affinity: Neutral] | stoic and watchful');
+    it('personality field is appended after the affinity bracket for a hex-less NPC, joined by " | "', () => {
+        const out = buildBehaviorDirective(baseNPC({ personality: 'stoic and watchful', personalityHex: undefined }));
+        expect(out).toBe('PLAY AS: [Aff: Neutral] | stoic and watchful');
     });
-    it('falls back to disposition when personality is empty', () => {
-        const out = buildBehaviorDirective(baseNPC({ personality: '', disposition: 'jovial drunk' }));
-        expect(out).toBe('PLAY AS: [Affinity: Neutral] | jovial drunk');
+    it('falls back to disposition when personality is empty (hex-less NPC)', () => {
+        const out = buildBehaviorDirective(baseNPC({ personality: '', disposition: 'jovial drunk', personalityHex: undefined }));
+        expect(out).toBe('PLAY AS: [Aff: Neutral] | jovial drunk');
     });
     it('voice is prefixed with "Voice: "', () => {
-        const out = buildBehaviorDirective(baseNPC({ voice: 'deep rumble' }));
+        const out = buildBehaviorDirective(baseNPC({ voice: 'deep rumble', personalityHex: undefined }));
         expect(out).toContain('| Voice: deep rumble');
     });
     it('exampleOutput is prefixed with "Example: "', () => {
-        const out = buildBehaviorDirective(baseNPC({ exampleOutput: '"Halt!"' }));
+        const out = buildBehaviorDirective(baseNPC({ exampleOutput: '"Halt!"', personalityHex: undefined }));
         expect(out).toContain('| Example: "Halt!"');
     });
-    it('all four parts present appear in order: affinity | personality | Voice | Example', () => {
+    it('all four parts present appear in order: aff | personality | Voice | Example (hex-less)', () => {
         const out = buildBehaviorDirective(baseNPC({
-            personality: 'brave', voice: 'gruff', exampleOutput: '"Step back"',
+            personality: 'brave', voice: 'gruff', exampleOutput: '"Step back"', personalityHex: undefined,
         }));
-        expect(out).toBe('PLAY AS: [Affinity: Neutral] | brave | Voice: gruff | Example: "Step back"');
+        expect(out).toBe('PLAY AS: [Aff: Neutral] | brave | Voice: gruff | Example: "Step back"');
     });
     it('empty voice and empty exampleOutput are omitted (no "Voice:" / "Example:" fragments)', () => {
-        const out = buildBehaviorDirective(baseNPC({ voice: '', exampleOutput: '' }));
+        const out = buildBehaviorDirective(baseNPC({ voice: '', exampleOutput: '', personalityHex: undefined }));
         expect(out).not.toContain('Voice:');
         expect(out).not.toContain('Example:');
+    });
+});
+
+describe('buildBehaviorDirective — Phase-4 surfacing (migrated NPC with hex/wants)', () => {
+    const HEX = { drive: 0, diligence: 1, boldness: 1, warmth: 2, empathy: 1, composure: 1 } as NPCEntry['personalityHex'];
+    it('uses relationBand when pcRelation is defined (not the legacy affinity descriptor)', () => {
+        const out = buildBehaviorDirective(baseNPC({ pcRelation: 2, personalityHex: undefined }));
+        expect(out).toContain('[Aff: Close]'); // +2 → Close
+    });
+    it('hex NPC surfaces Personality band-words instead of free-text personality', () => {
+        const out = buildBehaviorDirective(baseNPC({ personalityHex: HEX, personality: 'brave' }));
+        // Migrated NPC: hex band-words replace free-text personality.
+        // HEX = {drive:0,diligence:1,boldness:1,warmth:2,empathy:1,composure:1}
+        // hexBand offsets by +3, so: drive[3]=Steady, diligence[4]=Diligent, boldness[4]=Bold,
+        // warmth[5]=Affable, empathy[4]=Kind, composure[4]=Composed.
+        expect(out).toContain('Personality: Steady, Diligent, Bold, Affable, Kind, Composed');
+        expect(out).not.toContain('| brave');
+    });
+    it('wants (Phase-2) supersede legacy drives display', () => {
+        const out = buildBehaviorDirective(baseNPC({
+            personalityHex: undefined,
+            wants: { short: ['eat'], medium: ['win a contest'], long: 'become the strongest' },
+            drives: { coreWant: 'core', sessionWant: 'session', sceneWant: 'scene' },
+        }));
+        expect(out).toContain('GOAL: become the strongest');
+        expect(out).toContain('PURSUING: win a contest');
+        expect(out).toContain('NOW: eat');
+        expect(out).not.toContain('WANTS:');
+    });
+    it('hardBoundaries / softBoundaries surface as WON\'T / RESENTS', () => {
+        const out = buildBehaviorDirective(baseNPC({
+            personalityHex: undefined,
+            hardBoundaries: ['will not betray her sister'],
+            softBoundaries: ['dislikes being excluded'],
+        }));
+        expect(out).toContain("WON'T: will not betray her sister");
+        expect(out).toContain('RESENTS: dislikes being excluded');
+    });
+});
+
+describe('buildBehaviorDirective — reaction menu line (Phase 2 §9.1)', () => {
+    it('appends a REACTIONS line with the enforcement clause for a hex-bearing NPC', () => {
+        const out = buildBehaviorDirective(baseNPC({
+            personalityHex: { drive: 1, diligence: 2, boldness: 1, warmth: 2, empathy: 2, composure: 1 },
+            traits: ['loyal', 'protective'],
+        }), { rng: () => 0.5 });
+        expect(out).toContain('REACTIONS (choose ONE and play it');
+        expect(out).toContain('do NOT invent a softer reaction');
+    });
+    it('omits the REACTIONS line for a legacy hex-less NPC', () => {
+        const out = buildBehaviorDirective(baseNPC({ personalityHex: undefined }));
+        expect(out).not.toContain('REACTIONS');
     });
 });
 

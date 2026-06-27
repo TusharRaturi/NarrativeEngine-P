@@ -1,6 +1,6 @@
 // ─── Game Context / Pipeline / Session Types ─────────────────────────────
 
-import type { InventoryItem, CharacterProfile, InventoryItemCategory, SceneStakes } from './character';
+import type { InventoryItem, CharacterProfile, CharacterProfileState, InventoryItemCategory, SceneStakes } from './character';
 export type { SceneStakes };
 import type { LoreChunk, RuleChunkMeta } from './lore';
 import type { ArcRecord } from './arc';
@@ -51,6 +51,10 @@ export type DiceConfig = {
     triumph: number;     // e.g. 19 (16-19 is triumph)
     crit: number;        // e.g. 20 (20 is crit)
 };
+
+// Player-called "dice me" arm mode (WO-H). Resolved at send time so the result is
+// hidden until the player commits; asserted as fact into the turn.
+export type ManualRollMode = '1d20' | 'adv' | 'disadv';
 
 export type SurpriseConfig = {
     initialDC: number;
@@ -104,7 +108,7 @@ export type GameContext = {
     continuePrompt: string;
     inventory: string; // @deprecated — legacy plain-text. Prefer inventoryItems.
     inventoryLastScene: string;
-    characterProfile: string; // @deprecated — legacy plain-text. Prefer characterProfileData.
+    characterProfile: CharacterProfileState; // WO-G: structured narrative traits (was flat string)
     characterProfileLastScene: string;
     // --- Structured replacements ---
     inventoryItems: InventoryItem[];
@@ -283,7 +287,7 @@ export function migrateLegacyContext(ctx: Partial<GameContext>): GameContext {
         continuePrompt: '',
         inventory: '',
         inventoryLastScene: 'Never',
-        characterProfile: '',
+        characterProfile: { identity: {}, activeTraits: [] },
         characterProfileLastScene: 'Never',
         inventoryItems: DEFAULT_INVENTORY,
         characterProfileData: DEFAULT_CHARACTER_PROFILE,
@@ -321,9 +325,25 @@ export function migrateLegacyContext(ctx: Partial<GameContext>): GameContext {
             merged.inventoryItems = DEFAULT_INVENTORY;
         }
     }
+    // WO-G: migrate legacy flat-string `characterProfile` → CharacterProfileState.
+    // Old saves have characterProfile as a string; we freeze it into legacyNotes
+    // (never injected) and seed identity from it. The structured parser rebuilds
+    // activeTraits over a few turns. The sheet (characterProfileData) is still
+    // extracted from the legacy blob below for backward compatibility.
+    const legacyProfileString: string | null =
+        typeof (merged as any).characterProfile === 'string' ? (merged as any).characterProfile : null;
+    if (legacyProfileString !== null) {
+        merged.characterProfile = {
+            identity: {},
+            activeTraits: [],
+            legacyNotes: legacyProfileString || undefined,
+        };
+    } else if (!merged.characterProfile || typeof merged.characterProfile !== 'object') {
+        merged.characterProfile = { identity: {}, activeTraits: [] };
+    }
     if (!merged.characterProfileData || !merged.characterProfileData.name) {
-        if (merged.characterProfile && merged.characterProfile.trim()) {
-            const prof = merged.characterProfile;
+        if (legacyProfileString && legacyProfileString.trim()) {
+            const prof = legacyProfileString;
             merged.characterProfileData = {
                 ...DEFAULT_CHARACTER_PROFILE,
                 name: (prof.match(/Name[:\s]*(.+)/i)?.[1] || '').trim(),

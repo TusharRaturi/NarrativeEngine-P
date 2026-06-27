@@ -29,6 +29,7 @@ export function RenameNpcModal() {
             const cid = state.activeCampaignId;
 
             const msgCount = state.renameAcrossMessages(from, targetName);
+            const firstNameCount = state.renameFirstNameInLatestAssistant(from, targetName);
             const ledger = state.mergeOrRenameNpc(from, targetName, 0);
 
             let archiveCount = 0;
@@ -40,6 +41,7 @@ export function RenameNpcModal() {
             }
 
             const parts = [`${msgCount} message${msgCount === 1 ? '' : 's'}`];
+            if (firstNameCount > 0) parts.push(`${firstNameCount} current-scene first-name fix`);
             if (archiveCount > 0) parts.push(`${archiveCount} archived scene${archiveCount === 1 ? '' : 's'}`);
             if (ledger === 'merged') parts.push('merged NPC');
             else if (ledger === 'renamed') parts.push('renamed NPC');

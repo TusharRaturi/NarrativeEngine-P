@@ -17,6 +17,11 @@ export type ChatMessage = {
     reasoning_content?: string;
     ephemeral?: boolean;
     divergenceIds?: string[];
+    /** WO-F (2be3ad5) — the archive scene id this message's GM reply was archived under.
+     *  Set by the post-turn pipeline after archive append. Used by the surgical-delete + edit-sync
+     *  UI hooks to map an on-screen message back to its long-term-memory scene. Undefined for
+     *  user messages, pre-WO-F saves, and turns that were never archived. */
+    sceneId?: string;
 };
 
 export type Campaign = {

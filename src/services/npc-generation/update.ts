@@ -3,7 +3,7 @@ import type { OpenAIMessage } from '../llm/llmService';
 import { sendMessageAndParseJson } from './shared';
 import { relationBand, describeHex } from '../npc/agency/agencyBands';
 import { hexDelta } from '../npc/agency/agencyDrift';
-import { PC_RELATION_MIN, PC_RELATION_MAX, PC_RELATION_MAX_STEP } from '../npc/agency/agencyConstants';
+import { applyRelationTone, isRelationTone } from '../npc/relationMeter';
 
 // Mirrors the private descriptor in mobile npcGeneration.ts. Used only for read-only legacy
 // display in the LLM context block (so the model understands pre-migration NPCs without us
@@ -96,35 +96,44 @@ export async function updateExistingNPCs(
 
     const prompt = `You are a background game state analyzer. Your job is to read the RECENT CONTEXT of an RPG session and determine if any of the provided NPCs have undergone a shift in their status, personality, goals, disposition, faction, or relevance.
 
-OUTPUT FORMAT — a single JSON object:
+OUTPUT FORMAT — a single JSON object with TWO channels: "updates" (rare) and "tones" (always):
+{"updates": [ ... ], "tones": [ ... ]}
 
-If NO changes occurred for ANY of these NPCs, respond EXACTLY with:
-{"updates": []}
-
-If ANY changes occurred, respond with:
+CHANNEL 1 — "updates" (only when something fundamentally changed; usually empty []):
 {"updates": [{"name": "<NPC name>", "changes": { ...only the fields that changed... }}]}
-
 Each update MUST include "name" and only the fields that fundamentally changed. Allowed changes keys:
   status, disposition, goals, storyRelevance, personality (flavor text), voice, appearance,
   wants (medium/long text only — NEVER include "short"; short is engine-managed),
-  pcRelation, personalityHex, traits, region, faction, relations, behavioralTriggers, hardBoundaries, softBoundaries, visualProfile.
-DO NOT include attributes that stayed the same.
+  personalityHex, traits, region, faction, relations, behavioralTriggers, hardBoundaries, softBoundaries, visualProfile.
+DO NOT include attributes that stayed the same. If nothing fundamental changed, "updates" is [].
 
-**FORBIDDEN keys** (Phase-4 schema; sending these is a data-model error):
+CHANNEL 2 — "tones" (MANDATORY: one entry for EVERY NPC listed below, every time):
+{"tones": [{"name": "<NPC name>", "tone": "<friendly|tense|neutral|bonding|betrayal>"}]}
+Judge how THIS scene felt for each NPC toward the player. This is your ONLY job re: relationship —
+the engine owns the actual standing; you just read the room:
+  - friendly : player was warm/helpful/pleasant (ordinary positive interaction)
+  - tense    : friction, rudeness, a slight, a minor argument
+  - neutral  : no social charge — logistics, passing by, all business (USE THIS WHEN UNSURE)
+  - bonding  : a BIG shared-adversity / deep-trust moment (fought side by side, saved their life)
+  - betrayal : player broke trust — deceived, harmed, or abandoned them in a serious way
+Most scenes are "neutral", "friendly", or "tense". Reserve "bonding"/"betrayal" for genuinely big
+moments — they move the needle hard.
+
+**FORBIDDEN keys** in "changes" (data-model errors):
   - "drives" — superseded by "wants". Never send drives.
-  - "affinity" — superseded by "pcRelation". Never send a 0–100 affinity number.
+  - "affinity" / "pcRelation" — the relationship standing is ENGINE-OWNED. NEVER send either; use
+    the "tones" channel instead. Any affinity/pcRelation you put in "changes" is discarded.
 
-PERSONALITY HEX DRIFT (the headline):
+PERSONALITY HEX DRIFT (the headline of "updates"):
   - "personalityHex" is a DELTA MAP, not a full overwrite. Send ONLY the axes that drifted, as
     small integers: e.g. {"personalityHex": {"boldness": +1, "composure": -1}}.
   - Each axis delta is clamped to ±1 by the engine; a "+5" still moves only +1. Drift is rare and
     small — only send a hex delta when the scene contains a genuinely transformative event.
   - NEVER re-emit the full 6-axis hexagon. NEVER send absolute axis values as if setting them.
 
-PC RELATION DRIFT:
-  - "pcRelation" is a DELTA: +1, -1, or 0. The engine clamps the result to −3..+3 and rejects any
-    larger step. Send +1 when the player gained favor, -1 when they lost it. Skip if unchanged.
-  - NEVER send a 0–100 "affinity" number. The legacy field is read-only.
+RELATIONS:
+  - "relations" is a sparse NPC→NPC edge map (target NPC id → -3..+3). Shallow-merge only;
+    never wholesale replace. Add or adjust specific edges that shifted this scene.
 
 WANTS UPDATE RULES:
   - "wants" is an object with "short" (string[]), "medium" (string[]), and "long" (string).
@@ -134,14 +143,9 @@ WANTS UPDATE RULES:
   - "medium" is arc-level goal templates — update if the story moved to a new arc.
   - If the NPC has no "wants" yet, you MUST provide "medium" and "long".
 
-RELATIONS:
-  - "relations" is a sparse NPC→NPC edge map (target NPC id → -3..+3). Shallow-merge only;
-    never wholesale replace. Add or adjust specific edges that shifted this scene.
-
 GENERAL RULES:
 - Valid statuses: Alive, Deceased, Missing, Unknown.
 - Do NOT change personality or voice unless the scene contains a genuinely transformative event for this character.
-- "affinity" is a 0-100 scale of how much they like the player (0=Nemesis, 50=Neutral, 100=Ally). DO NOT send "affinity" — use "pcRelation" (+1/-1 delta) instead.
 
 EXAMPLES:
 
@@ -151,21 +155,24 @@ GOOD — NPC who died with a transformative emotional arc:
 GOOD — NPC whose mid/long-term ambition shifted after a major scene (only revise "wants" medium/long; NEVER include "short"):
 {"updates": [{"name": "Kael", "changes": {"wants": {"long": "seize the Ironwall garrison and rule the pass himself", "medium": ["turn the captain's lieutenants against her", "stockpile blackpowder"]}}}]}
 
-GOOD — NPC who grew bolder after a crit-success on a bold goal (hex DRIFT, delta-only; pcRelation delta):
-{"updates": [{"name": "Alden", "changes": {"personalityHex": {"boldness": +1}, "pcRelation": +1}}]}
+GOOD — NPC who grew bolder after a crit-success on a bold goal (hex DRIFT, delta-only):
+{"updates": [{"name": "Alden", "changes": {"personalityHex": {"boldness": +1}}}]}
 
-GOOD — NPC who lost composure after sustained failure (hex DRIFT, delta-only):
-{"updates": [{"name": "Senna", "changes": {"personalityHex": {"composure": -1}}}]}
+GOOD — ordinary scene, nothing fundamental changed, but two NPCs were on stage (note: "updates" empty, "tones" still lists EVERYONE):
+{"updates": [], "tones": [{"name": "Alden", "tone": "friendly"}, {"name": "Senna", "tone": "neutral"}]}
+
+GOOD — the player saved Kael's life in a desperate fight (a bonding moment) while snubbing Vorin:
+{"updates": [], "tones": [{"name": "Kael", "tone": "bonding"}, {"name": "Vorin", "tone": "tense"}]}
 
 BAD — re-emitting unchanged attributes (status/personality/voice/appearance all unchanged here):
 {"updates": [{"name": "Senna", "changes": {"status": "Alive", "personality": "warm and curious", "voice": "soft alto", "appearance": "tall, dark hair"}}]}
 Corrected: include ONLY the field that changed —
 {"updates": [{"name": "Senna", "changes": {"personality": "warm but watchful after the ambush"}}]}
 
-BAD — sending a FORBIDDEN legacy key (drives/affinity):
-{"updates": [{"name": "Senna", "changes": {"drives": {"sceneWant": "investigate the tracks at dawn"}, "affinity": 65}}]}
-Corrected — use the Phase-4 fields (wants medium/long; pcRelation delta):
-{"updates": [{"name": "Senna", "changes": {"wants": {"medium": ["investigate the tracks at dawn"]}, "pcRelation": +1}}]}
+BAD — sending a FORBIDDEN/engine-owned key (drives / affinity / pcRelation):
+{"updates": [{"name": "Senna", "changes": {"drives": {"sceneWant": "investigate the tracks at dawn"}, "affinity": 65, "pcRelation": +1}}]}
+Corrected — use "wants" for ambition, and put the relationship read in the "tones" channel (NOT changes):
+{"updates": [{"name": "Senna", "changes": {"wants": {"medium": ["investigate the tracks at dawn"]}}}], "tones": [{"name": "Senna", "tone": "friendly"}]}
 
 BAD — re-emitting the full hexagon as absolute values (this is a full-overwrite attempt; the engine will clamp it to ±1 anyway, but it signals a misunderstanding):
 {"updates": [{"name": "Alden", "changes": {"personalityHex": {"drive": 2, "diligence": 1, "boldness": 3, "warmth": 0, "empathy": 1, "composure": 2}}]}
@@ -180,7 +187,7 @@ ${recentContext}
 ${npcDatas}
 [END STATES]
 
-RESPOND ONLY WITH VALID JSON.`;
+RESPOND ONLY WITH VALID JSON. NO MARKDOWN FORMATTING. NO EXPLANATIONS.`;
 
     const messages: OpenAIMessage[] = [{
         role: 'user',
@@ -190,25 +197,57 @@ RESPOND ONLY WITH VALID JSON.`;
     try {
         const { parsed } = await sendMessageAndParseJson(provider, messages, 'NPC Updater');
 
-        if (parsed.updates && Array.isArray(parsed.updates)) {
+        const findTarget = (name: string) => npcsToCheck.find(n =>
+            n.name?.toLowerCase() === name.toLowerCase() ||
+            (n.aliases && n.aliases.toLowerCase().includes(name.toLowerCase()))
+        );
+
+        // Relationship meter (engine-owned affinity): the AI only labels each NPC's scene TONE; the
+        // engine rolls that into the hidden sub-band meter and flips pcRelation on threshold crossings.
+        // Build the band/meter patches up front so they can fold into the matching `updates` entry
+        // (shared previousSnapshot) and so tone-only NPCs (the common case) get applied below.
+        const tonePatchById = new Map<string, Partial<NPCEntry>>();
+        if (Array.isArray(parsed?.tones)) {
+            for (const t of parsed.tones) {
+                if (!t?.name || !isRelationTone(t.tone)) continue;
+                const target = findTarget(t.name);
+                if (!target || target.isPC) continue;
+                const patch = applyRelationTone(target, t.tone);
+                if (Object.keys(patch).length > 0) tonePatchById.set(target.id, patch);
+            }
+        }
+        const handledToneIds = new Set<string>();
+
+        if (parsed?.updates && Array.isArray(parsed.updates)) {
             for (const update of parsed.updates) {
                 if (!update.name || !update.changes) continue;
 
-                const targetNpc = npcsToCheck.find(n =>
-                    n.name.toLowerCase() === update.name.toLowerCase() ||
-                    (n.aliases && n.aliases.toLowerCase().includes(update.name.toLowerCase()))
-                );
+                const targetNpc = findTarget(update.name);
 
                 if (targetNpc) {
                     const changes = { ...update.changes } as Partial<NPCEntry>;
 
-                    // WO-05 §B — defensively strip the FORBIDDEN legacy keys. The prompt forbids them,
-                    // but the parse must never write a superseded field as truth.
+                    // WO-05 §B — defensively strip FORBIDDEN/engine-owned keys. The parse must never
+                    // write a superseded or engine-owned field from the model. `drives`/`affinity` are
+                    // legacy; `pcRelation` is now engine-owned (moves only via the tone meter below), so
+                    // any band the model puts in `changes` is discarded.
                     delete (changes as Partial<NPCEntry>).drives;
                     delete (changes as Partial<NPCEntry>).affinity;
+                    delete (changes as Partial<NPCEntry>).pcRelation;
 
-                    // WO-05 §C — capture the pre-change state into `previousSnapshot` so a SHIFT
-                    // word-band can be surfaced on the next payload read.
+                    // Fold this NPC's tone-driven band/meter move into the same patch so the snapshot
+                    // logic below captures the pre-change band for the drift alert.
+                    const tonePatch = tonePatchById.get(targetNpc.id);
+                    if (tonePatch) {
+                        Object.assign(changes, tonePatch);
+                        handledToneIds.add(targetNpc.id);
+                    }
+
+                    // WO-05 §C — capture the pre-change state into `previousSnapshot` so the
+                    // `buildDriftAlert` consumer can surface a SHIFT word-band on the next payload
+                    // read. Capture personality/voice (legacy drift), personalityHex (hex drift),
+                    // pcRelation (relation drift), and skillRung (rung drift). Only snapshot fields
+                    // that are present and might change.
                     const hasPersonalityChange = changes.personality !== undefined || changes.voice !== undefined;
                     const hasHexChange = changes.personalityHex !== undefined;
                     const hasPcRelationChange = changes.pcRelation !== undefined;
@@ -235,22 +274,14 @@ RESPOND ONLY WITH VALID JSON.`;
                         };
                     }
 
-                    // WO-05 §A — pcRelation DELTA. Accept +1/-1 (or an absolute target the engine
-                    // clamps). Step is clamped to ±PC_RELATION_MAX_STEP; result to [MIN, MAX]. Only
-                    // apply when the NPC already has a pcRelation baseline.
-                    if (changes.pcRelation !== undefined && typeof changes.pcRelation === 'number'
-                        && Number.isFinite(changes.pcRelation) && targetNpc.pcRelation !== undefined) {
-                        const current = targetNpc.pcRelation;
-                        const step = Math.max(-PC_RELATION_MAX_STEP, Math.min(PC_RELATION_MAX_STEP, Math.round(changes.pcRelation)));
-                        const next = Math.max(PC_RELATION_MIN, Math.min(PC_RELATION_MAX, current + step));
-                        changes.pcRelation = next;
-                    } else {
-                        delete (changes as Partial<NPCEntry>).pcRelation;
-                    }
+                    // (pcRelation is engine-owned now — set above from the tone meter, already clamped;
+                    // the model never supplies a band delta here.)
 
                     // WO-05 §A — personalityHex DELTA-ONLY. Each axis value is treated as a delta and
                     // applied via `hexDelta`, which clamps the step to ±HEX_DRIFT_MAX_STEP and the
-                    // result to −3..+3. A full-overwrite attempt ("5" on every axis) is neutralized.
+                    // result to −3..+3. A full-overwrite attempt ("5" on every axis) is neutralized:
+                    // hexDelta treats each value as a delta, so a "5" becomes +1. Only apply when
+                    // the NPC already has a personalityHex.
                     if (changes.personalityHex !== undefined && changes.personalityHex !== null
                         && typeof changes.personalityHex === 'object' && targetNpc.personalityHex) {
                         const incoming = changes.personalityHex as Record<HexAxis, number>;
@@ -309,6 +340,30 @@ RESPOND ONLY WITH VALID JSON.`;
             }
         } else {
             console.log(`[NPC Updater] No updates required.`);
+        }
+
+        // Tone-only NPCs: the common case — an ordinary scene with no fundamental change, so the NPC
+        // had no `updates` entry, but its tone still moved the relationship meter. Apply those band/
+        // meter patches here, mirroring the band-drift snapshot so buildDriftAlert can surface a
+        // "feeling toward PC X → Y" shift.
+        for (const [id, patch] of tonePatchById) {
+            if (handledToneIds.has(id)) continue;
+            const target = npcsToCheck.find(n => n.id === id);
+            if (!target) continue;
+            const changes: Partial<NPCEntry> = { ...patch };
+            if (changes.pcRelation !== undefined) {
+                changes.previousSnapshot = {
+                    personality: target.personality || target.disposition || '',
+                    voice: target.voice || '',
+                    affinity: target.affinity,
+                    personalityHex: target.personalityHex,
+                    pcRelation: target.pcRelation,
+                    skillRung: target.skillRung,
+                };
+                changes.shiftTurnCount = 0;
+            }
+            updateNPCStore(id, changes);
+            console.log(`[NPC Updater] Relationship meter moved ${target.name}:`, changes);
         }
     } catch (err) {
         console.error('[NPC Updater] Failed to parse generated JSON or fatal error:', err);

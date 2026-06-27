@@ -362,8 +362,8 @@ describe('buildPayload — scenario 2: full world context', () => {
     });
 });
 
-// ── Scenario 3: NPC spotlight ─────────────────────────────────────────────────
-describe('buildPayload — scenario 3: NPC spotlight', () => {
+// ── Scenario 3: NPC tiered directive (WO-G core+extended) ─────────────────────
+describe('buildPayload — scenario 3: NPC tiered directive', () => {
     const highNpc = makeNPC({
         id: 'npc_high',
         name: 'Zorath',
@@ -381,7 +381,7 @@ describe('buildPayload — scenario 3: NPC spotlight', () => {
     // userMessage mentions Zorath multiple times
     const userMsg = 'Zorath steps forward. Zorath raises his sword. What does Zorath say?';
 
-    it('Active NPCs trace reason names the spotlit NPC (highest salience)', () => {
+    it('Active NPCs trace reason describes the tiered injection', () => {
         const result = buildPayload(
             baseSettings(), baseContext(),
             [], userMsg,
@@ -389,23 +389,10 @@ describe('buildPayload — scenario 3: NPC spotlight', () => {
         );
         const npcTrace = (result.trace ?? []).find(t => t.source === 'Active NPCs' && t.included);
         expect(npcTrace).toBeDefined();
-        expect(npcTrace!.reason).toContain('Zorath');
+        expect(npcTrace!.reason).toContain('tiered');
     });
 
-    it('spotlit NPC DRIVES block appears in NPC context output', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], userMsg,
-            undefined, undefined, [highNpc, lowNpc]
-        );
-        // NPC context is part of worldContent, folded into the final user message.
-        const allContent = result.messages
-            .map(m => m.content as string)
-            .join('\n');
-        expect(allContent).toContain('DRIVES:');
-    });
-
-    it('spotlit NPC TRIGGERS block appears in NPC context output', () => {
+    it('NPC with drives surfaces a WANTS line (legacy drives fallback) in output', () => {
         const result = buildPayload(
             baseSettings(), baseContext(),
             [], userMsg,
@@ -414,10 +401,11 @@ describe('buildPayload — scenario 3: NPC spotlight', () => {
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allContent).toContain('TRIGGERS:');
+        // highNpc has drives (not wants) → buildExtendedDirective emits WANTS:.
+        expect(allContent).toContain('WANTS:');
     });
 
-    it('spotlit NPC HARD LIMITS block appears in NPC context output', () => {
+    it('NPC triggers surface as ON "keyword": in output', () => {
         const result = buildPayload(
             baseSettings(), baseContext(),
             [], userMsg,
@@ -426,10 +414,10 @@ describe('buildPayload — scenario 3: NPC spotlight', () => {
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allContent).toContain('HARD LIMITS:');
+        expect(allContent).toContain('ON "sword":');
     });
 
-    it('non-spotlit NPC does not have DRIVES block in output', () => {
+    it('NPC hard boundaries surface as WON\'T: in output', () => {
         const result = buildPayload(
             baseSettings(), baseContext(),
             [], userMsg,
@@ -438,9 +426,22 @@ describe('buildPayload — scenario 3: NPC spotlight', () => {
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        // Only one DRIVES: block should be present (for the spotlit NPC)
-        const driveCount = (allContent.match(/DRIVES:/g) ?? []).length;
-        expect(driveCount).toBe(1);
+        expect(allContent).toContain('WON\'T:');
+    });
+
+    it('NPC without drives does not emit a WANTS line', () => {
+        const result = buildPayload(
+            baseSettings(), baseContext(),
+            [], userMsg,
+            undefined, undefined, [highNpc, lowNpc]
+        );
+        const allContent = result.messages
+            .map(m => m.content as string)
+            .join('\n');
+        // lowNpc (Tara) has no drives and no wants — no WANTS line for her.
+        // Only highNpc's WANTS line should be present.
+        const wantsCount = (allContent.match(/WANTS:/g) ?? []).length;
+        expect(wantsCount).toBe(1);
     });
 });
 
@@ -881,7 +882,13 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
             ...baseContext(),
             smartBookkeepingActive: false,
             characterProfileActive: true,
-            characterProfile: 'Name: Gareth\nClass: Fighter\nLevel: 5',
+            characterProfile: {
+                identity: { name: 'Gareth', class: 'Fighter', level: 5 },
+                activeTraits: [{
+                    id: 't1', subject: 'Gareth', category: 'party_facts', text: 'A seasoned fighter',
+                    importance: 7, eventTags: ['other'], sceneEstablished: '', superseded: false, source: 'seed',
+                }],
+            },
             characterProfileLastScene: '003',
         } as unknown as GameContext;
 
@@ -894,12 +901,18 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
         expect(allContent).toContain('003');
     });
 
-    it('legacy: staleness tag says NEVER AUTO-UPDATED when characterProfileLastScene is Never', () => {
+    it('legacy: structured profile injects [CHARACTER PROFILE] when characterProfileActive and traits exist', () => {
         const ctx = {
             ...baseContext(),
             smartBookkeepingActive: false,
             characterProfileActive: true,
-            characterProfile: 'Name: Gareth\nClass: Fighter\nLevel: 5',
+            characterProfile: {
+                identity: { name: 'Gareth', class: 'Fighter', level: 5 },
+                activeTraits: [{
+                    id: 't1', subject: 'Gareth', category: 'party_facts', text: 'A seasoned fighter',
+                    importance: 7, eventTags: ['other'], sceneEstablished: '', superseded: false, source: 'seed',
+                }],
+            },
             characterProfileLastScene: 'Never',
         } as unknown as GameContext;
 
@@ -907,7 +920,8 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
-        expect(allContent).toContain('NEVER AUTO-UPDATED');
+        expect(allContent).toContain('[CHARACTER PROFILE]');
+        expect(allContent).toContain('Gareth');
     });
 });
 

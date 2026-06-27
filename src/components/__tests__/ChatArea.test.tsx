@@ -11,7 +11,7 @@ vi.mock('../../store/useAppStore', () => {
         context: {
             loreRaw: '', rulesRaw: '', canonState: '', headerIndex: '',
             starter: '', continuePrompt: '', inventory: '', inventoryLastScene: '',
-            characterProfile: '', characterProfileLastScene: '',
+            characterProfile: { identity: {}, activeTraits: [] }, characterProfileLastScene: '',
             canonStateActive: false, headerIndexActive: false,
             starterActive: false, continuePromptActive: false,
             inventoryActive: false, characterProfileActive: false,
@@ -80,6 +80,10 @@ vi.mock('../../store/useAppStore', () => {
         setStreaming: vi.fn(),
         toggleDrawer: vi.fn(),
         drawerOpen: false,
+        deepArmed: false,
+        setDeepArmed: vi.fn(),
+        armedRoll: null,
+        setArmedRoll: vi.fn(),
     };
     const subscribe = vi.fn(() => vi.fn());
     const getState = vi.fn(() => state);

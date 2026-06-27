@@ -32,6 +32,30 @@ export const api = {
                 method: 'DELETE'
             });
         },
+        // WO-F (2be3ad5) — surgical scene delete + edit-sync. Delete one archived scene
+        // (re-threads chapters, no full rebuild) / rewrite a scene's GM text in long-term memory.
+        async deleteScene(campaignId: string, sceneId: string): Promise<{ ok: boolean; sceneExisted: boolean; chapterRepaired: boolean } | undefined> {
+            try {
+                const res = await fetch(`${API}/campaigns/${campaignId}/archive/scenes/${sceneId}`, { method: 'DELETE' });
+                if (res.ok) return await res.json();
+            } catch (err) {
+                console.warn('[Archive] Failed to delete scene:', err);
+            }
+            return undefined;
+        },
+        async updateSceneAssistant(campaignId: string, sceneId: string, assistantContent: string): Promise<{ ok: boolean; userContent: string } | undefined> {
+            try {
+                const res = await fetch(`${API}/campaigns/${campaignId}/archive/scenes/${sceneId}/assistant`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ assistantContent }),
+                });
+                if (res.ok) return await res.json();
+            } catch (err) {
+                console.warn('[Archive] Failed to update scene assistant text:', err);
+            }
+            return undefined;
+        },
         async clear(campaignId: string): Promise<void> {
             const res = await fetch(`${API}/campaigns/${campaignId}/archive`, { method: 'DELETE' });
             if (!res.ok) throw new Error('Failed to clear archive');

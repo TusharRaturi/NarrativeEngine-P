@@ -101,9 +101,9 @@ export function buildStable(opts: {
     // header, starter cause amnesia if silently truncated mid-turn). Rather than drop it, surface a
     // budget-overrun warning in the trace so an oversized preamble is visible in debug mode.
     if (budgetStable > 0 && stableTokens > budgetStable) {
-        collector.addTrace({ source: 'Stable Preamble', classification: 'stable_truth', tokens: stableTokens, reason: `Over stable budget (${stableTokens} t > ${budgetStable} t) — kept (essential state, not trimmable)`, included: true, position: 'system_static' });
+        collector.addTrace({ source: 'Stable Preamble', classification: 'stable_truth', tokens: stableTokens, reason: `Over stable budget (${stableTokens} t > ${budgetStable} t) — kept (essential state, not trimmable)`, included: true, position: 'system_static', preview: stableContent });
     }
-    collector.addTrace({ source: 'Stable Preamble', classification: 'stable_truth', tokens: stableTokens, reason: 'Preamble & Core state', included: true, position: 'system_static' });
+    collector.addTrace({ source: 'Stable Preamble', classification: 'stable_truth', tokens: stableTokens, reason: 'Preamble & Core state', included: true, position: 'system_static', preview: stableContent });
     collector.addSection({ label: 'Stable Preamble', role: 'system', tokens: stableTokens, content: stableContent, classification: 'stable_truth' });
 
     return { stableContent, stableTokens };

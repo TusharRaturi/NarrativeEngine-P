@@ -11,6 +11,7 @@ import { extractNPCNames, classifyNPCNames, validateNPCCandidates } from '../npc
 import { generateNPCProfile, updateExistingNPCs, backfillNPCDrives } from '../chatEngine';
 import { scanPressure, buildPressurePatch, shouldArchiveNPC, findArchivedToRestore } from '../npc/npcPressureTracker';
 import { scanCharacterProfile } from '../characterProfileParser';
+import { scanCharacterTraits } from '../characterTraitParser';
 import { scanInventory } from '../inventoryParser';
 import { toast } from '../../components/Toast';
 import { mergeSealEntries, EMPTY_REGISTER } from '../campaign-state/divergenceRegister';
@@ -50,6 +51,14 @@ export async function runPostTurnPipeline(
 ): Promise<void> {
     const activeCampaignId = state.activeCampaignId!;
     const { displayInput, npcLedger } = state;
+
+    // B3 — a PC built in chat never flips characterProfileActive (only the PC Creation
+    // Wizard did). Auto-enable the moment a campaign has an isPC NPC, and seed the profile
+    // name from it. Idempotent: once the gate is true this is a no-op. Never clobbers an
+    // existing name (|| guard) — a profile the scan already built must survive. Only name is
+    // mappable from NPCEntry (race/class/level are NOT on the entry); scanCharacterProfile
+    // enriches the rest over the next few turns, preserving identity as it goes.
+    autoEnableCharacterProfile(state, callbacks, npcLedger);
 
     // ── Phase 2/3: clear agency + arc digests at the top so each is consumed exactly once ──
     // The previous turn's digests were folded into the GM call we just made; clear them
@@ -116,6 +125,33 @@ export async function runPostTurnPipeline(
     }
 }
 
+// B3 — Auto-enable characterProfileActive for chat-made PCs. The flag was flipped true ONLY by
+// the PC Creation Wizard, so PCs built conversationally never engaged the structured-profile
+// subsystem (scan, payload injection). Fires at the top of runPostTurnPipeline with npcLedger
+// in scope, before runArchiveTrack's bookkeeping scan so the scan can fire the same turn.
+// Idempotent: once characterProfileActive is true, this is a no-op. Never clobbers an existing
+// profile name (|| guard) — a profile the scan already built must survive. Only name is mappable
+// from NPCEntry (race/class/level are NOT on the entry); scanCharacterProfile enriches the rest.
+function autoEnableCharacterProfile(
+    state: TurnState,
+    callbacks: TurnCallbacks,
+    npcLedger: NPCEntry[],
+): void {
+    if (state.context.characterProfileActive) return;
+    const pc = npcLedger.find(n => n.isPC);
+    if (!pc) return;
+    const existing = state.context.characterProfileData || { name: '', race: '', class: '', level: 1, hp: { current: 20, max: 20 }, stats: {}, skills: [], abilities: [], traits: [], notes: '' };
+    const seeded: typeof existing = {
+        ...existing,
+        name: existing.name || pc.name,
+    };
+    callbacks.updateContext({
+        characterProfileActive: true,
+        characterProfileData: seeded,
+    });
+    console.log(`[B3] Auto-enabled characterProfileActive; seeded characterProfileData.name from PC "${pc.name}"`);
+}
+
 async function runArchiveTrack(
     state: TurnState,
     callbacks: TurnCallbacks,
@@ -140,6 +176,14 @@ async function runArchiveTrack(
     if (!appendData) {
         console.warn('[PostTurn] Archive append returned no data — skipping archive refresh');
         return;
+    }
+
+    // WO-F (2be3ad5) — stamp the archived sceneId onto the last assistant message so the
+    // surgical-delete + edit-sync UI hooks can map an on-screen GM reply back to its
+    // long-term-memory scene. (Mirrors mobile's scene-marker system message, via a direct
+    // field instead since main has no scene-marker message stream.)
+    if (appendedSceneId) {
+        callbacks.updateLastMessage({ sceneId: appendedSceneId });
     }
 
     const [freshIndex, freshTimeline, freshChapters] = await Promise.all([
@@ -206,7 +250,6 @@ async function runArchiveTrack(
             backgroundQueue.push('Profile-Scan', async () => {
                 const newProfile = await scanCharacterProfile(bkProvider, state.getMessages(), profileData);
                 callbacks.updateContext({
-                    characterProfile: JSON.stringify(newProfile),
                     characterProfileData: newProfile,
                     characterProfileLastScene: sceneId,
                 });
@@ -214,8 +257,23 @@ async function runArchiveTrack(
                 if (s.activeCampaignId === activeCampaignId && 'setCharacterProfileData' in s) {
                     (s as any).setCharacterProfileData(newProfile);
                 }
-                console.log(`[Auto Bookkeeping] Profile updated at scene #${sceneId}`);
+                console.log(`[Auto Bookkeeping] Profile sheet updated at scene #${sceneId}`);
             }).catch(err => console.warn('[Auto Bookkeeping] Profile scan failed:', err));
+
+            // WO-G: structured trait scan (sibling of the sheet scan). Maintains the
+            // CharacterProfileState (identity + bounded activeTraits with supersession).
+            // WO-J (5be8695): gate on characterProfileActive — skip the LLM call when the
+            // toggle is off, since the result is never injected.
+            if (state.getFreshContext().characterProfileActive) {
+                const traitProfile = state.getFreshContext().characterProfile || { identity: {}, activeTraits: [] };
+                backgroundQueue.push('Trait-Scan', async () => {
+                    const newTraits = await scanCharacterTraits(bkProvider, state.getMessages(), traitProfile);
+                    callbacks.updateContext({
+                        characterProfile: newTraits,
+                    });
+                    console.log(`[Auto Bookkeeping] Traits updated at scene #${sceneId} (${newTraits.activeTraits.filter(t => !t.superseded).length} active)`);
+                }).catch(err => console.warn('[Auto Bookkeeping] Trait scan failed:', err));
+            }
 
             backgroundQueue.push('Inventory-Scan', async () => {
                 const newItems = await scanInventory(bkProvider, state.getMessages(), inventoryItems);

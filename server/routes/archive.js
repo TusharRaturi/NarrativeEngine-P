@@ -15,8 +15,8 @@ if (process.versions.electron) {
 }
 import {
     readJson, writeJson, ensureDirs,
-    archivePath, archiveIndexPath, chaptersPath, entitiesPath, timelinePath,
-    getNextSceneNumber, createDefaultChapter, DATA_DIR, CAMPAIGNS_DIR,
+    archivePath, archiveIndexPath, chaptersPath, entitiesPath, timelinePath, factsPath,
+    getNextSceneNumber, createDefaultChapter, DATA_DIR, CAMPAIGNS_DIR, validateCampaignId,
 } from '../lib/fileStore.js';
 import {
     extractIndexKeywords, extractNPCNames, estimateImportance,
@@ -26,7 +26,7 @@ import {
 import { extractWitnessesLLM, extractTimelineEventsLLM } from '../services/llmProxy.js';
 import { normalizeEntityName } from '../lib/entityResolution.js';
 import { embedText, buildArchiveText, buildLoreText, warmup, embedBatch, getActiveDims, getActiveModelId } from '../lib/embedder.js';
-import { storeArchiveEmbedding, storeLoreEmbedding, searchArchive, searchLore, getEmbeddingStatus, EMBEDDING_VERSION, getDb } from '../lib/vectorStore.js';
+import { storeArchiveEmbedding, storeLoreEmbedding, searchArchive, searchLore, getEmbeddingStatus, EMBEDDING_VERSION, getDb, deleteArchiveEmbedding } from '../lib/vectorStore.js';
 import { wrapAsync } from '../lib/asyncHandler.js';
 import { serverError } from '../lib/serverError.js';
 
@@ -412,6 +412,179 @@ export function createArchiveRouter() {
             chaptersRepaired,
             condenserResetRecommended: true
         });
+    }));
+
+    // ── Surgical scene delete + edit-sync (WO-F, 2be3ad5) ──────────────────────
+    // Delete a SINGLE archived scene (re-thread chapters, no full rebuild) and rewrite a
+    // scene's GM text in long-term memory (so the AI stops recalling deleted/old text).
+    // Gap-safe scene numbering (getNextSceneNumber uses max+1) means deletions can leave holes.
+
+    // Delete one scene from scenes/index/embeddings/facts/timeline and repair its chapter.
+    router.delete('/api/campaigns/:id/archive/scenes/:sceneId', wrapAsync((req, res) => {
+        validateCampaignId(req.params.id);
+        ensureDirs();
+        const targetId = req.params.sceneId.padStart(3, '0');
+        const targetNum = parseInt(targetId, 10);
+        if (Number.isNaN(targetNum)) return res.status(400).json({ error: 'Invalid sceneId' });
+        const idEq = (id) => parseInt(id, 10) === targetNum;
+
+        const fp = archivePath(req.params.id);
+        const idxp = archiveIndexPath(req.params.id);
+
+        // Trim .archive.md (drop just this scene's block)
+        let sceneExisted = false;
+        if (fs.existsSync(fp)) {
+            const raw = fs.readFileSync(fp, 'utf-8');
+            const sceneBlocks = raw.split(/^(?=## SCENE )/m);
+            const kept = sceneBlocks.filter(block => {
+                const match = block.match(/^## SCENE (\d+)/);
+                if (!match) return true; // keep preamble
+                const n = parseInt(match[1], 10);
+                if (n === targetNum) { sceneExisted = true; return false; }
+                return true;
+            });
+            fs.writeFileSync(fp, kept.join(''), 'utf-8');
+        }
+
+        // Trim .archive.index.json
+        if (fs.existsSync(idxp)) {
+            const entries = readJson(idxp, []);
+            const before = entries.length;
+            const kept = entries.filter(e => !idEq(e.sceneId));
+            if (kept.length !== before) sceneExisted = true;
+            writeJson(idxp, kept);
+        }
+
+        // Trim facts for this scene
+        const factsFp = factsPath(req.params.id);
+        if (fs.existsSync(factsFp)) {
+            const facts = readJson(factsFp, []);
+            const kept = (facts || []).filter(f => !idEq(f.sceneId));
+            writeJson(factsFp, kept);
+        }
+
+        // Trim timeline events for this scene
+        const tlp = timelinePath(req.params.id);
+        if (fs.existsSync(tlp)) {
+            const timeline = readJson(tlp, []);
+            const kept = (timeline || []).filter(e => !idEq(e.sceneId));
+            writeJson(tlp, kept);
+        }
+
+        // Drop the scene's embedding
+        try { deleteArchiveEmbedding(req.params.id, targetId); } catch (e) { /* non-fatal */ }
+
+        // Repair the chapter that contained this scene: drop the id from sceneIds (if present),
+        // decrement sceneCount, and invalidate its seal (summary is now stale). Leave sceneRange
+        // endpoints as-is — gaps inside a range are fine; recall uses sceneIds, not range arithmetic.
+        const cp = chaptersPath(req.params.id);
+        let chapterRepaired = false;
+        if (fs.existsSync(cp)) {
+            const chapters = readJson(cp, []);
+            let touched = false;
+            for (const ch of chapters) {
+                const had = (ch.sceneIds ?? []).some(idEq);
+                if (!had) continue;
+                ch.sceneIds = (ch.sceneIds ?? []).filter(id => !idEq(id));
+                ch.sceneCount = Math.max(0, (ch.sceneCount ?? 0) - 1);
+                if (ch.sealedAt) { ch.invalidated = true; delete ch.sealedAt; }
+                touched = true;
+                chapterRepaired = true;
+            }
+            if (touched) writeJson(cp, chapters);
+        }
+
+        res.json({ ok: true, removedSceneId: targetId, sceneExisted, chapterRepaired });
+    }));
+
+    // Rewrite a scene's GM (assistant) text in long-term memory + rebuild its index entry + re-embed.
+    router.patch('/api/campaigns/:id/archive/scenes/:sceneId/assistant', wrapAsync(async (req, res) => {
+        validateCampaignId(req.params.id);
+        ensureDirs();
+        const targetId = req.params.sceneId.padStart(3, '0');
+        const targetNum = parseInt(targetId, 10);
+        if (Number.isNaN(targetNum)) return res.status(400).json({ error: 'Invalid sceneId' });
+        const { assistantContent } = req.body;
+        if (typeof assistantContent !== 'string' || !assistantContent.trim()) {
+            return res.status(400).json({ error: 'assistantContent is required' });
+        }
+
+        const fp = archivePath(req.params.id);
+        if (!fs.existsSync(fp)) return res.status(404).json({ error: 'Scene not found' });
+
+        // Rewrite this scene's GM block in .archive.md. Parse the scene block, extract the existing
+        // userContent, and rebuild the block with the new assistant content.
+        const raw = fs.readFileSync(fp, 'utf-8');
+        const sceneBlocks = raw.split(/^(?=## SCENE )/m);
+        let found = false;
+        let userContent = '';
+        const nextBlocks = sceneBlocks.map(block => {
+            const match = block.match(/^## SCENE (\d+)/);
+            if (!match) return block;
+            if (parseInt(match[1], 10) !== targetNum) return block;
+            found = true;
+            // Extract the existing USER block text (between **[USER]** and **[GM]**).
+            const userMatch = block.match(/\*\*\[USER\]\*\*\n([\s\S]*?)\n\n\*\*\[GM\]\*\*/);
+            userContent = (userMatch ? userMatch[1] : '').trim();
+            // Preserve the header + timestamp lines (first two non-empty lines after ## SCENE).
+            const lines = block.split('\n');
+            const headerLines = [];
+            let i = 0;
+            while (i < lines.length && headerLines.length < 2) {
+                if (lines[i].trim()) headerLines.push(lines[i]);
+                i++;
+            }
+            const timestampLine = headerLines[1] || '';
+            return [
+                `## SCENE ${targetId}`,
+                timestampLine,
+                '',
+                `**[USER]**`,
+                userContent,
+                '',
+                `**[GM]**`,
+                assistantContent,
+                '',
+                '---',
+                '',
+            ].join('\n');
+        });
+        if (!found) return res.status(404).json({ error: 'Scene not found' });
+        fs.writeFileSync(fp, nextBlocks.join(''), 'utf-8');
+
+        // Rebuild the index entry (mirrors the append route's index construction) and re-embed.
+        const idxp = archiveIndexPath(req.params.id);
+        const combinedText = `${userContent}\n${assistantContent}`;
+        const keywords = extractIndexKeywords(combinedText);
+        const npcNames = extractNPCNames(assistantContent);
+        const { witnesses, mentioned: npcOnlyMentioned } = extractWitnessesHeuristic(npcNames, userContent, assistantContent);
+        const entries = readJson(idxp, []);
+        const existing = entries.find(e => parseInt(e.sceneId, 10) === targetNum);
+        const timestamp = existing?.timestamp ?? Date.now();
+        const clientImportance = existing?.importance;
+        const newIndexEntry = {
+            sceneId: targetId,
+            timestamp,
+            keywords,
+            keywordStrengths: extractKeywordStrengths(combinedText, keywords),
+            npcsMentioned: npcOnlyMentioned,
+            witnesses,
+            npcStrengths: extractNPCStrengths(assistantContent, [...npcOnlyMentioned, ...witnesses]),
+            importance: (typeof clientImportance === 'number' && clientImportance >= 1 && clientImportance <= 10)
+                ? clientImportance
+                : estimateImportance(combinedText),
+            userSnippet: userContent.slice(0, 120),
+        };
+        writeJson(idxp, entries.map(e => parseInt(e.sceneId, 10) === targetNum ? newIndexEntry : e));
+
+        try {
+            const embedding = await embedText(buildArchiveText(newIndexEntry));
+            if (embedding) storeArchiveEmbedding(req.params.id, targetId, embedding);
+        } catch (err) {
+            console.warn('[Archive] Re-embed failed on scene edit:', err.message);
+        }
+
+        res.json({ ok: true, sceneId: targetId, userContent });
     }));
 
     // Open archive in OS default app

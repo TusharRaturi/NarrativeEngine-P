@@ -1,4 +1,5 @@
 import type { ArchiveChapter, Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, SemanticFact, EntityEntry, BackupMeta, TimelineEvent, DivergenceRegister, PinnedExcerpt } from '../types';
+import { affinityToPcRelation } from '../services/npc/agency/agencyBands';
 
 import { API_BASE as API } from '../lib/apiBase';
 
@@ -109,7 +110,20 @@ export async function saveNPCLedger(campaignId: string, npcs: NPCEntry[]): Promi
 export async function getNPCLedger(campaignId: string): Promise<NPCEntry[]> {
     const res = await fetch(`${API}/campaigns/${campaignId}/npcs`);
     if (!res.ok) return [];
-    return res.json();
+    const npcs: NPCEntry[] = await res.json();
+    // B2 — lazy migration for existing saves: home pcRelation for any NPC where it's still
+    // undefined. populateAgencyFields only runs on UN-populated NPCs, and generated NPCs were
+    // born populated:true with pcRelation unset, so legacy NPCs read "[Aff: Neutral]" forever
+    // and Phase 2's reaction-menu relationship scoring never saw real drift. Home them here on
+    // load regardless of `populated`, mirroring the birth-block fix in profile.ts. Skip PCs
+    // (matches populateAgencyFields' !n.isPC filter). Never clobber an explicit value, never
+    // touch affinity. Persistence happens via the normal store-update path on the next mutation.
+    for (const n of npcs) {
+        if (!n.isPC && n.pcRelation === undefined) {
+            n.pcRelation = affinityToPcRelation(n.affinity ?? 50);
+        }
+    }
+    return npcs;
 }
 
 // ─── Archive Index (Tier 4) ───

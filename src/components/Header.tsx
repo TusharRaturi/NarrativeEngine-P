@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { Settings, PanelLeftOpen, PanelLeftClose, LogOut, Users, Archive, Save, ScanSearch, BookCheck, Pin, Replace, UserPlus, Loader2 } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Settings, PanelLeftOpen, PanelLeftClose, LogOut, Users, Archive, Save, ScanSearch, BookCheck, Pin, Replace, UserPlus, Loader2, Dices } from 'lucide-react';
 import { createBackup } from '../store/campaignStore';
 import { flushAllPendingSaves } from '../store/slices/campaignSlice';
 import { toast } from './Toast';
@@ -7,6 +7,13 @@ import { useAppStore } from '../store/useAppStore';
 import { TokenGauge } from './TokenGauge';
 import { saveCampaignState } from '../store/campaignStore';
 import { addNpcFromSelection } from '../services/npc/manualAdd';
+import type { ManualRollMode } from '../types';
+
+const DICE_LABELS: Record<ManualRollMode, string> = {
+    '1d20': 'Roll (1d20)',
+    adv: 'Advantage (2d20 ↑)',
+    disadv: 'Disadvantage (2d20 ↓)',
+};
 
 type SelectionSnapshot = {
     messageId: string;
@@ -38,6 +45,8 @@ export function Header() {
 
     const deepArmed = useAppStore(s => s.deepArmed);
     const toggleDeepArmed = useAppStore(s => s.toggleDeepArmed);
+    const armedRoll = useAppStore(s => s.armedRoll);
+    const setArmedRoll = useAppStore(s => s.setArmedRoll);
     const settings = useAppStore(s => s.settings);
     const openLoreCheck = useAppStore(s => s.openLoreCheck);
     const pinnedExcerpts = useAppStore(s => s.pinnedExcerpts);
@@ -47,6 +56,19 @@ export function Header() {
     const [renameSel, setRenameSel] = useState<SelectionSnapshot | null>(null);
     const [npcSel, setNpcSel] = useState<SelectionSnapshot | null>(null);
     const [npcAdding, setNpcAdding] = useState(false);
+    const [diceOpen, setDiceOpen] = useState(false);
+    const diceRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!diceOpen) return;
+        const handler = (e: MouseEvent) => {
+            if (diceRef.current && !diceRef.current.contains(e.target as Node)) {
+                setDiceOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [diceOpen]);
 
     const captureFromBubble = (selector: string): SelectionSnapshot | null => {
         const sel = window.getSelection();
@@ -238,6 +260,45 @@ export function Header() {
                     <ScanSearch size={18} />
                 </button>
             )}
+
+            <div className="relative" ref={diceRef}>
+                <button
+                    onClick={() => setDiceOpen(v => !v)}
+                    className={`transition-colors p-1 ${armedRoll ? 'text-amber-400 animate-pulse' : 'text-text-dim hover:text-terminal'}`}
+                    title={armedRoll ? `Dice armed (${DICE_LABELS[armedRoll]}) — send to roll` : 'Dice me — arm a roll, send to resolve'}
+                    aria-label="Dice me"
+                >
+                    <Dices size={18} />
+                </button>
+                {diceOpen && (
+                    <div className="absolute left-0 top-full mt-1 z-50 bg-surface border border-border rounded-md shadow-lg py-1 min-w-[10rem]">
+                        <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-text-dim">
+                            Roll on next send
+                        </div>
+                        {(['1d20', 'adv', 'disadv'] as const).map(mode => (
+                            <button
+                                key={mode}
+                                onClick={() => {
+                                    setArmedRoll(armedRoll === mode ? null : mode);
+                                    setDiceOpen(false);
+                                }}
+                                className={`w-full text-left px-3 py-1.5 text-sm transition-colors ${armedRoll === mode ? 'text-amber-400' : 'text-text hover:text-terminal hover:bg-base'}`}
+                            >
+                                {DICE_LABELS[mode]}
+                                {armedRoll === mode && <span className="float-right">✓</span>}
+                            </button>
+                        ))}
+                        {armedRoll && (
+                            <button
+                                onClick={() => { setArmedRoll(null); setDiceOpen(false); }}
+                                className="w-full text-left px-3 py-1.5 text-xs text-text-dim hover:text-ember transition-colors border-t border-border mt-1 pt-1.5"
+                            >
+                                Disarm
+                            </button>
+                        )}
+                    </div>
+                )}
+            </div>
 
             <button
                 onMouseDown={handleLoreCheck}

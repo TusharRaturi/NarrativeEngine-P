@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { PayloadTrace, PipelinePhase, StreamingStats, LoreCheckResult, LoreCheckSelection } from '../../types';
+import type { PayloadTrace, PipelinePhase, StreamingStats, LoreCheckResult, LoreCheckSelection, ManualRollMode } from '../../types';
 
 // ── Slice type ─────────────────────────────────────────────────────────
 
@@ -34,6 +34,9 @@ export type UISlice = {
     deepArmed: boolean;
     setDeepArmed: (v: boolean) => void;
     toggleDeepArmed: () => void;
+    // Player-called dice ("dice me"): the armed MODE, resolved at send time. null = not armed.
+    armedRoll: ManualRollMode | null;
+    setArmedRoll: (mode: ManualRollMode | null) => void;
     troubleModalOpen: boolean;
     troubleLoading: boolean;
     troubleOptions: string[];
@@ -80,6 +83,8 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     deepArmed: false,
     setDeepArmed: (v) => set({ deepArmed: v }),
     toggleDeepArmed: () => set((s) => ({ deepArmed: !s.deepArmed })),
+    armedRoll: null,
+    setArmedRoll: (mode) => set({ armedRoll: mode }),
     troubleModalOpen: false,
     troubleLoading: false,
     troubleOptions: [],

@@ -1,4 +1,4 @@
-import type { GameContext } from '../../types';
+import type { DiceConfig, GameContext, ManualRollMode } from '../../types';
 import { mapTier } from './diceTier';
 import { 
     DEFAULT_SURPRISE_TYPES, DEFAULT_SURPRISE_TONES, 
@@ -104,4 +104,38 @@ export function rollDiceFairness(context: GameContext): string {
     };
 
     return `\n[DICE OUTCOMES: COMBAT=(${generatePool()}) | PERCEPTION=(${generatePool()}) | STEALTH=(${generatePool()}) | SOCIAL=(${generatePool()}) | MOVEMENT=(${generatePool()}) | KNOWLEDGE=(${generatePool()}) | MUNDANE=(Narrative Boon)]`;
+}
+
+export type ManualRollResult = {
+    tier: string;       // mapped via diceConfig thresholds (Catastrophe..Narrative Boon)
+    faceValue: number;  // the single d20 value fed to mapTier (after adv/disadv selection)
+    detail: string;    // player-facing label: 'Roll' | 'Advantage' | 'Disadvantage'
+    rolls: number[];   // raw dice rolled (1 for 1d20, 2 for adv/disadv) — for the reveal
+};
+
+/**
+ * Resolve a player-called "dice me" roll (WO-H). Rolls REAL dice at send time so the
+ * result is hidden until the player commits, reduces adv/disadv to a single d20 face
+ * value, and maps it to a tier with the SAME thresholds the automated pool uses
+ * (mapTier + the campaign's diceConfig). The orchestrator asserts the result as fact.
+ */
+export function resolveManualRoll(mode: ManualRollMode, diceConfig?: DiceConfig): ManualRollResult {
+    const d20 = () => Math.floor(Math.random() * 20) + 1;
+    let rolls: number[];
+    let faceValue: number;
+    let detail: string;
+    if (mode === 'adv') {
+        rolls = [d20(), d20()];
+        faceValue = Math.max(rolls[0], rolls[1]);
+        detail = 'Advantage';
+    } else if (mode === 'disadv') {
+        rolls = [d20(), d20()];
+        faceValue = Math.min(rolls[0], rolls[1]);
+        detail = 'Disadvantage';
+    } else {
+        rolls = [d20()];
+        faceValue = rolls[0];
+        detail = 'Roll';
+    }
+    return { tier: mapTier(faceValue, diceConfig), faceValue, detail, rolls };
 }

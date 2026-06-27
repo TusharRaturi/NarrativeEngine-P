@@ -120,10 +120,10 @@ export function runArcTick(
 
     // Fold the surface lines into context.arcDigest for the next GM call.
     if (digestLines.length > 0) {
-        const existing = state.context.arcDigest ?? '';
-        const newDigest = digestLines.join('\n');
-        const combined = existing ? existing + '\n' + newDigest : newDigest;
-        callbacks.updateContext({ arcDigest: combined });
+        // Rebuild fresh from THIS tick's surface lines — never concat the prior digest
+        // (stale rung lines were piling up across ticks). Dedupe as a safety net. (B1)
+        const fresh = Array.from(new Set(digestLines)).join('\n');
+        callbacks.updateContext({ arcDigest: fresh });
     }
 
     // Write avoidance facts to divergenceRegister (mergeSealEntries appends).

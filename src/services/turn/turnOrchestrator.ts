@@ -1,9 +1,9 @@
 import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from '../archive-memory/condenser';
 import { useAppStore } from '../../store/useAppStore';
-import type { AppSettings, GameContext, ChatMessage, NPCEntry, LoreChunk, CondenserState, ArchiveIndexEntry, TimelineEvent, EndpointConfig, ProviderConfig, ArchiveChapter, SamplingConfig, PipelinePhase, DivergenceRegister, ThinkingEffort, InventoryProposal } from '../../types';
+import type { AppSettings, GameContext, ChatMessage, NPCEntry, LoreChunk, CondenserState, ArchiveIndexEntry, TimelineEvent, EndpointConfig, ProviderConfig, ArchiveChapter, SamplingConfig, PipelinePhase, DivergenceRegister, ThinkingEffort, InventoryProposal, PayloadTrace } from '../../types';
 import { uid } from '../../utils/uid';
 import { buildPayload, sendMessage } from '../chatEngine';
-import { rollEngines, rollDiceFairness } from '../engine/engineRolls';
+import { rollEngines, rollDiceFairness, resolveManualRoll } from '../engine/engineRolls';
 import { toast } from '../../components/Toast';
 import { sanitizePayloadForApi } from '../lib/payloadSanitizer';
 import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool, handleProposeInventoryTool, handleInitiateCombatTool } from './toolHandlers';
@@ -65,6 +65,8 @@ export type TurnState = {
     deepSearchThisTurn?: boolean;
     divergenceRegister?: DivergenceRegister;
     pinnedExcerpts?: import('../../types').PinnedExcerpt[];
+    // Player-called dice ("dice me"): armed mode resolved at send time (WO-H).
+    armedRoll?: import('../../types').ManualRollMode | null;
 };
 
 
@@ -87,21 +89,35 @@ export async function runTurn(
     abortController.signal.addEventListener('abort', abortListener);
 
     let finalInput = input;
+    let displayInputFinal = displayInput;
     callbacks.setPipelinePhase?.('rolling-dice');
     const engineResult = rollEngines(context);
     finalInput += engineResult.appendToInput;
     callbacks.updateContext(engineResult.updatedDCs);
     const historyInput = finalInput;
-    finalInput += rollDiceFairness(context);
+
+    // Player-called dice ("dice me"). When the player armed a roll, resolve REAL dice now
+    // (hidden until this commit), assert the tier as FACT, and SUPPRESS the auto pool menu +
+    // dice tool for this turn so the model gets exactly one signal it cannot cherry-pick.
+    const armed = state.armedRoll;
+    if (armed) {
+        const r = resolveManualRoll(armed, context.diceConfig);
+        const rollsLabel = r.rolls.length > 1 ? ` (rolled ${r.rolls.join(', ')})` : '';
+        finalInput += `\n[RESOLVED ROLL — ${r.detail} → ${r.tier} (${r.faceValue})${rollsLabel}. This HAPPENED. The outcome is fixed — do not re-roll, do not alter the tier, do not skip the roll. Narrate the consequence.]`;
+        // Player-facing reveal — shows on their own turn bubble.
+        displayInputFinal += `\n\n🎲 ${r.detail} → ${r.tier} (${r.faceValue})`;
+    } else {
+        finalInput += rollDiceFairness(context);
+    }
 
     // Provide immediate UI feedback by adding the user message synchronously before heavy async operations
     const userMsgId = uid();
-    callbacks.addMessage({ 
-        id: userMsgId, 
-        role: 'user', 
-        content: historyInput, 
-        displayContent: displayInput, 
-        timestamp: Date.now() 
+    callbacks.addMessage({
+        id: userMsgId,
+        role: 'user',
+        content: historyInput,
+        displayContent: displayInputFinal,
+        timestamp: Date.now()
     });
     callbacks.setStreaming(true);
     callbacks.setPipelinePhase?.('gathering-context');
@@ -176,6 +192,23 @@ export async function runTurn(
     if (settings.debugMode && callbacks.setLastPayloadTrace) {
         callbacks.setLastPayloadTrace(payloadResult.trace);
     }
+
+    // WO-I: tool calls fire after the snapshot above; append a row each time a tool result is
+    // folded back into the payload and re-publish so the debug panel includes them too.
+    const liveTrace: PayloadTrace[] = payloadResult.trace ? [...payloadResult.trace] : [];
+    const pushToolTrace = (name: string, args: string, result: string) => {
+        if (!settings.debugMode || !callbacks.setLastPayloadTrace) return;
+        liveTrace.push({
+            source: `Tool Call — ${name}`,
+            classification: 'world_context',
+            tokens: Math.round((args.length + result.length) / 4),
+            reason: `Model called ${name}; result folded back into the payload`,
+            included: true,
+            position: 'tool',
+            preview: `↳ ARGS:\n${args}\n\n↳ RESULT:\n${result}`,
+        });
+        callbacks.setLastPayloadTrace([...liveTrace]);
+    };
     
     // Attach the debug payload to the user message we added earlier (memory-only, never persisted)
     if (settings.debugMode) {
@@ -203,7 +236,9 @@ export async function runTurn(
         const allowTools = toolCallCount < 2 && apiRetryCount < 2;
         const requestPayload = sanitizePayloadForApi(currentPayload, allowTools, provider?.modelName);
 
-        const allowDiceTool = context.diceFairnessActive === false;
+        // Suppress the dice tool when the player armed a manual roll (WO-H) — the resolved
+        // fact is already in the payload; offering the tool too would let the model double-roll.
+        const allowDiceTool = context.diceFairnessActive === false && !armed;
         const tools = allowTools ? getToolDefinitions({ allowDiceTool, combatModeActive: context.combatModeActive }) : undefined;
 
         callbacks.setPipelinePhase?.('generating');
@@ -244,6 +279,7 @@ export async function runTurn(
                     } as unknown as import('../chatEngine').OpenAIMessage);
 
                     const { toolResult: loreResult } = handleLoreTool(toolCall.arguments, { loreChunks, notebook: state.context.notebook });
+                    pushToolTrace(toolCall.name, toolCall.arguments, loreResult);
 
                     const toolMsgId = uid();
                     callbacks.addMessage({
@@ -297,6 +333,7 @@ export async function runTurn(
                     } as unknown as import('../chatEngine').OpenAIMessage);
 
                     const { toolResult: notebookResult, updatedNotebook } = handleNotebookTool(toolCall.arguments, { loreChunks, notebook: state.context.notebook });
+                    pushToolTrace(toolCall.name, toolCall.arguments, notebookResult);
                     callbacks.updateContext({ notebook: updatedNotebook });
 
                     const toolMsgId = uid();
@@ -351,6 +388,7 @@ export async function runTurn(
                     } as unknown as import('../chatEngine').OpenAIMessage);
 
                     const { toolResult: diceResult } = handleDiceTool(toolCall.arguments, { diceConfig: context.diceConfig });
+                    pushToolTrace(toolCall.name, toolCall.arguments, diceResult);
 
                     const toolMsgId = uid();
                     callbacks.addMessage({
