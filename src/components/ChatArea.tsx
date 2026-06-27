@@ -117,20 +117,6 @@ export function ChatArea() {
     const [npcSel, setNpcSel] = useState<SelectionSnapshot | null>(null);
     const [npcAdding, setNpcAdding] = useState(false);
 
-    const [diceOpen, setDiceOpen] = useState(false);
-    const diceRef = useRef<HTMLDivElement>(null);
-
-    useEffect(() => {
-        if (!diceOpen) return;
-        const handler = (e: MouseEvent) => {
-            if (diceRef.current && !diceRef.current.contains(e.target as Node)) {
-                setDiceOpen(false);
-            }
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, [diceOpen]);
-
     useEffect(() => {
         const handle = () => {
             setLoreSel(captureFromBubble('[data-lore-checkable="true"]'));
@@ -145,7 +131,10 @@ export function ChatArea() {
     const handleLoreCheck = (e: React.MouseEvent | React.TouchEvent) => {
         e.preventDefault();
         const snap = captureFromBubble('[data-lore-checkable="true"]') ?? loreSel;
-        if (!snap) return;
+        if (!snap) {
+            toast.info('Highlight text in a GM message first to check lore.');
+            return;
+        }
         const before = snap.bubbleText.slice(Math.max(0, snap.start - 200), snap.start);
         const after = snap.bubbleText.slice(snap.end, Math.min(snap.bubbleText.length, snap.end + 200));
         openLoreCheck({
@@ -161,7 +150,10 @@ export function ChatArea() {
     const handlePinSelection = (e: React.MouseEvent | React.TouchEvent) => {
         e.preventDefault();
         const snap = captureFromBubble('[data-message-id]') ?? pinSel;
-        if (!snap) return;
+        if (!snap) {
+            toast.info('Highlight text in a message first to pin a memory.');
+            return;
+        }
         const result = addPinnedExcerpt(snap.messageId, snap.text, false);
         if (result.ok) {
             window.getSelection()?.removeAllRanges();
@@ -175,7 +167,10 @@ export function ChatArea() {
     const handleRenameSelection = (e: React.MouseEvent | React.TouchEvent) => {
         e.preventDefault();
         const snap = captureFromBubble('[data-message-id]') ?? renameSel;
-        if (!snap) return;
+        if (!snap) {
+            toast.info('Highlight a name/text in a message first to rename.');
+            return;
+        }
         openRenameModal(stripMarkdown(snap.text));
         window.getSelection()?.removeAllRanges();
         setRenameSel(null);
@@ -187,7 +182,10 @@ export function ChatArea() {
         e.preventDefault();
         if (npcAdding) return;
         const snap = captureFromBubble('[data-lore-checkable="true"]') ?? npcSel;
-        if (!snap) return;
+        if (!snap) {
+            toast.info('Highlight a name in a GM message first to add/update an NPC.');
+            return;
+        }
         const state = useAppStore.getState();
         const campaignId = state.activeCampaignId;
         if (!campaignId) { toast.warning('No active campaign.'); return; }
@@ -605,51 +603,28 @@ export function ChatArea() {
                     </button>
                 )}
 
-                {/* Dice Me dropup */}
-                <div className="relative shrink-0" ref={diceRef}>
-                    <button
-                        onClick={() => setDiceOpen(v => !v)}
-                        className={`flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all whitespace-nowrap ${armedRoll ? 'border-amber-500 text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'border-terminal/30 hover:border-terminal text-terminal hover:bg-terminal/5'}`}
+                {/* Dice Me dropup using a native select to prevent overflow clipping */}
+                <div className="relative shrink-0 flex items-center bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider h-[32px] rounded-sm transition-all hover:bg-terminal/5 whitespace-nowrap border-terminal/30 text-terminal">
+                    <Dices size={13} className="absolute left-2.5 pointer-events-none" />
+                    <select
+                        value={armedRoll || ''}
+                        onChange={(e) => setArmedRoll(e.target.value ? e.target.value as ManualRollMode : null)}
+                        className="bg-transparent pl-7 pr-6 h-full outline-none cursor-pointer appearance-none text-[10px] sm:text-[11px] uppercase font-bold tracking-wider text-terminal"
                         title={armedRoll ? `Dice armed (${DICE_LABELS[armedRoll]})` : 'Dice me'}
                     >
-                        <Dices size={13} className={armedRoll ? 'animate-pulse' : ''} />
-                        <span>{armedRoll ? DICE_LABELS[armedRoll].toUpperCase() : 'DICE ME'}</span>
-                    </button>
-                    {diceOpen && (
-                        <div className="absolute left-0 bottom-full mb-1.5 z-50 bg-surface border border-border rounded-md shadow-lg py-1 min-w-[10rem]">
-                            <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-text-dim">
-                                Roll on next send
-                            </div>
-                            {(['1d20', 'adv', 'disadv'] as const).map(mode => (
-                                <button
-                                    key={mode}
-                                    onClick={() => {
-                                        setArmedRoll(armedRoll === mode ? null : mode);
-                                        setDiceOpen(false);
-                                    }}
-                                    className="w-full text-left px-3 py-1.5 text-xs text-text hover:text-terminal hover:bg-base transition-colors"
-                                >
-                                    {DICE_LABELS[mode]}
-                                    {armedRoll === mode && <span className="float-right">✓</span>}
-                                </button>
-                            ))}
-                            {armedRoll && (
-                                <button
-                                    onClick={() => { setArmedRoll(null); setDiceOpen(false); }}
-                                    className="w-full text-left px-3 py-1.5 text-xs text-text-dim hover:text-ember transition-colors border-t border-border mt-1 pt-1.5"
-                                >
-                                    Disarm
-                                </button>
-                            )}
-                        </div>
-                    )}
+                        <option value="" className="bg-surface text-text-dim">DICE ME</option>
+                        <option value="1d20" className="bg-surface text-text-primary">Roll (1d20)</option>
+                        <option value="adv" className="bg-surface text-text-primary">Advantage (2d20 ↑)</option>
+                        <option value="disadv" className="bg-surface text-text-primary">Disadvantage (2d20 ↓)</option>
+                    </select>
+                    <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-terminal pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </div>
 
-                {/* Text Selection Actions */}
+                {/* Text Selection Actions - always clickable with adaptive styling and informational toasts */}
                 <button
                     onMouseDown={handleLoreCheck}
-                    disabled={!loreSel}
-                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
+                    onTouchStart={handleLoreCheck}
+                    className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all whitespace-nowrap cursor-pointer ${loreSel ? 'border-terminal text-terminal bg-terminal/5 animate-pulse' : 'border-terminal/30 text-terminal/60 hover:text-terminal hover:bg-terminal/5'}`}
                     title="Lore Check selection (highlight text in a GM message first)"
                 >
                     <BookCheck size={13} />
@@ -658,8 +633,8 @@ export function ChatArea() {
 
                 <button
                     onMouseDown={handlePinSelection}
-                    disabled={!pinSel}
-                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
+                    onTouchStart={handlePinSelection}
+                    className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all whitespace-nowrap cursor-pointer ${pinSel ? 'border-terminal text-terminal bg-terminal/5 animate-pulse' : 'border-terminal/30 text-terminal/60 hover:text-terminal hover:bg-terminal/5'}`}
                     title="Pin selected text as a memory"
                 >
                     <Pin size={13} />
@@ -668,8 +643,8 @@ export function ChatArea() {
 
                 <button
                     onMouseDown={handleRenameSelection}
-                    disabled={!renameSel}
-                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
+                    onTouchStart={handleRenameSelection}
+                    className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all whitespace-nowrap cursor-pointer ${renameSel ? 'border-terminal text-terminal bg-terminal/5 animate-pulse' : 'border-terminal/30 text-terminal/60 hover:text-terminal hover:bg-terminal/5'}`}
                     title="Rename selected name everywhere (highlight a name first)"
                 >
                     <Replace size={13} />
@@ -678,8 +653,8 @@ export function ChatArea() {
 
                 <button
                     onMouseDown={handleAddNpc}
-                    disabled={!npcSel || npcAdding}
-                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
+                    onTouchStart={handleAddNpc}
+                    className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all whitespace-nowrap cursor-pointer ${npcSel ? 'border-terminal text-terminal bg-terminal/5 animate-pulse' : 'border-terminal/30 text-terminal/60 hover:text-terminal hover:bg-terminal/5'}`}
                     title="Add highlighted name to the NPC ledger (or update if it exists)"
                 >
                     {npcAdding ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
