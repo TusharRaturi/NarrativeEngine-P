@@ -70,40 +70,44 @@ export function Header() {
                             toast.error('Failed to create backup');
                         }
                     }}
-                    className="flex items-center justify-center w-8 h-8 rounded-sm border border-border/40 hover:border-terminal bg-void-lighter hover:bg-terminal/5 text-text-dim hover:text-terminal transition-colors shrink-0 cursor-pointer"
+                    className="flex items-center gap-1.5 h-8 px-2.5 rounded-sm border border-border/40 hover:border-terminal bg-void-lighter hover:bg-terminal/5 text-text-dim hover:text-terminal transition-colors shrink-0 cursor-pointer text-[10px] font-bold uppercase tracking-wider font-mono"
                     title="Create backup"
                     aria-label="Create backup"
                 >
-                    <Save size={15} />
+                    <Save size={13} />
+                    <span className="hidden sm:inline">Backup</span>
                 </button>
 
                 <button
                     onClick={toggleBackupModal}
-                    className="flex items-center justify-center w-8 h-8 rounded-sm border border-border/40 hover:border-terminal bg-void-lighter hover:bg-terminal/5 text-text-dim hover:text-terminal transition-colors shrink-0 cursor-pointer"
+                    className="flex items-center gap-1.5 h-8 px-2.5 rounded-sm border border-border/40 hover:border-terminal bg-void-lighter hover:bg-terminal/5 text-text-dim hover:text-terminal transition-colors shrink-0 cursor-pointer text-[10px] font-bold uppercase tracking-wider font-mono"
                     title="Backup manager"
                     aria-label="Open backup manager"
                 >
-                    <Archive size={15} />
+                    <Archive size={13} />
+                    <span className="hidden sm:inline">Backups</span>
                 </button>
 
                 <button
                     onClick={toggleNPCLedger}
-                    className="flex items-center justify-center w-8 h-8 rounded-sm border border-border/40 hover:border-terminal bg-void-lighter hover:bg-terminal/5 text-text-dim hover:text-terminal transition-colors shrink-0 cursor-pointer"
+                    className="flex items-center gap-1.5 h-8 px-2.5 rounded-sm border border-border/40 hover:border-terminal bg-void-lighter hover:bg-terminal/5 text-text-dim hover:text-terminal transition-colors shrink-0 cursor-pointer text-[10px] font-bold uppercase tracking-wider font-mono"
                     title="NPC Ledger"
                     aria-label="Open NPC Ledger"
                 >
-                    <Users size={15} />
+                    <Users size={13} />
+                    <span>NPC Ledger</span>
                 </button>
 
                 <button
                     onClick={togglePinnedMemories}
-                    className={`relative flex items-center justify-center w-8 h-8 rounded-sm border transition-colors shrink-0 cursor-pointer ${pinnedExcerpts.length > 0 ? 'border-terminal text-terminal bg-terminal/5' : 'border-border/40 hover:border-terminal bg-void-lighter hover:bg-terminal/5 text-text-dim hover:text-terminal'}`}
+                    className={`relative flex items-center gap-1.5 h-8 px-2.5 rounded-sm border transition-colors shrink-0 cursor-pointer text-[10px] font-bold uppercase tracking-wider font-mono ${pinnedExcerpts.length > 0 ? 'border-terminal text-terminal bg-terminal/5' : 'border-border/40 hover:border-terminal bg-void-lighter hover:bg-terminal/5 text-text-dim hover:text-terminal'}`}
                     title="Pinned memories"
                     aria-label="Open pinned memories"
                 >
-                    <Pin size={15} />
+                    <Pin size={13} />
+                    <span className="hidden sm:inline">Pinned</span>
                     {pinnedExcerpts.length > 0 && (
-                        <span className="absolute -top-1 -right-1 bg-terminal text-void text-[8px] font-bold rounded-full w-3.5 h-3.5 flex items-center justify-center">
+                        <span className="min-w-[14px] h-3.5 bg-terminal text-void text-[8px] font-bold rounded-full flex items-center justify-center px-0.5">
                             {pinnedExcerpts.length}
                         </span>
                     )}
@@ -111,20 +115,22 @@ export function Header() {
 
                 <button
                     onClick={toggleSettings}
-                    className="flex items-center justify-center w-8 h-8 rounded-sm border border-border/40 hover:border-terminal bg-void-lighter hover:bg-terminal/5 text-text-dim hover:text-terminal transition-colors shrink-0 cursor-pointer"
+                    className="flex items-center gap-1.5 h-8 px-2.5 rounded-sm border border-border/40 hover:border-terminal bg-void-lighter hover:bg-terminal/5 text-text-dim hover:text-terminal transition-colors shrink-0 cursor-pointer text-[10px] font-bold uppercase tracking-wider font-mono"
                     title="Settings"
                     aria-label="Open settings"
                 >
-                    <Settings size={15} />
+                    <Settings size={13} />
+                    <span className="hidden sm:inline">Settings</span>
                 </button>
 
                 <button
                     onClick={handleExit}
-                    className="flex items-center justify-center w-8 h-8 rounded-sm border border-border/40 hover:border-ember bg-void-lighter hover:bg-ember/5 text-text-dim hover:text-ember transition-colors shrink-0 cursor-pointer"
+                    className="flex items-center gap-1.5 h-8 px-2.5 rounded-sm border border-border/40 hover:border-ember bg-void-lighter hover:bg-ember/5 text-text-dim hover:text-ember transition-colors shrink-0 cursor-pointer text-[10px] font-bold uppercase tracking-wider font-mono"
                     title="Exit campaign"
                     aria-label="Exit campaign"
                 >
-                    <LogOut size={15} />
+                    <LogOut size={13} />
+                    <span className="hidden sm:inline">Exit</span>
                 </button>
             </div>
         </header>

@@ -73,30 +73,16 @@ export function TokenGauge() {
     const pctFree = 100 - pctSystem - pctHistory;
 
     return (
-        <div className="flex items-center gap-3 flex-1 min-w-0 px-3">
-            <span className="text-[10px] text-text-dim uppercase tracking-widest shrink-0">
+        <div className="flex items-center gap-2.5 shrink-0 px-3">
+            <span className="text-[10px] text-text-dim uppercase tracking-widest font-mono font-bold shrink-0">
                 CTX
             </span>
-
-            <div className="flex-1 h-3 bg-void-lighter border border-border relative overflow-hidden">
-                <div
-                    className="absolute inset-y-0 left-0 bg-ember transition-all duration-300"
-                    style={{ width: `${pctSystem}%` }}
-                />
-                <div
-                    className="absolute inset-y-0 bg-ice transition-all duration-300"
-                    style={{ left: `${pctSystem}%`, width: `${pctHistory}%` }}
-                />
-                <div
-                    className="absolute inset-y-0 bg-void-light transition-all duration-300"
-                    style={{ left: `${pctSystem + pctHistory}%`, width: `${pctFree}%` }}
-                />
-            </div>
-
-            <div className="flex gap-3 text-[10px] shrink-0">
-                <span className="text-ember">SYS:{adjustedSystemTokens}{registerTokens > 0 ? <span className="text-amber-400">(+{registerTokens})</span> : ''}</span>
-                <span className="text-ice">HIS:{historyTokens}</span>
-                <span className="text-text-dim">FREE:{remaining}</span>
+            <div className="flex items-center gap-2 text-[10px] font-mono shrink-0">
+                <span className="text-ember font-bold">SYS:{adjustedSystemTokens}{registerTokens > 0 ? <span className="text-amber-400 font-bold">(+{registerTokens})</span> : ''}</span>
+                <span className="text-text-dim/40">|</span>
+                <span className="text-ice font-bold">HIS:{historyTokens}</span>
+                <span className="text-text-dim/40">|</span>
+                <span className="text-text-dim font-bold">FREE:{remaining}</span>
             </div>
         </div>
     );
