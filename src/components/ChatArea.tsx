@@ -1,10 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Send, Save, Loader2, Zap, Scroll, Edit2, X, Square, Search, Check, Package } from 'lucide-react';
+import { Send, Save, Loader2, Zap, Scroll, Edit2, X, Square, Search, Check, Package, BookCheck, Pin, Replace, UserPlus, Dices } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { runTurn } from '../services/turn/turnOrchestrator';
 import { uid } from '../utils/uid';
-import type { InventoryProposal, InventoryItem, InventoryItemCategory } from '../types';
+import type { InventoryProposal, InventoryItem, InventoryItemCategory, ManualRollMode } from '../types';
 import { set } from 'idb-keyval';
 import { toast } from './Toast';
 import { debouncedSaveCampaignState } from '../store/slices/campaignSlice';
@@ -18,6 +18,7 @@ import { UtilityCallStrip } from './UtilityCallStrip';
 import { CreateTroubleButton } from './CreateTroubleButton';
 import { ArcInjectorButton } from './ArcInjectorButton';
 import { PCCreationWizard } from './pc/PCCreationWizard';
+import { addNpcFromSelection } from '../services/npc/manualAdd';
 
 export function ChatArea() {
     const messages = useAppStore(s => s.messages);
@@ -71,6 +72,159 @@ export function ChatArea() {
     // Phase 6: GM-proposed inventory change awaiting user confirmation.
     const [pendingProposal, setPendingProposal] = useState<InventoryProposal | null>(null);
     const deepArmed = useAppStore(s => s.deepArmed);
+
+    // Selection state & action handlers (moved from Header for bottom toolbar visibility)
+    type SelectionSnapshot = {
+        messageId: string;
+        text: string;
+        start: number;
+        end: number;
+        bubbleText: string;
+    };
+
+    const stripMarkdown = (s: string) => s.replace(/\*\*/g, '').replace(/\*/g, '').trim();
+
+    const captureFromBubble = (selector: string): SelectionSnapshot | null => {
+        const sel = window.getSelection();
+        if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+        const range = sel.getRangeAt(0);
+        const node = range.commonAncestorContainer;
+        const el = (node.nodeType === 1 ? node as Element : node.parentElement);
+        const bubble = el?.closest(selector) as HTMLElement | null;
+        if (!bubble) return null;
+        const messageId = bubble.dataset.messageId;
+        const text = sel.toString().trim();
+        if (!messageId || text.length < 1) return null;
+        const bubbleText = bubble.textContent ?? '';
+        let start = bubbleText.indexOf(text);
+        if (start === -1) {
+            const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+            start = norm(bubbleText).indexOf(norm(text));
+        }
+        if (start === -1) start = 0;
+        return { messageId, text, start, end: start + text.length, bubbleText };
+    };
+
+    const openLoreCheck = useAppStore(s => s.openLoreCheck);
+    const addPinnedExcerpt = useAppStore(s => s.addPinnedExcerpt);
+    const openRenameModal = useAppStore(s => s.openRenameModal);
+    const armedRoll = useAppStore(s => s.armedRoll);
+    const setArmedRoll = useAppStore(s => s.setArmedRoll);
+
+    const [loreSel, setLoreSel] = useState<SelectionSnapshot | null>(null);
+    const [pinSel, setPinSel] = useState<SelectionSnapshot | null>(null);
+    const [renameSel, setRenameSel] = useState<SelectionSnapshot | null>(null);
+    const [npcSel, setNpcSel] = useState<SelectionSnapshot | null>(null);
+    const [npcAdding, setNpcAdding] = useState(false);
+
+    const [diceOpen, setDiceOpen] = useState(false);
+    const diceRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        if (!diceOpen) return;
+        const handler = (e: MouseEvent) => {
+            if (diceRef.current && !diceRef.current.contains(e.target as Node)) {
+                setDiceOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, [diceOpen]);
+
+    useEffect(() => {
+        const handle = () => {
+            setLoreSel(captureFromBubble('[data-lore-checkable="true"]'));
+            setPinSel(captureFromBubble('[data-message-id]'));
+            setRenameSel(captureFromBubble('[data-message-id]'));
+            setNpcSel(captureFromBubble('[data-lore-checkable="true"]'));
+        };
+        document.addEventListener('selectionchange', handle);
+        return () => document.removeEventListener('selectionchange', handle);
+    }, []);
+
+    const handleLoreCheck = (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault();
+        const snap = captureFromBubble('[data-lore-checkable="true"]') ?? loreSel;
+        if (!snap) return;
+        const before = snap.bubbleText.slice(Math.max(0, snap.start - 200), snap.start);
+        const after = snap.bubbleText.slice(snap.end, Math.min(snap.bubbleText.length, snap.end + 200));
+        openLoreCheck({
+            messageId: snap.messageId, selectedText: stripMarkdown(snap.text),
+            start: snap.start, end: snap.end,
+            surroundingContext: `${before}[[HIGHLIGHTED]]${snap.text}[[/HIGHLIGHTED]]${after}`,
+        });
+        window.getSelection()?.removeAllRanges();
+        setLoreSel(null);
+        setPinSel(null);
+    };
+
+    const handlePinSelection = (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault();
+        const snap = captureFromBubble('[data-message-id]') ?? pinSel;
+        if (!snap) return;
+        const result = addPinnedExcerpt(snap.messageId, snap.text, false);
+        if (result.ok) {
+            window.getSelection()?.removeAllRanges();
+            setPinSel(null);
+            setLoreSel(null);
+        } else {
+            toast.warning(result.reason);
+        }
+    };
+
+    const handleRenameSelection = (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault();
+        const snap = captureFromBubble('[data-message-id]') ?? renameSel;
+        if (!snap) return;
+        openRenameModal(stripMarkdown(snap.text));
+        window.getSelection()?.removeAllRanges();
+        setRenameSel(null);
+        setPinSel(null);
+        setLoreSel(null);
+    };
+
+    const handleAddNpc = async (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault();
+        if (npcAdding) return;
+        const snap = captureFromBubble('[data-lore-checkable="true"]') ?? npcSel;
+        if (!snap) return;
+        const state = useAppStore.getState();
+        const campaignId = state.activeCampaignId;
+        if (!campaignId) { toast.warning('No active campaign.'); return; }
+
+        window.getSelection()?.removeAllRanges();
+        setNpcSel(null);
+        setLoreSel(null);
+        setPinSel(null);
+        setNpcAdding(true);
+        const cleanName = stripMarkdown(snap.text);
+        toast.info(`Resolving "${cleanName}"…`);
+        try {
+            const result = await addNpcFromSelection({
+                rawText: cleanName,
+                ledger: state.npcLedger ?? [],
+                messages: state.messages,
+                campaignId,
+                storyProvider: state.getActiveStoryEndpoint(),
+                updateProvider: state.getActiveSummarizerEndpoint() ?? state.getActiveUtilityEndpoint() ?? state.getActiveStoryEndpoint(),
+                addNPC: state.addNPC,
+                updateNPC: state.updateNPC,
+            });
+            if (result.ok) toast.success(result.message);
+            else if (result.kind === 'ambiguous') toast.warning(result.message);
+            else toast.error(result.message);
+        } catch (err) {
+            toast.error(`Add NPC failed: ${err instanceof Error ? err.message : String(err)}`);
+        } finally {
+            setNpcAdding(false);
+        }
+    };
+
+    const DICE_LABELS: Record<ManualRollMode, string> = {
+        '1d20': 'Roll (1d20)',
+        adv: 'Advantage (2d20 ↑)',
+        disadv: 'Disadvantage (2d20 ↓)',
+    };
     const setDeepArmed = useAppStore(s => s.setDeepArmed);
     const composerInjection = useAppStore(s => s.composerInjection);
     const consumeComposerInjection = useAppStore(s => s.consumeComposerInjection);
@@ -419,11 +573,11 @@ export function ChatArea() {
                 <div ref={bottomRef} />
             </div>
 
-            <div className="px-2 md:px-4 pb-1 flex gap-2 overflow-x-auto">
+            <div className="px-2 md:px-4 pb-1 flex gap-2 overflow-x-auto no-scrollbar">
                 <button
                     onClick={handleForceSave}
                     disabled={isSaving}
-                    className="flex items-center gap-1.5 bg-void border border-emerald-500/30 hover:border-emerald-500 text-emerald-500 text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-emerald-500/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-emerald-500/30 hover:border-emerald-500 text-emerald-500 text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-emerald-500/5 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                     {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
                     <span className="hidden xs:inline">{isSaving ? 'SAVING...' : 'SAVE CAMPAIGN'}</span>
@@ -432,7 +586,7 @@ export function ChatArea() {
                 <button
                     onClick={triggerCondense}
                     disabled={isStreaming || messages.length < 6}
-                    className="flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
                     title="Trim history"
                 >
                     <Zap size={13} />
@@ -442,7 +596,7 @@ export function ChatArea() {
                     <button
                         onClick={() => setDeepArmed(!deepArmed)}
                         disabled={isStreaming || !activeCampaignId}
-                        className={`flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all disabled:opacity-30 disabled:cursor-not-allowed ${deepArmed ? 'border-amber-500 text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'border-amber-500/30 hover:border-amber-500 text-amber-500 hover:bg-amber-500/5'}`}
+                        className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all disabled:opacity-30 disabled:cursor-not-allowed ${deepArmed ? 'border-amber-500 text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'border-amber-500/30 hover:border-amber-500 text-amber-500 hover:bg-amber-500/5'}`}
                         title={deepArmed ? 'Deep Search armed — type to send normally, or Esc to disarm' : 'Arm Deep Archive Search (sends on next Enter)'}
                     >
                         <Search size={13} />
@@ -450,6 +604,88 @@ export function ChatArea() {
                         <span className="inline xs:hidden">{deepArmed ? 'ARMED' : 'Deep'}</span>
                     </button>
                 )}
+
+                {/* Dice Me dropup */}
+                <div className="relative shrink-0" ref={diceRef}>
+                    <button
+                        onClick={() => setDiceOpen(v => !v)}
+                        className={`flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all ${armedRoll ? 'border-amber-500 text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'border-terminal/30 hover:border-terminal text-terminal hover:bg-terminal/5'}`}
+                        title={armedRoll ? `Dice armed (${DICE_LABELS[armedRoll]})` : 'Dice me'}
+                    >
+                        <Dices size={13} className={armedRoll ? 'animate-pulse' : ''} />
+                        <span>{armedRoll ? DICE_LABELS[armedRoll].toUpperCase() : 'DICE ME'}</span>
+                    </button>
+                    {diceOpen && (
+                        <div className="absolute left-0 bottom-full mb-1.5 z-50 bg-surface border border-border rounded-md shadow-lg py-1 min-w-[10rem]">
+                            <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-text-dim">
+                                Roll on next send
+                            </div>
+                            {(['1d20', 'adv', 'disadv'] as const).map(mode => (
+                                <button
+                                    key={mode}
+                                    onClick={() => {
+                                        setArmedRoll(armedRoll === mode ? null : mode);
+                                        setDiceOpen(false);
+                                    }}
+                                    className="w-full text-left px-3 py-1.5 text-xs text-text hover:text-terminal hover:bg-base transition-colors"
+                                >
+                                    {DICE_LABELS[mode]}
+                                    {armedRoll === mode && <span className="float-right">✓</span>}
+                                </button>
+                            ))}
+                            {armedRoll && (
+                                <button
+                                    onClick={() => { setArmedRoll(null); setDiceOpen(false); }}
+                                    className="w-full text-left px-3 py-1.5 text-xs text-text-dim hover:text-ember transition-colors border-t border-border mt-1 pt-1.5"
+                                >
+                                    Disarm
+                                </button>
+                            )}
+                        </div>
+                    )}
+                </div>
+
+                {/* Text Selection Actions */}
+                <button
+                    onMouseDown={handleLoreCheck}
+                    disabled={!loreSel}
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Lore Check selection (highlight text in a GM message first)"
+                >
+                    <BookCheck size={13} />
+                    Lore Check
+                </button>
+
+                <button
+                    onMouseDown={handlePinSelection}
+                    disabled={!pinSel}
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Pin selected text as a memory"
+                >
+                    <Pin size={13} />
+                    Pin Memory
+                </button>
+
+                <button
+                    onMouseDown={handleRenameSelection}
+                    disabled={!renameSel}
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Rename selected name everywhere (highlight a name first)"
+                >
+                    <Replace size={13} />
+                    Rename
+                </button>
+
+                <button
+                    onMouseDown={handleAddNpc}
+                    disabled={!npcSel || npcAdding}
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
+                    title="Add highlighted name to the NPC ledger (or update if it exists)"
+                >
+                    {npcAdding ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
+                    Add NPC
+                </button>
+
                 {activeCampaignId && (
                     <CreateTroubleButton provider={activeProvider} />
                 )}
@@ -459,7 +695,7 @@ export function ChatArea() {
                 <button
                     onClick={handleOpenArchive}
                     disabled={!activeCampaignId}
-                    className="flex items-center gap-1.5 bg-void border border-ice/30 hover:border-ice text-ice text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-ice/5 disabled:opacity-30 disabled:cursor-not-allowed ml-auto"
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-ice/30 hover:border-ice text-ice text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-ice/5 disabled:opacity-30 disabled:cursor-not-allowed ml-auto"
                 >
                     <Scroll size={13} />
                     Archive
