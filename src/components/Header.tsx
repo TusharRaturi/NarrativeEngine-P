@@ -212,7 +212,8 @@ export function Header() {
                 <TokenGauge />
             </div>
 
-            <button
+            <div className="flex items-center gap-1 sm:gap-2 ml-auto overflow-x-auto no-scrollbar py-1 shrink-0">
+                <button
                 onClick={async () => {
                     if (!activeCampaignId) return;
                     await flushAllPendingSaves();
@@ -368,6 +369,7 @@ export function Header() {
             >
                 <LogOut size={16} />
             </button>
+            </div>
         </header>
     );
 }
