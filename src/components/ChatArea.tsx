@@ -604,12 +604,12 @@ export function ChatArea() {
                 )}
 
                 {/* Dice Me dropup using a native select to prevent overflow clipping */}
-                <div className="relative shrink-0 flex items-center bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider h-[32px] rounded-sm transition-all hover:bg-terminal/5 whitespace-nowrap border-terminal/30 text-terminal">
+                <div className="relative shrink-0 flex items-center bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider h-[32px] rounded-sm transition-all hover:bg-terminal/5 whitespace-nowrap border-terminal/30 text-terminal w-[100px]">
                     <Dices size={13} className="absolute left-2.5 pointer-events-none" />
                     <select
                         value={armedRoll || ''}
                         onChange={(e) => setArmedRoll(e.target.value ? e.target.value as ManualRollMode : null)}
-                        className="bg-transparent pl-7 pr-6 h-full outline-none cursor-pointer appearance-none text-[10px] sm:text-[11px] uppercase font-bold tracking-wider text-terminal"
+                        className="bg-transparent pl-7 pr-6 h-full w-full outline-none cursor-pointer appearance-none text-[10px] sm:text-[11px] uppercase font-bold tracking-wider text-terminal"
                         title={armedRoll ? `Dice armed (${DICE_LABELS[armedRoll]})` : 'Dice me'}
                     >
                         <option value="" className="bg-surface text-text-dim">DICE ME</option>
