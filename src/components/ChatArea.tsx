@@ -577,7 +577,7 @@ export function ChatArea() {
                 <button
                     onClick={handleForceSave}
                     disabled={isSaving}
-                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-emerald-500/30 hover:border-emerald-500 text-emerald-500 text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-emerald-500/5 disabled:opacity-50 disabled:cursor-not-allowed"
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-emerald-500/30 hover:border-emerald-500 text-emerald-500 text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-emerald-500/5 disabled:opacity-50 disabled:cursor-not-allowed whitespace-nowrap"
                 >
                     {isSaving ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
                     <span className="hidden xs:inline">{isSaving ? 'SAVING...' : 'SAVE CAMPAIGN'}</span>
@@ -586,7 +586,7 @@ export function ChatArea() {
                 <button
                     onClick={triggerCondense}
                     disabled={isStreaming || messages.length < 6}
-                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
                     title="Trim history"
                 >
                     <Zap size={13} />
@@ -596,7 +596,7 @@ export function ChatArea() {
                     <button
                         onClick={() => setDeepArmed(!deepArmed)}
                         disabled={isStreaming || !activeCampaignId}
-                        className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all disabled:opacity-30 disabled:cursor-not-allowed ${deepArmed ? 'border-amber-500 text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'border-amber-500/30 hover:border-amber-500 text-amber-500 hover:bg-amber-500/5'}`}
+                        className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap ${deepArmed ? 'border-amber-500 text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'border-amber-500/30 hover:border-amber-500 text-amber-500 hover:bg-amber-500/5'}`}
                         title={deepArmed ? 'Deep Search armed — type to send normally, or Esc to disarm' : 'Arm Deep Archive Search (sends on next Enter)'}
                     >
                         <Search size={13} />
@@ -609,7 +609,7 @@ export function ChatArea() {
                 <div className="relative shrink-0" ref={diceRef}>
                     <button
                         onClick={() => setDiceOpen(v => !v)}
-                        className={`flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all ${armedRoll ? 'border-amber-500 text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'border-terminal/30 hover:border-terminal text-terminal hover:bg-terminal/5'}`}
+                        className={`flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all whitespace-nowrap ${armedRoll ? 'border-amber-500 text-amber-500 bg-amber-500/10 hover:bg-amber-500/20' : 'border-terminal/30 hover:border-terminal text-terminal hover:bg-terminal/5'}`}
                         title={armedRoll ? `Dice armed (${DICE_LABELS[armedRoll]})` : 'Dice me'}
                     >
                         <Dices size={13} className={armedRoll ? 'animate-pulse' : ''} />
@@ -649,7 +649,7 @@ export function ChatArea() {
                 <button
                     onMouseDown={handleLoreCheck}
                     disabled={!loreSel}
-                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
                     title="Lore Check selection (highlight text in a GM message first)"
                 >
                     <BookCheck size={13} />
@@ -659,7 +659,7 @@ export function ChatArea() {
                 <button
                     onMouseDown={handlePinSelection}
                     disabled={!pinSel}
-                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
                     title="Pin selected text as a memory"
                 >
                     <Pin size={13} />
@@ -669,7 +669,7 @@ export function ChatArea() {
                 <button
                     onMouseDown={handleRenameSelection}
                     disabled={!renameSel}
-                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
                     title="Rename selected name everywhere (highlight a name first)"
                 >
                     <Replace size={13} />
@@ -679,7 +679,7 @@ export function ChatArea() {
                 <button
                     onMouseDown={handleAddNpc}
                     disabled={!npcSel || npcAdding}
-                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed"
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-terminal/5 disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap"
                     title="Add highlighted name to the NPC ledger (or update if it exists)"
                 >
                     {npcAdding ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
@@ -695,7 +695,7 @@ export function ChatArea() {
                 <button
                     onClick={handleOpenArchive}
                     disabled={!activeCampaignId}
-                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-ice/30 hover:border-ice text-ice text-[10px] sm:text-[11px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all hover:bg-ice/5 disabled:opacity-30 disabled:cursor-not-allowed ml-auto"
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-ice/30 hover:border-ice text-ice text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-ice/5 disabled:opacity-30 disabled:cursor-not-allowed ml-auto whitespace-nowrap"
                 >
                     <Scroll size={13} />
                     Archive

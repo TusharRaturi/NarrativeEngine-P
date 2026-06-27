@@ -136,7 +136,7 @@ export function ArcInjectorButton({ onDone }: { onDone?: () => void } = {}) {
         <button
             onClick={handleClick}
             disabled={disabled}
-            className={`shrink-0 flex items-center gap-1.5 bg-void border text-[10px] uppercase tracking-wider px-2 sm:px-3 py-1.5 transition-all disabled:cursor-not-allowed whitespace-nowrap ${styles[phase]}`}
+            className={`shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all disabled:cursor-not-allowed whitespace-nowrap ${styles[phase]}`}
         >
             <Icon size={13} className={phase === 'loading' ? 'animate-spin' : ''} /> {label[phase]}
         </button>

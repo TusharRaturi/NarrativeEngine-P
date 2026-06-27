@@ -2,10 +2,7 @@ import { ScrollText, Settings2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { PayloadTraceView } from '../PayloadTraceView';
 import { SceneNoteEditor } from '../SceneNoteEditor';
-import { TokenCounter } from './TokenCounter';
 import { countTokens } from '../../services/infrastructure/tokenizer';
-
-const RULES_LIMIT = 5000;
 
 export function RulesTab({ onOpenManager }: { onOpenManager?: () => void }) {
     const context = useAppStore((s) => s.context);
@@ -39,21 +36,21 @@ export function RulesTab({ onOpenManager }: { onOpenManager?: () => void }) {
                     rows={6}
                     className="w-full bg-void border border-border px-3 py-2 text-xs text-text-primary placeholder:text-text-dim/40 font-mono resize-y"
                 />
-                <div className="flex items-center justify-between mt-1">
-                    <TokenCounter text={context.rulesRaw} limit={RULES_LIMIT} />
-                    <span className={`text-[9px] font-mono ml-2 ${ragActive ? 'text-terminal' : 'text-text-dim'}`}>
-                        {tokenCount.toLocaleString()}/{threshold} tok {ragActive ? '● RAG' : '● verbatim'}
+                <div className="flex items-center justify-between mt-1 text-[10px] font-mono text-text-dim">
+                    <span>{tokenCount.toLocaleString()} tok</span>
+                    <span className={ragActive ? 'text-terminal font-bold' : 'text-text-dim/60'}>
+                        {ragActive ? 'RAG active' : 'verbatim'}
                     </span>
                 </div>
                 {ragActive && (
-                    <div className="mt-2 flex items-center justify-between border border-terminal/20 bg-terminal/5 p-1.5 rounded">
-                        <span className="text-[9px] text-terminal-dim">
-                            RAG active — chunks retrieved per turn (budget: {rulesBudget} tok)
+                    <div className="mt-1.5 flex items-center justify-between border border-terminal/20 bg-terminal/5 px-2 py-1 rounded-sm text-[9px]">
+                        <span className="text-terminal-dim">
+                            Budget: {rulesBudget} tok/turn
                         </span>
                         {onOpenManager && (
                             <button
                                 onClick={onOpenManager}
-                                className="flex items-center gap-1 text-[9px] text-terminal hover:text-text-primary transition-colors font-bold uppercase tracking-wider bg-terminal/10 px-1.5 py-0.5 rounded"
+                                className="flex items-center gap-1 text-terminal hover:text-text-primary transition-colors font-bold uppercase tracking-wider bg-terminal/10 px-1.5 py-0.5 rounded-sm"
                             >
                                 <Settings2 size={10} />
                                 Manage
