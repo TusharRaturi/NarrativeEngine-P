@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
-import { X, Plus, Users, LayoutGrid, List, CheckSquare, Upload, Download, BookOpen, Trash2, Search, ArrowDownAZ, ArrowUpZA, Sparkles } from 'lucide-react';
+import { X, Plus, Users, LayoutGrid, List, CheckSquare, Upload, Download, BookOpen, Trash2, Search, ArrowDownAZ, ArrowUpZA, Sparkles, Images } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { generateNPCPortrait, updateExistingNPCs } from '../services/chatEngine';
 import { parseNPCsFromLore } from '../services/lore/loreNPCParser';
@@ -12,13 +12,15 @@ import { uid } from '../utils/uid';
 import { NPCListView } from './npc-ledger/NPCListView';
 import { NPCGalleryView } from './npc-ledger/NPCGalleryView';
 import { NPCEditForm } from './npc-ledger/NPCEditForm';
+import { NPCSuggestionsPanel } from './npc-ledger/NPCSuggestionsPanel';
 import { NPCReviewModal, type NPCReviewAction } from './NPCReviewModal';
 import { runNPCReview, type NPCReviewCandidate, type NPCReviewCancelled } from '../services/npc/npcReview';
 
 export function NPCLedgerModal() {
-    const { npcLedger, npcLedgerOpen, toggleNPCLedger, addNPC, updateNPC, removeNPC, setNPCLedger, addNPCs, restoreNPC, archiveNPC, archiveIndex } = useAppStore();
+    const { npcLedger, npcLedgerOpen, toggleNPCLedger, addNPC, updateNPC, removeNPC, setNPCLedger, addNPCs, restoreNPC, archiveNPC, archiveIndex, npcSuggestions } = useAppStore();
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [isEditing, setIsEditing] = useState(false);
+    const [populating, setPopulating] = useState<{ done: number; total: number } | null>(null);
 
     // ── AI NPC review (flags likely non-characters; user decides per entry) ──
     const [reviewOpen, setReviewOpen] = useState(false);
@@ -241,6 +243,68 @@ export function NPCLedgerModal() {
         }
     };
 
+    const generateNPCPortraitForId = async (npc: NPCEntry): Promise<string> => {
+        const state = useAppStore.getState();
+        const imageConfig = state.getActiveImageEndpoint();
+        if (!imageConfig || !imageConfig.endpoint) {
+            throw new Error('Image AI endpoint is not configured in Settings.');
+        }
+        const vp = npc.visualProfile || DEFAULT_VISUAL_PROFILE;
+        const appearanceInfo = npc.appearance ? `Legacy Notes: ${npc.appearance} ` : '';
+        const styleMap: Record<string, string> = {
+            'Realistic': 'High quality, highly detailed realistic digital painting, fantasy art style, masterpiece',
+            'Anime Realistic': 'Highly detailed anime realistic art style, ala Makoto Shinkai, masterpiece, beautiful lighting',
+            'Anime': 'High quality anime art style, ala Kyoto Animation, crisp lines, masterpiece',
+            'Western RPG': 'Western RPG art style, character portrait, ala Baldur\'s Gate 3, highly detailed digital painting',
+            'Chibi': 'High quality chibi art style, cute, fantasy character portrait, masterpiece'
+        };
+        const prompt = `A profile picture portrait of ONE SINGLE PERSON ONLY with a neutral gray background.The character's face, hair, and middle chest are clearly visible. Solo character, no other people, no split screens, no twins. ${styleMap[vp.artStyle] || styleMap['Realistic']}. Name: ${npc.name}. Race: ${vp.race}. Gender: ${vp.gender}. Age: ${vp.ageRange}. Build: ${vp.build}. Hair: ${vp.hairStyle}. Eyes: ${vp.eyeColor}. Skin: ${vp.skinTone}. Clothing: ${vp.clothing}. Distinctive marks: ${vp.distinctMarks}. ${appearanceInfo}`;
+        const url = await generateNPCPortrait(imageConfig, prompt);
+        const localPath = await downloadImageToLocal(url, npc.name || 'Unknown');
+        return localPath;
+    };
+
+    const handlePopulateImages = async () => {
+        const state = useAppStore.getState();
+        const imageConfig = state.getActiveImageEndpoint();
+        if (!imageConfig || !imageConfig.endpoint) {
+            toast.warning('No Image Generation AI configured. Add one in Settings → Presets.');
+            return;
+        }
+        const targets = npcLedger.filter(n => !n.portrait && n.appearance?.trim());
+        const skipped = npcLedger.filter(n => !n.portrait && !n.appearance?.trim()).length;
+        if (targets.length === 0) {
+            toast.warning(skipped > 0 ? `No portraits generated — ${skipped} NPC(s) need an appearance description first.` : 'All NPCs already have a portrait.');
+            return;
+        }
+
+        setPopulating({ done: 0, total: targets.length });
+        let ok = 0;
+        let failed = 0;
+        for (let i = 0; i < targets.length; i++) {
+            const target = targets[i];
+            try {
+                const localPath = await generateNPCPortraitForId(target);
+                updateNPC(target.id, { portrait: localPath });
+                if (selectedId === target.id) {
+                    setForm(prev => ({ ...prev, portrait: localPath }));
+                }
+                ok++;
+            } catch (err) {
+                console.error(`Failed to generate portrait for ${target.name}:`, err);
+                failed++;
+            }
+            setPopulating({ done: i + 1, total: targets.length });
+        }
+        setPopulating(null);
+
+        const parts = [`generated ${ok}`];
+        if (failed) parts.push(`${failed} failed`);
+        if (skipped) parts.push(`${skipped} skipped (no appearance)`);
+        if (failed) toast.warning(`Portraits: ${parts.join(', ')}`);
+        else toast.success(`Portraits: ${parts.join(', ')}`);
+    };
+
     const handleAIUpdate = async () => {
         if (!selectedId || !form.name) return;
         const state = useAppStore.getState();
@@ -353,6 +417,8 @@ export function NPCLedgerModal() {
         setReviewError(null);
     };
 
+    const missingPortraitCount = npcLedger.filter(n => !n.portrait).length;
+
     // ── Render ────────────────────────────────────────────────────────────
     return (
         <div className="fixed inset-0 z-50 flex flex-col bg-void/95 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="NPC Ledger" onClick={toggleNPCLedger}>
@@ -431,6 +497,18 @@ export function NPCLedgerModal() {
                                 <CheckSquare size={11} /> Select
                             </button>
                         </div>
+                        {missingPortraitCount > 0 && (
+                            <button
+                                onClick={handlePopulateImages}
+                                disabled={!!populating}
+                                className="w-full flex items-center justify-center gap-1.5 py-1.5 border border-terminal/30 rounded text-[10px] uppercase tracking-wider text-terminal hover:bg-terminal/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                            >
+                                <Images size={12} className="shrink-0" />
+                                {populating
+                                    ? `Generating ${populating.done}/${populating.total}…`
+                                    : `Populate Images (${missingPortraitCount})`}
+                            </button>
+                        )}
                         {selectMode && (
                             <div className="flex items-center justify-between gap-2 pt-1">
                                 <button onClick={handleSelectAll} className="text-[10px] uppercase tracking-wider text-text-dim hover:text-terminal transition-colors">
@@ -447,6 +525,11 @@ export function NPCLedgerModal() {
                     {searchQuery.trim() && displayedNPCs.length !== npcLedger.length && (
                         <div className="px-3 py-1.5 text-[10px] text-text-dim border-b border-border bg-void-lighter shrink-0">
                             Showing {displayedNPCs.length} of {npcLedger.length} records
+                        </div>
+                    )}
+                    {!searchQuery.trim() && npcSuggestions && npcSuggestions.length > 0 && (
+                        <div className="px-3 pt-2 shrink-0">
+                            <NPCSuggestionsPanel suggestions={npcSuggestions} />
                         </div>
                     )}
                     {viewMode === 'list'
