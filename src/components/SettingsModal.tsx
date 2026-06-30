@@ -59,11 +59,16 @@ export function SettingsModal() {
 
         {/* Active tab content */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 pb-20 relative">
-          <div className={activeTab !== 'providers' ? 'hidden' : ''}><ProvidersTab /></div>
-          <div className={activeTab !== 'presets' ? 'hidden' : ''}><PresetsTab /></div>
-          <div className={activeTab !== 'global' ? 'hidden' : ''}><GlobalSettingsTab /></div>
-          <div className={activeTab !== 'advanced' ? 'hidden' : ''}><AdvancedTab /></div>
-          <div className={activeTab !== 'debug' ? 'hidden' : ''}><DebugTab /></div>
+          {/* WO-12.1 — Constrain content width on wide desktop viewports so the
+              mobile-first full-width fields don't stretch across a wide screen.
+              Centered max-width wrapper; tabs themselves stay full-width above. */}
+          <div className="max-w-5xl mx-auto">
+            <div className={activeTab !== 'providers' ? 'hidden' : ''}><ProvidersTab /></div>
+            <div className={activeTab !== 'presets' ? 'hidden' : ''}><PresetsTab /></div>
+            <div className={activeTab !== 'global' ? 'hidden' : ''}><GlobalSettingsTab /></div>
+            <div className={activeTab !== 'advanced' ? 'hidden' : ''}><AdvancedTab /></div>
+            <div className={activeTab !== 'debug' ? 'hidden' : ''}><DebugTab /></div>
+          </div>
         </div>
       </div>
     </div>

@@ -110,8 +110,11 @@ export function PresetsTab() {
           </div>
 
           {/* ─── Provider dropdowns ─── */}
-          <div className="space-y-4 mb-6">
-            <div>
+          {/* WO-12.1 — 2-column grid on wide viewports; the required Story AI
+              field spans both columns to keep the * marker visible without
+              squeeze. Stacks to a single column on narrow/mobile. */}
+          <div className="grid grid-cols-1 md:grid-cols-2 md:gap-4 space-y-4 md:space-y-0 mb-6">
+            <div className="md:col-span-2">
               <label className="block text-[10px] text-text-dim uppercase tracking-wider mb-1">Story &amp; Logic AI <span className="text-terminal">*</span></label>
               <select
                 value={activePreset.storyAIProviderId}

@@ -5,8 +5,13 @@ export function GlobalSettingsTab() {
   const { settings, updateSettings } = useAppStore();
 
   return (
-    <div className="mt-8 pt-6 border-t border-border space-y-6">
-      <label className="text-text-dim text-xs uppercase tracking-widest font-bold block mb-4">Global Preferences</label>
+    <div className="mt-8 pt-6 border-t border-border space-y-4">
+      <label className="text-text-dim text-xs uppercase tracking-widest font-bold block mb-2">Global Preferences</label>
+
+      {/* WO-12.1 — 2-column grid on wide viewports (md+). Each preference is a
+          card; compound sections (Rules RAG, Divergence, Auto-Trim, Auto-Archive)
+          span both columns. Stacks to a single column on narrow/mobile. */}
+      <div className="md:grid md:grid-cols-2 md:gap-4 space-y-4 md:space-y-0">
 
       {/* Context Limit */}
       <div>
@@ -192,7 +197,7 @@ export function GlobalSettingsTab() {
       </div>
 
       {/* Rules RAG Preferences */}
-      <div className="bg-void p-3 border border-border rounded space-y-3">
+      <div className="md:col-span-2 bg-void p-3 border border-border rounded space-y-3">
         <div>
           <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">
             Rules RAG Preferences
@@ -269,7 +274,7 @@ export function GlobalSettingsTab() {
       </div>
 
       {/* Divergence Register */}
-      <div className="bg-void p-3 border border-border rounded space-y-3">
+      <div className="md:col-span-2 bg-void p-3 border border-border rounded space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">
@@ -341,7 +346,7 @@ export function GlobalSettingsTab() {
       </div>
 
       {/* Auto-Trim (Auto-Condense) */}
-      <div className="bg-void p-3 border border-border rounded space-y-3">
+      <div className="md:col-span-2 bg-void p-3 border border-border rounded space-y-3">
         <div className="flex items-center justify-between">
           <div>
             <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">
@@ -398,7 +403,7 @@ export function GlobalSettingsTab() {
       </div>
 
       {/* Auto-Archive Stale NPCs */}
-      <div className="bg-void p-3 border border-border rounded space-y-2">
+      <div className="md:col-span-2 bg-void p-3 border border-border rounded space-y-2">
         <div>
           <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">
             Auto-Archive Stale NPCs
@@ -521,7 +526,10 @@ export function GlobalSettingsTab() {
       </div>
 
       {/* Vault Export/Import */}
-      <VaultSection />
+      <div className="md:col-span-2">
+        <VaultSection />
+      </div>
+      </div>
     </div>
   );
 }
