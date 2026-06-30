@@ -3,6 +3,7 @@ import { uid } from '../../utils/uid';
 import { getQueueForEndpoint } from './llmRequestQueue';
 import { getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, getApiFormat, extractStreamDelta, extractStreamToolCall } from '../../utils/llmApiHelper';
 import { recordCacheUsage, type LLMUsage } from './cacheTelemetry';
+import { llmFetch } from './llmFetch';
 
 const STORY_LABEL = 'story-generation';
 
@@ -47,7 +48,7 @@ export async function sendMessage(
         const queue = getQueueForEndpoint(provider.endpoint);
         await queue.acquireSlot('normal');
         try {
-            const res = await fetch(fetchUrl, {
+            const res = await llmFetch(fetchUrl, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(payload),
@@ -225,7 +226,7 @@ export async function testConnection(provider: EndpointConfig | ProviderConfig):
     }
 
     try {
-        const res = await fetch(url, { headers });
+        const res = await llmFetch(url, { headers });
         if (res.ok) {
             return { ok: true, detail: 'Connection successful' };
         }

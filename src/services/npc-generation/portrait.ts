@@ -1,4 +1,5 @@
 import type { EndpointConfig } from '../../types';
+import { llmFetch } from '../llm/llmFetch';
 
 // ============================================================================
 // Image Generation API
@@ -33,7 +34,7 @@ export async function generateNPCPortrait(config: EndpointConfig, prompt: string
 
     try {
         console.log('[Image Engine] Sending payload:', payload);
-        const res = await fetch(url, {
+        const res = await llmFetch(url, {
             method: 'POST',
             headers,
             body: JSON.stringify(payload),

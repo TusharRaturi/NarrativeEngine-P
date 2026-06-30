@@ -1,6 +1,7 @@
 import type { ArchiveChapter, ArchiveIndexEntry, ChatMessage, NPCEntry, ArchiveScene, EndpointConfig, ProviderConfig } from '../../types';
 import { extractContextActivations, expandActivationsWithFacts, retrieveArchiveMemory, fetchArchiveScenes } from '../archiveMemory';
 import { getChatUrl, buildChatHeaders, buildChatBody, extractContent, getApiFormat } from '../../utils/llmApiHelper';
+import { llmFetch } from '../llm/llmFetch';
 
 const AUTO_SEAL_SCENE_THRESHOLD = 25; // ~25 exchanges is a meaningful arc
 
@@ -256,7 +257,7 @@ async function validateChapterRelevance(
 
         const fetchBody = buildChatBody(provider, [{ role: 'user', content: prompt }], { stream: false, max_tokens: 10 });
 
-        const res = await fetch(fetchUrl, {
+        const res = await llmFetch(fetchUrl, {
             method: 'POST',
             headers,
             signal: controller.signal,

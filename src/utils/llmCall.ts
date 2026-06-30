@@ -3,6 +3,7 @@ import { getQueueForEndpoint, type LLMCallPriority } from '../services/llm/llmRe
 import { getApiFormat, getChatUrl, buildChatHeaders, buildChatBody, extractContent } from './llmApiHelper';
 import { startUtilityCall } from '../services/llm/utilityCallTracker';
 import { recordCacheUsage, type LLMUsage } from '../services/llm/cacheTelemetry';
+import { llmFetch } from '../services/llm/llmFetch';
 
 const MAX_RETRIES = 3;
 const DEFAULT_RETRY_DELAY_MS = 300;
@@ -115,7 +116,7 @@ async function runInner(
 
         let res: Response;
         try {
-            res = await fetch(fetchUrl, {
+            res = await llmFetch(fetchUrl, {
                 method: 'POST',
                 headers,
                 body: JSON.stringify(body),
