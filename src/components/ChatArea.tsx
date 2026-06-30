@@ -41,7 +41,7 @@ export function ChatArea() {
     const {
         setArchiveIndex, clearArchive, updateLastAssistant, updateContext,
         setCondensed, deleteMessage, deleteMessagesFrom,
-        setTimeline, setChapters,
+        setTimeline, setChapters, deleteDivergenceChapter,
         pipelinePhase, streamingStats, setPipelinePhase, setStreamingStats,
     } = useAppStore(
         useShallow(s => ({
@@ -54,6 +54,7 @@ export function ChatArea() {
             deleteMessagesFrom: s.deleteMessagesFrom,
             setTimeline: s.setTimeline,
             setChapters: s.setChapters,
+            deleteDivergenceChapter: s.deleteDivergenceChapter,
             pipelinePhase: s.pipelinePhase,
             streamingStats: s.streamingStats,
             setPipelinePhase: s.setPipelinePhase,
@@ -415,6 +416,7 @@ export function ChatArea() {
         activeCampaignId,
         deleteMessage,
         archiveDeps,
+        deleteDivergenceChapter,
     });
 
     // Phase 6: apply a confirmed GM inventory proposal as a real delta on the ledger.

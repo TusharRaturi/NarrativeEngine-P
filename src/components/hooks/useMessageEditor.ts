@@ -18,6 +18,8 @@ interface UseMessageEditorDeps {
     activeCampaignId: string | null;
     deleteMessage: (id: string) => void;
     archiveDeps: Pick<ArchiveManagerDeps, 'setArchiveIndex' | 'setTimeline' | 'setChapters'>;
+    // WO-12.6 — purges the client-side divergence register for a scene (preserves manual entries).
+    deleteDivergenceChapter: (sceneId: string) => void;
 }
 
 /**
@@ -32,6 +34,20 @@ export function findSceneIdForMessage(messages: ChatMessage[], messageId: string
 
 export function useMessageEditor(deps: UseMessageEditorDeps) {
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+
+    /**
+     * WO-12.6 — collect the archived sceneIds of all assistant messages being dropped by a
+     * delete-from / regenerate (everything from `fromId` onwards). Used to purge the client
+     * divergence register to match the server-side archive purge (mobile parity).
+     */
+    const collectDroppedSceneIds = (fromId: string): string[] => {
+        const idx = deps.messages.findIndex(m => m.id === fromId);
+        if (idx === -1) return [];
+        return deps.messages
+            .slice(idx)
+            .map(m => m.sceneId)
+            .filter((id): id is string => !!id);
+    };
 
     const startEditing = (msg: ChatMessage) => {
         setEditingMessageId(msg.id);
@@ -50,8 +66,11 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
         if (!msg) return;
 
         if (msg.role === 'user') {
+            const droppedSceneIds = collectDroppedSceneIds(msg.id);
             deps.rollbackArchive(msg.timestamp);
             deps.deleteMessagesFrom(msg.id);
+            // WO-12.6 — purge client divergence facts for every archived scene being dropped.
+            for (const sid of droppedSceneIds) deps.deleteDivergenceChapter(sid);
             const textToResend = deps.input.trim();
             deps.setInput('');
             deps.resetTextareaHeight();
@@ -79,8 +98,11 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
         const lastUser = [...prevMsgs].reverse().find(m => m.role === 'user');
 
         if (lastUser) {
+            const droppedSceneIds = collectDroppedSceneIds(lastUser.id);
             deps.rollbackArchive(lastUser.timestamp);
             deps.deleteMessagesFrom(lastUser.id);
+            // WO-12.6 — purge client divergence facts for every archived scene being dropped.
+            for (const sid of droppedSceneIds) deps.deleteDivergenceChapter(sid);
             setTimeout(() => {
                 deps.onAfterRegenerate(lastUser.displayContent || lastUser.content);
             }, 50);
@@ -106,6 +128,8 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
             deps.archiveDeps.setArchiveIndex(freshIndex);
             deps.archiveDeps.setTimeline(freshTimeline);
             deps.archiveDeps.setChapters(freshChapters);
+            // WO-12.6 — purge client divergence facts for the deleted scene (mobile parity).
+            deps.deleteDivergenceChapter(sceneId);
             console.log(`[Archive] Surgically deleted scene #${sceneId}`);
         } catch (err) {
             console.warn('[Archive] Scene delete failed (on-screen message still removed):', err);
