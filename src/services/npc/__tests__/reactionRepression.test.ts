@@ -176,3 +176,47 @@ describe('reactionRepression — bookRepression reducer', () => {
         expect(patch).toEqual({});
     });
 });
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WO-3 (parity 30/06) — once-per-turn booking contract.
+//
+// The write-half of repression was deferred (bookRepression had no production caller),
+// so pressure never accrued and the build-up → burst dynamic was inert. postTurnPipeline
+// now books exactly once per on-stage NPC per turn: applyRepressionToMenu → bookRepression
+// → merge. This locks in that loop's accrual math: +1 per turn while masking, discharge at
+// BURST_THRESHOLD, and — critically — NOT double-counting within a single turn (the trap
+// that kept booking out of the re-running payload read path).
+// ─────────────────────────────────────────────────────────────────────────────
+describe('reactionRepression — once-per-turn accrual → burst (WO-3 pipeline contract)', () => {
+    const HOSTILE_MENU = ['mocking laughter / sarcastic remark']; // 'leaked' → repressible
+    const GUARDED = () => npc({ personalityHex: hex({ composure: 3, boldness: -1 }), pcRelation: 0, repressionPressure: 0 });
+
+    // Mirror the postTurnPipeline booking site exactly: one roll, one book, one merge.
+    const bookOnce = (s: NPCEntry, rng: () => number): NPCEntry => {
+        const { event } = applyRepressionToMenu(HOSTILE_MENU, s, 'peaceful', rng);
+        if (!event) return s;
+        return { ...s, ...bookRepression(s, event) };
+    };
+
+    it('accrues +1 pressure per turn while masking, then bursts at BURST_THRESHOLD', () => {
+        const rng = () => 0.01; // always below the hide chance → hide every non-burst turn
+        let state = GUARDED();
+
+        for (let turn = 1; turn <= BURST_THRESHOLD; turn++) {
+            state = bookOnce(state, rng);
+            expect(state.repressionPressure).toBe(turn); // strictly +1 each turn
+        }
+        expect(state.repressionPressure).toBe(BURST_THRESHOLD);
+
+        // Next turn: pressure is at threshold → burst discharges to 0 + catharsis nudge.
+        const before = state.pcRelation!;
+        state = bookOnce(state, rng);
+        expect(state.repressionPressure).toBe(0);
+        expect(state.pcRelation).toBe(before + 1); // rollCatharsis(0.01) < 0.6 → +1
+    });
+
+    it('a single booking call increments pressure exactly once (no double-count)', () => {
+        const { event } = applyRepressionToMenu(HOSTILE_MENU, GUARDED(), 'peaceful', () => 0.01);
+        expect(bookRepression(GUARDED(), event!).repressionPressure).toBe(1); // +1, never +2
+    });
+});

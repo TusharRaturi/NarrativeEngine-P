@@ -78,12 +78,10 @@ export async function runPostTurnPipeline(
 
     // ── On-Stage NPC Tracking ──
     const presentNames = parsePresentHeader(lastAssistantContent);
-    if (presentNames && presentNames.length > 0) {
-        const resolved = resolveNPCIds(presentNames, npcLedger);
-        callbacks.setOnStageNpcIds?.(resolved);
-    } else {
-        callbacks.setOnStageNpcIds?.([]);
-    }
+    const onStageIds = presentNames && presentNames.length > 0
+        ? resolveNPCIds(presentNames, npcLedger)
+        : [];
+    callbacks.setOnStageNpcIds?.(onStageIds);
 
     for (const r of results) {
         if (r.status === 'rejected') {
@@ -107,6 +105,31 @@ export async function runPostTurnPipeline(
         }
     } catch (err) {
         console.warn('[AgencyTick] Failed (non-fatal):', err);
+    }
+
+    // ── Inner Repression booking (parity 30/06 WO-3) — the once-per-turn pressure accrual ──
+    // The payload reaction menu (world.ts read path) MASKS a hostile impulse on every render but
+    // intentionally drops the repression `event`, because payload assembly re-runs within a turn
+    // and would double-count. THIS is the single authoritative booking site: roll repression once
+    // per on-stage hex NPC and persist the pressure delta, so the build-up → burst dynamic actually
+    // fires (without this, repressionPressure never accrues and the feature is inert). Zero LLM;
+    // pure dice. Ungated (mirrors the menu, which is shown on every tier). Never inside payload.
+    try {
+        const { buildReactionMenu } = await import('../npc/reactionMenu');
+        const { applyRepressionToMenu, bookRepression } = await import('../npc/reactionRepression');
+        const onStageSet = new Set(onStageIds);
+        const matureMode = state.settings.matureMode ?? false;
+        for (const npc of npcLedger) {
+            if (!onStageSet.has(npc.id) || !npc.personalityHex) continue;
+            const rng = Math.random; // one fresh roll per turn per NPC — that IS the once-per-turn accrual
+            const menu = buildReactionMenu(npc, 'peaceful', rng, matureMode);
+            const { event } = applyRepressionToMenu(menu, npc, 'peaceful', rng);
+            if (!event) continue; // nothing repressible this turn
+            const patch = bookRepression(npc, event);
+            if (Object.keys(patch).length > 0) callbacks.updateNPC(npc.id, patch);
+        }
+    } catch (err) {
+        console.warn('[RepressionBooking] Failed (non-fatal):', err);
     }
 
     // ── Arc Engine Tick (Phase 3 port) — sibling of the agency tick ──
