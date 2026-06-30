@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import type { LoreChunk } from '../../types';
 
@@ -6,6 +7,9 @@ export function LoreTab() {
     const loreChunks = useAppStore((s) => s.loreChunks);
     const updateLoreChunk = useAppStore((s) => s.updateLoreChunk);
     const [newKeyword, setNewKeyword] = useState<Record<string, string>>({});
+    // WO-12.3b — per-chunk content preview (desktop-native nicety).
+    // Mirror of the inline-expand pattern used in ChapterCard/FactsView.
+    const [expandedContent, setExpandedContent] = useState<Record<string, boolean>>({});
 
     const bulkModeIsOn = (mode: 'vector' | 'keyword' | 'always' | 'auto') => {
         if (loreChunks.length === 0) return false;
@@ -88,7 +92,34 @@ export function LoreTab() {
                         +{(chunk.linkedEntities?.length || 0) - 2}
                     </span>
                 )}
+                {/* WO-12.3b — Inline content preview toggle. Desktop-native nicety;
+                    mirrors the inline-expand pattern in ChapterCard/FactsView. */}
+                <button
+                    onClick={() => setExpandedContent(prev => ({ ...prev, [chunk.id]: !prev[chunk.id] }))}
+                    className="ml-auto flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-void text-text-dim text-[8px] uppercase tracking-wider border border-border hover:text-terminal hover:border-terminal/40 transition-colors"
+                    title={expandedContent[chunk.id] ? 'Hide full chunk content' : 'Preview full chunk content'}
+                >
+                    {expandedContent[chunk.id] ? <ChevronUp size={9} /> : <ChevronDown size={9} />}
+                    {expandedContent[chunk.id] ? 'Hide' : 'Preview'}
+                </button>
             </div>
+
+            {/* WO-12.3b — Inline content preview body. Shown when toggled open.
+                Renders the raw chunk.content verbatim in a scrollable monospace
+                block to match the terminal aesthetic and avoid layout blow-up
+                on very long chunks. */}
+            {expandedContent[chunk.id] && (
+                <div className="mb-2 border border-border/60 rounded bg-surface/50 overflow-hidden">
+                    <div className="px-2 py-1 border-b border-border/40 bg-void/40">
+                        <span className="text-[8px] text-text-dim uppercase tracking-wider font-bold">
+                            Content · {chunk.tokens}tk
+                        </span>
+                    </div>
+                    <pre className="px-2 py-2 text-[10px] text-text-primary/90 font-mono whitespace-pre-wrap break-words max-h-64 overflow-y-auto leading-relaxed">
+{chunk.content}
+                    </pre>
+                </div>
+            )}
 
             {/* Controls row */}
             <div className="flex items-center gap-2 mb-1.5 flex-wrap">
