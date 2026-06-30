@@ -14,6 +14,7 @@ vi.mock('../lib/embedder.js', () => ({
     embedBatch: vi.fn(async () => []),
     getActiveDims: vi.fn(() => 32),
     getActiveModelId: vi.fn(() => 'mock'),
+    isModelReady: vi.fn(() => true),
     EMBEDDING_VERSION: 1,
 }));
 

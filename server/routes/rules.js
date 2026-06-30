@@ -2,8 +2,9 @@ import fs from 'fs';
 import path from 'path';
 import { Router } from 'express';
 import { CAMPAIGNS_DIR, readJson } from '../lib/fileStore.js';
-import { embedText, embedBatch } from '../lib/embedder.js';
+import { embedText, embedBatch, isModelReady } from '../lib/embedder.js';
 import { storeRulesEmbedding, deleteRulesEmbedding, searchRules, getEmbeddingStatus } from '../lib/vectorStore.js';
+import { isJobRunning } from '../lib/embedJobs.js';
 import { wrapAsync } from '../lib/asyncHandler.js';
 
 function slugify(text) {
@@ -87,6 +88,10 @@ export function createRulesRouter() {
     // Search rules vector store (top-K candidate rule IDs)
     router.post('/api/campaigns/:id/rules/search', wrapAsync(async (req, res) => {
         const campaignId = req.params.id;
+        // Non-blocking hot path — see archive semantic-candidates routes.
+        if (!isModelReady() || isJobRunning(campaignId, 'rules')) {
+            return res.json({ ruleIds: [], pending: true });
+        }
         const { query, limit } = req.body;
         if (typeof query !== 'string' || !query.trim()) {
             return res.json({ ruleIds: [] });

@@ -196,6 +196,33 @@ export function GlobalSettingsTab() {
         </button>
       </div>
 
+      {/* Indexing Speed — bulk-embed throughput vs CPU headroom during world imports */}
+      <div className="bg-void p-3 border border-border rounded space-y-2">
+        <div>
+          <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1">
+            Indexing Speed
+          </label>
+          <p className="text-[9px] text-text-dim leading-tight">
+            How aggressively to embed lore &amp; rules after a world import. Eco: gentle, keeps the app
+            snappy. Balanced: default. Aggressive: finishes fastest but uses more CPU while it runs.
+          </p>
+        </div>
+        <div className="flex border border-border overflow-hidden rounded">
+          {(['eco', 'balanced', 'aggressive'] as const).map(speed => (
+            <button
+              key={speed}
+              onClick={() => updateSettings({ indexingSpeed: speed })}
+              className={`flex-1 py-1.5 text-[10px] uppercase tracking-wider transition-colors focus:outline-none ${(settings.indexingSpeed ?? 'balanced') === speed
+                ? 'bg-terminal text-void font-bold'
+                : 'bg-void text-text-dim hover:text-text-primary'
+              }`}
+            >
+              {speed}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Rules RAG Preferences */}
       <div className="md:col-span-2 bg-void p-3 border border-border rounded space-y-3">
         <div>

@@ -25,8 +25,9 @@ import {
 } from '../lib/nlp.js';
 import { extractWitnessesLLM, extractTimelineEventsLLM } from '../services/llmProxy.js';
 import { normalizeEntityName } from '../lib/entityResolution.js';
-import { embedText, buildArchiveText, buildLoreText, warmup, embedBatch, getActiveDims, getActiveModelId } from '../lib/embedder.js';
+import { embedText, buildArchiveText, buildLoreText, warmup, embedBatch, getActiveDims, getActiveModelId, isModelReady } from '../lib/embedder.js';
 import { storeArchiveEmbedding, storeLoreEmbedding, searchArchive, searchLore, getEmbeddingStatus, EMBEDDING_VERSION, getDb, deleteArchiveEmbedding } from '../lib/vectorStore.js';
+import { isJobRunning } from '../lib/embedJobs.js';
 import { wrapAsync } from '../lib/asyncHandler.js';
 import { serverError } from '../lib/serverError.js';
 
@@ -627,6 +628,12 @@ export function createArchiveRouter() {
     }));
 
     router.post('/api/campaigns/:id/archive/semantic-candidates', wrapAsync(async (req, res) => {
+        // Non-blocking hot path: if the model is still cold-loading, or a bulk archive
+        // embed is in flight, don't block this turn on it — return empty + pending and
+        // let the client fall back to lexical retrieval. Embeddings kick in next turn.
+        if (!isModelReady() || isJobRunning(req.params.id, 'archive')) {
+            return res.json({ sceneIds: [], pending: true });
+        }
         const { query, queries, limit, diversity = true } = req.body;
         if (queries && Array.isArray(queries) && queries.length > 0) {
             const allSceneIds = new Set();
@@ -648,6 +655,12 @@ export function createArchiveRouter() {
     }));
 
     router.post('/api/campaigns/:id/lore/semantic-candidates', wrapAsync(async (req, res) => {
+        // Non-blocking hot path: skip semantic while the model warms up or the lore
+        // bulk embed (e.g. a fresh world import) is still running. The client degrades
+        // to lexical (idf-rrf) retrieval, so turn 1 never stalls on indexing.
+        if (!isModelReady() || isJobRunning(req.params.id, 'lore')) {
+            return res.json({ loreIds: [], pending: true });
+        }
         const { query, queries, limit, diversity = true } = req.body;
         if (queries && Array.isArray(queries) && queries.length > 0) {
             const allLoreIds = new Set();

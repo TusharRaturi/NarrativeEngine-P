@@ -1,9 +1,10 @@
 import fs from 'fs';
 import path from 'path';
 import { Router } from 'express';
-import { CAMPAIGNS_DIR, campaignFiles, readJson, writeJson, ensureDirs, validateCampaignId } from '../lib/fileStore.js';
-import { embedText, buildLoreText } from '../lib/embedder.js';
+import { CAMPAIGNS_DIR, SETTINGS_FILE, campaignFiles, readJson, writeJson, ensureDirs, validateCampaignId } from '../lib/fileStore.js';
+import { embedText, buildLoreText, resolveIndexingSpeed } from '../lib/embedder.js';
 import { storeLoreEmbedding, deleteCampaignEmbeddings } from '../lib/vectorStore.js';
+import { startJob, tickJob, endJob } from '../lib/embedJobs.js';
 import { wrapAsync } from '../lib/asyncHandler.js';
 
 export function createCampaignsRouter() {
@@ -143,23 +144,39 @@ export function createCampaignsRouter() {
         res.json({ ok: true });
 
         const chunks = req.body;
-        if (Array.isArray(chunks)) {
+        if (Array.isArray(chunks) && chunks.length > 0) {
+            const campaignId = req.params.id;
+            // Indexing speed governs batch size + inter-batch yield. Read fresh each
+            // import so a settings change takes effect without a server restart.
+            const serverSettings = readJson(SETTINGS_FILE, {});
+            const { batchSize, delayMs } = resolveIndexingSpeed(serverSettings?.settings?.indexingSpeed);
             (async () => {
+                startJob(campaignId, 'lore', chunks.length);
                 let ok = 0;
                 let fail = 0;
-                for (const chunk of chunks) {
-                    try {
-                        const text = buildLoreText(chunk);
-                        const embedding = await embedText(text);
-                        storeLoreEmbedding(req.params.id, chunk.id, embedding);
-                        ok++;
-                    } catch (err) {
-                        console.warn(`[Lore Embed] Failed for ${chunk.id}: ${err.message}`);
-                        fail++;
+                try {
+                    for (let i = 0; i < chunks.length; i += batchSize) {
+                        const batch = chunks.slice(i, i + batchSize);
+                        await Promise.all(batch.map(async (chunk) => {
+                            try {
+                                const embedding = await embedText(buildLoreText(chunk));
+                                storeLoreEmbedding(campaignId, chunk.id, embedding);
+                                ok++;
+                            } catch (err) {
+                                console.warn(`[Lore Embed] Failed for ${chunk.id}: ${err.message}`);
+                                fail++;
+                            }
+                        }));
+                        tickJob(campaignId, 'lore', batch.length);
+                        if (i + batchSize < chunks.length && delayMs > 0) {
+                            await new Promise(r => setTimeout(r, delayMs));
+                        }
                     }
+                    console.log(`[Lore Embed] Stored ${ok}/${chunks.length} lore embeddings for ${campaignId}${fail ? ` (${fail} failed)` : ''}`);
+                } finally {
+                    endJob(campaignId, 'lore');
                 }
-                console.log(`[Lore Embed] Stored ${ok}/${chunks.length} lore embeddings for ${req.params.id}${fail ? ` (${fail} failed)` : ''}`);
-            })().catch(err => console.error('[Lore Embed] Batch failed:', err.message));
+            })().catch(err => { endJob(campaignId, 'lore'); console.error('[Lore Embed] Batch failed:', err.message); });
         }
     }));
 

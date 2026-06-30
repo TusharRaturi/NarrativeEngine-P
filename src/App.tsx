@@ -15,6 +15,7 @@ import { RenameNpcModal } from './components/RenameNpcModal';
 import { PinnedMemoriesPanel } from './components/PinnedMemoriesPanel';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { ToastContainer } from './components/Toast';
+import { IndexingSpeedPrompt } from './components/IndexingSpeedPrompt';
 import { VaultUnlockModal } from './components/VaultUnlockModal';
 // import { MapPanel } from './components/map/MapPanel';
 import { hydrateCampaign } from './store/campaignHydrator';
@@ -156,6 +157,7 @@ export default function App() {
         onClose={closePinnedMemories}
       />
       <ToastContainer />
+      <IndexingSpeedPrompt />
     </ErrorBoundary>
   );
 }

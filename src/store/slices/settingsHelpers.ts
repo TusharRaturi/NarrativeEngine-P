@@ -101,6 +101,7 @@ export const defaultSettings: AppSettings = {
     imageStylePrompt: '',
     imageNegativePrompt: '',
     showPcTab: true,
+    indexingSpeed: 'balanced',
 };
 
 export function applyTheme(theme: 'light' | 'dark' | 'system') {
@@ -313,6 +314,8 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         imageStylePrompt: (raw.imageStylePrompt as string) ?? '',
         imageNegativePrompt: (raw.imageNegativePrompt as string) ?? '',
         showPcTab: (raw.showPcTab as boolean) ?? true,
+        indexingSpeed: (raw.indexingSpeed as 'eco' | 'balanced' | 'aggressive') ?? 'balanced',
+        indexingSpeedPrompted: (raw.indexingSpeedPrompted as boolean) ?? false,
     };
 }
 

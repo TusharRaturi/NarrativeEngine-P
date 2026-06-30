@@ -56,7 +56,14 @@ export async function gatherSemanticCandidates(
         const utilityEndpoint = state.getUtilityEndpoint?.();
         const isCallback = CALLBACK_REGEX.test(input);
         const isShort = input.trim().split(/\s+/).length < 8;
-        if ((isCallback || isShort) && utilityEndpoint?.endpoint) {
+        // Expansion only feeds semantic retrieval over archive/lore/rules — if there's
+        // nothing indexed yet (fresh campaign), it's a wasted LLM round-trip that stalls
+        // turn 1. Skip it until there's something to retrieve.
+        const hasRetrievableContent =
+            archiveIndex.length > 0 ||
+            loreChunks.length > 0 ||
+            (state.context?.rulesChunks?.length ?? 0) > 0;
+        if ((isCallback || isShort) && hasRetrievableContent && utilityEndpoint?.endpoint) {
             const expanded = await expandQuery(input, npcLedger, utilityEndpoint);
             queries = expanded;
             if (expanded.length > 1) {
@@ -85,17 +92,20 @@ export async function gatherSemanticCandidates(
                 signal,
             }),
         ]);
+        // `pending: true` means the server skipped semantic (model warming up or a bulk
+        // embed in flight). Leave the ids undefined so retrieval falls back to lexical
+        // (idf-rrf) instead of treating an empty list as "nothing relevant".
         if (archiveRes.ok) {
             const data = await archiveRes.json();
-            semanticArchiveIds = data.sceneIds;
+            if (!data.pending) semanticArchiveIds = data.sceneIds;
         }
         if (loreRes.ok) {
             const data = await loreRes.json();
-            semanticLoreIds = data.loreIds;
+            if (!data.pending) semanticLoreIds = data.loreIds;
         }
         if (rulesRes.ok) {
             const data = await rulesRes.json();
-            semanticRuleIds = data.ruleIds;
+            if (!data.pending) semanticRuleIds = data.ruleIds;
         }
 
         // Rerank candidates via LLM if enough results and utility endpoint available

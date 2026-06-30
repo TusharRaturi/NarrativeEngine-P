@@ -9,6 +9,33 @@ const ACTIVE_PROVIDER = 'local-mxbai';
 
 let extractor = null;
 let warmupPromise = null;
+let modelReady = false;
+
+/**
+ * True once the model is loaded AND has served at least one inference (warmup or a
+ * real embed). Until this flips, the first embed call pays the full cold-load cost,
+ * so callers on the hot path (turn-1 semantic retrieval) should short-circuit instead
+ * of blocking. See server/routes/archive.js semantic-candidates routes.
+ */
+export function isModelReady() {
+    return modelReady;
+}
+
+/**
+ * Map an indexing-speed setting to embedBatch params. The model is a single CPU
+ * instance, so batchSize barely changes raw throughput — the real lever is delayMs,
+ * which yields the event loop between batches so the server stays responsive to the
+ * active turn. 'eco' keeps the UI snappy during a big import; 'aggressive' finishes
+ * fastest but starves other requests while it runs.
+ */
+export function resolveIndexingSpeed(speed) {
+    switch (speed) {
+        case 'eco': return { batchSize: 4, delayMs: 250 };
+        case 'aggressive': return { batchSize: 16, delayMs: 0 };
+        case 'balanced':
+        default: return { batchSize: 8, delayMs: 100 };
+    }
+}
 
 function ensureCacheDir() {
     if (!fs.existsSync(CACHE_DIR)) {
@@ -39,6 +66,8 @@ export async function warmup() {
             const start = Date.now();
             const model = await loadModel();
             const result = await model('warmup', { pooling: 'mean', normalize: true });
+            void result;
+            modelReady = true;
             const ms = Date.now() - start;
             console.log(`[Embedder] Warmup complete (${ms}ms)`);
             return true;
@@ -57,6 +86,7 @@ export async function embedText(text) {
 
     const model = await loadModel();
     const output = await model(text, { pooling: 'mean', normalize: true });
+    modelReady = true;
     const data = output.data;
     return new Float32Array(data.buffer ? data : Float32Array.from(data));
 }

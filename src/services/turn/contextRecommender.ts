@@ -108,7 +108,8 @@ export async function recommendContext(
     signal?: AbortSignal,
     pinnedChapters?: ArchiveChapter[],
     inventoryItems?: InventoryItem[],
-    characterProfile?: CharacterProfile
+    characterProfile?: CharacterProfile,
+    timeoutMs?: number
 ): Promise<RecommenderResult> {
     const npcRoster = buildNPCRoster(npcLedger);
     const loreIndex = buildLoreIndex(loreChunks);
@@ -124,11 +125,14 @@ export async function recommendContext(
 
     console.log(`[ContextRecommender] Sending recommendation request to ${utilityEndpoint.modelName}...`);
 
-    // High priority — story AI cannot start until this returns
+    // High priority — story AI cannot start until this returns. Tracked so it shows in
+    // the UtilityCallStrip (otherwise this is an invisible blocking call during gather).
     const rawContent = await llmCall(utilityEndpoint, userContent, {
         temperature: 0.1, // Low temperature for consistent structured output
         signal,
         priority: 'high',
+        trackingLabel: 'context-recommender',
+        timeoutMs: timeoutMs ?? 30000,
     });
 
     // Parse the JSON response — handle thinker blocks and markdown wrapping

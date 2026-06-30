@@ -21,6 +21,21 @@ export async function gatherRecommender(
         return { recommendedNPCNames: undefined, inventoryCategories: undefined, profileFields: undefined };
     }
 
+    // Skip the blocking recommender call when there's nothing for it to select from.
+    // The model can only return items that exist — on a fresh campaign (no NPCs, no
+    // imported lore, empty inventory, blank profile) it's a pure round-trip that stalls
+    // turn 1 (e.g. starter prompt / character creation) for no gain. See contextRecommender.
+    const profile = context.characterProfileData;
+    const hasSelectableContent =
+        npcLedger.length > 0 ||
+        loreChunks.some(c => !c.alwaysInclude) ||
+        (context.inventoryItems?.length ?? 0) > 0 ||
+        (pinnedChapters?.length ?? 0) > 0 ||
+        !!(profile && (profile.name || profile.class || profile.skills?.length || profile.abilities?.length));
+    if (!hasSelectableContent) {
+        return { recommendedNPCNames: undefined, inventoryCategories: undefined, profileFields: undefined };
+    }
+
     try {
         const result = await recommendContext(
             utilityEndpoint,

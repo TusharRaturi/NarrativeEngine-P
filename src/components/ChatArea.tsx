@@ -16,6 +16,7 @@ import { useCondenser } from './hooks/useCondenser';
 import { useChapterSealing } from './hooks/useChapterSealing';
 import { useMessageEditor } from './hooks/useMessageEditor';
 import { UtilityCallStrip } from './UtilityCallStrip';
+import { IndexingBanner } from './IndexingBanner';
 import { CreateTroubleButton } from './CreateTroubleButton';
 import { ArcInjectorButton } from './ArcInjectorButton';
 import { PCCreationWizard } from './pc/PCCreationWizard';
@@ -728,6 +729,7 @@ export function ChatArea() {
             </div>
 
             <div className="flex-shrink-0 bg-void border-t border-border">
+                <IndexingBanner campaignId={activeCampaignId} />
                 {pendingProposal && (
                     <div className="bg-amber-500/10 border-b border-amber-500/40 px-4 py-2 flex items-center justify-between gap-3">
                         <span className="text-amber-400 text-[11px] font-mono flex items-center gap-2 min-w-0">
