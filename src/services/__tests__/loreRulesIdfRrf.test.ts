@@ -173,6 +173,39 @@ describe('Lore Retriever — IDF+RRF algorithm', () => {
         );
         expect(resultWithSemantic.map(c => c.id)).toContain('vec-kw');
     });
+
+    it('never returns a chunk with disabled: true, even if alwaysInclude=true or keywords match', () => {
+        const testChunks: LoreChunk[] = [
+            makeLoreChunk({
+                id: 'lore-disabled-always',
+                alwaysInclude: true,
+                disabled: true,
+                tokens: 40,
+            }),
+            makeLoreChunk({
+                id: 'lore-disabled-kw',
+                triggerKeywords: [rareKeyword],
+                disabled: true,
+                tokens: 40,
+            }),
+        ];
+
+        // test IDF-RRF algorithm
+        const resultIdf = retrieveRelevantLore(
+            testChunks, '', '', `testing with ${rareKeyword}`,
+            500, [], undefined, 'idf-rrf'
+        );
+        expect(resultIdf.map(c => c.id)).not.toContain('lore-disabled-always');
+        expect(resultIdf.map(c => c.id)).not.toContain('lore-disabled-kw');
+
+        // test Classic algorithm
+        const resultClassic = retrieveRelevantLore(
+            testChunks, '', '', `testing with ${rareKeyword}`,
+            500, [], undefined, 'classic'
+        );
+        expect(resultClassic.map(c => c.id)).not.toContain('lore-disabled-always');
+        expect(resultClassic.map(c => c.id)).not.toContain('lore-disabled-kw');
+    });
 });
 
 // ─── Rules Retriever: IDF + RRF ───────────────────────────────────────────

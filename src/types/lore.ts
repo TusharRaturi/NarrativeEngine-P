@@ -22,6 +22,7 @@ export type LoreChunk = {
     triggerKeywords: string[];
     secondaryKeywords?: string[];                // AND-gate filter from <!-- rag: --> hint; chunk only matches if a secondary keyword also hits
     ragMode?: 'always' | 'keyword' | 'vector';  // explicit mode from <!-- rag: --> hint; authoritative over heuristics
+    disabled?: boolean;                          // when true, never retrieved by any path
     keywordsEnriched?: boolean;                  // keywords enriched via LLM
     enrichedVersion?: number;                    // LLM keywords enricher version
     scanDepth: number;

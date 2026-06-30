@@ -71,6 +71,7 @@ function retrieveRelevantLoreClassic(
     let usedTokens = 0;
 
     for (const chunk of chunks) {
+        if (chunk.disabled) continue;
         if (chunk.alwaysInclude || chunk.ragMode === 'always') {
             results.push(chunk);
             includedSet.add(chunk.id);
@@ -89,6 +90,7 @@ function retrieveRelevantLoreClassic(
     const scored: { chunk: LoreChunk; score: number }[] = [];
 
     for (const chunk of chunks) {
+        if (chunk.disabled) continue;
         if (chunk.alwaysInclude || chunk.ragMode === 'always') continue;
 
         const isSemantic = semanticSet.has(chunk.id);
@@ -148,6 +150,7 @@ function retrieveRelevantLoreClassic(
         if (linkedNames.size > 0) {
             const remaining = chunks.filter(c => !includedSet.has(c.id)).sort((a, b) => (b.priority || 5) - (a.priority || 5));
             for (const chunk of remaining) {
+                if (chunk.disabled) continue;
                 const headerLower = chunk.header.toLowerCase();
                 const isLinked = Array.from(linkedNames).some(name => headerLower.includes(name));
                 if (isLinked && usedTokens + chunk.tokens <= tokenBudget) {
@@ -175,6 +178,7 @@ function retrieveRelevantLoreIdfRrf(
     let usedTokens = 0;
 
     for (const chunk of chunks) {
+        if (chunk.disabled) continue;
         if (chunk.alwaysInclude || chunk.ragMode === 'always') {
             results.push(chunk);
             includedSet.add(chunk.id);
@@ -196,6 +200,7 @@ function retrieveRelevantLoreIdfRrf(
     const keywordScored: { chunk: LoreChunk; score: number }[] = [];
 
     for (const chunk of chunks) {
+        if (chunk.disabled) continue;
         if (includedSet.has(chunk.id)) continue;
 
         const isKeywordMode = chunk.ragMode !== 'vector';
@@ -247,7 +252,7 @@ function retrieveRelevantLoreIdfRrf(
     // Pass 2: embedding ranking (already cosine-ranked)
     const embeddingRanked = (semanticCandidateIds ?? []).filter(id => {
         const c = chunkById.get(id);
-        return c && c.ragMode !== 'keyword';
+        return c && c.ragMode !== 'keyword' && !c.disabled;
     });
 
     // Pass 3: RRF fusion
@@ -296,6 +301,7 @@ function retrieveRelevantLoreIdfRrf(
         if (linkedNames.size > 0) {
             const remaining = chunks.filter(c => !includedSet.has(c.id)).sort((a, b) => (b.priority || 5) - (a.priority || 5));
             for (const chunk of remaining) {
+                if (chunk.disabled) continue;
                 const headerLower = chunk.header.toLowerCase();
                 const isLinked = Array.from(linkedNames).some(name => headerLower.includes(name));
                 if (isLinked && usedTokens + chunk.tokens <= tokenBudget) {
@@ -359,6 +365,7 @@ export function searchLoreByQuery(
     }
 
     const scored = chunks
+        .filter(chunk => !chunk.disabled)
         .map((chunk) => {
             const searchText = (chunk.header + ' ' + chunk.content).toLowerCase();
             const triggerSet = new Set((chunk.triggerKeywords || []).map(k => k.toLowerCase()));

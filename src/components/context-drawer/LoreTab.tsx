@@ -7,24 +7,38 @@ export function LoreTab() {
     const updateLoreChunk = useAppStore((s) => s.updateLoreChunk);
     const [newKeyword, setNewKeyword] = useState<Record<string, string>>({});
 
-    const bulkModeIsOn = (mode: 'vector' | 'keyword' | 'always') =>
-        loreChunks.length > 0 &&
-        loreChunks.filter(c => c.ragMode === mode).length >= loreChunks.length / 2;
+    const bulkModeIsOn = (mode: 'vector' | 'keyword' | 'always' | 'auto') => {
+        if (loreChunks.length === 0) return false;
+        if (mode === 'auto') {
+            return loreChunks.filter(c => c.ragMode === undefined && !c.disabled).length >= loreChunks.length / 2;
+        }
+        return loreChunks.filter(c => c.ragMode === mode && !c.disabled).length >= loreChunks.length / 2;
+    };
 
-    const bulkToggleMode = (mode: 'vector' | 'keyword' | 'always') => {
+    const bulkToggleMode = (mode: 'vector' | 'keyword' | 'always' | 'auto') => {
         if (loreChunks.length === 0) return;
-        const withMode = loreChunks.filter(c => c.ragMode === mode).length;
+        if (mode === 'auto') {
+            loreChunks.forEach(chunk => {
+                updateLoreChunk(chunk.id, { ragMode: undefined, disabled: false });
+            });
+            return;
+        }
+
+        const withMode = loreChunks.filter(c => c.ragMode === mode && !c.disabled).length;
         const turnOn = withMode < loreChunks.length / 2;
         loreChunks.forEach(chunk => {
-            const nextMode = turnOn ? mode : undefined;
-            updateLoreChunk(chunk.id, { ragMode: nextMode });
+            if (turnOn) {
+                updateLoreChunk(chunk.id, { ragMode: mode, disabled: false });
+            } else {
+                updateLoreChunk(chunk.id, { ragMode: undefined, disabled: false });
+            }
         });
     };
 
     const bulkDisableAll = () => {
         if (loreChunks.length === 0) return;
         loreChunks.forEach(chunk => {
-            updateLoreChunk(chunk.id, { ragMode: undefined });
+            updateLoreChunk(chunk.id, { disabled: true });
         });
     };
 
@@ -45,7 +59,7 @@ export function LoreTab() {
     };
 
     const renderChunk = (chunk: LoreChunk) => (
-        <div key={chunk.id} className={`bg-void rounded border p-2 transition-colors ${chunk.alwaysInclude ? 'border-terminal/40 shadow-[0_0_10px_rgba(74,222,128,0.05)]' : 'border-border'}`}>
+        <div key={chunk.id} className={`bg-void rounded border p-2 transition-colors ${chunk.disabled ? 'opacity-50 border-border' : chunk.alwaysInclude ? 'border-terminal/40 shadow-[0_0_10px_rgba(74,222,128,0.05)]' : 'border-border'}`}>
             {/* Header row */}
             <div className="flex items-center justify-between mb-1">
                 <span className="text-[10px] text-text-primary font-bold truncate flex-1 mr-2" title={chunk.header}>
@@ -107,8 +121,15 @@ export function LoreTab() {
                 <label className="flex items-center gap-1 text-[9px] text-text-dim">
                     Match:
                     <select
-                        value={chunk.ragMode ?? ''}
-                        onChange={(e) => updateLoreChunk(chunk.id, { ragMode: (e.target.value || undefined) as LoreChunk['ragMode'] })}
+                        value={chunk.disabled ? 'disabled' : (chunk.ragMode ?? '')}
+                        onChange={(e) => {
+                            const val = e.target.value;
+                            if (val === 'disabled') {
+                                updateLoreChunk(chunk.id, { disabled: true });
+                            } else {
+                                updateLoreChunk(chunk.id, { disabled: false, ragMode: (val || undefined) as LoreChunk['ragMode'] });
+                            }
+                        }}
                         className="bg-surface border border-border rounded px-1 py-0.5 text-[9px] text-text-primary"
                         title="How this chunk is matched during hybrid retrieval. Blank = auto (heuristics decide)."
                     >
@@ -116,6 +137,7 @@ export function LoreTab() {
                         <option value="vector">vector</option>
                         <option value="keyword">keyword</option>
                         <option value="always">always</option>
+                        <option value="disabled">disabled</option>
                     </select>
                 </label>
             </div>
@@ -162,16 +184,16 @@ export function LoreTab() {
                     Chunks trigger when keywords appear in recent messages
                 </p>
                 {loreChunks.length > 0 && (
-                    <div className="flex items-center gap-1.5 pt-2">
+                    <div className="flex items-center gap-1.5 pt-2 flex-wrap">
                         <span className="text-[8px] text-text-dim/60 uppercase tracking-wider shrink-0">Bulk:</span>
-                        {(['vector', 'keyword', 'always'] as const).map(mode => {
+                        {(['auto', 'vector', 'keyword', 'always'] as const).map(mode => {
                             const on = bulkModeIsOn(mode);
                             return (
                                 <button
                                     key={mode}
                                     onClick={() => bulkToggleMode(mode)}
                                     title={`${on ? 'Turn off' : 'Turn on'} ${mode} for all chunks`}
-                                    className={`flex-1 py-1.5 md:py-1 text-[9px] uppercase tracking-wider rounded border transition-colors ${
+                                    className={`flex-1 py-1.5 md:py-1 text-[9px] uppercase tracking-wider rounded border transition-colors min-w-[55px] ${
                                         on
                                             ? 'bg-terminal/15 text-terminal border-terminal/40'
                                             : 'bg-surface text-text-dim border-transparent hover:text-terminal hover:bg-terminal/10'
@@ -183,8 +205,8 @@ export function LoreTab() {
                         })}
                         <button
                             onClick={bulkDisableAll}
-                            title="Disable all chunks (sets match to auto)"
-                            className="flex-1 py-1.5 md:py-1 text-[9px] uppercase tracking-wider rounded bg-surface text-text-dim hover:text-danger hover:bg-danger/10 transition-colors"
+                            title="Disable all chunks (never retrieve)"
+                            className="flex-1 py-1.5 md:py-1 text-[9px] uppercase tracking-wider rounded bg-surface text-text-dim hover:text-danger hover:bg-danger/10 transition-colors min-w-[70px]"
                         >
                             Disable All
                         </button>
