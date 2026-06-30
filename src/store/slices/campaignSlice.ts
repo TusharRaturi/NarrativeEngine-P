@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { ArchiveChapter, ChatMessage, CondenserState, GameContext, LoreChunk, ArchiveIndexEntry, NPCEntry, SemanticFact, EntityEntry, TimelineEvent, InventoryItem, CharacterProfile, PinnedExcerpt } from '../../types';
+import type { ArchiveChapter, ChatMessage, CondenserState, GameContext, LoreChunk, ArchiveIndexEntry, NPCEntry, NpcSuggestion, SemanticFact, EntityEntry, TimelineEvent, InventoryItem, CharacterProfile, PinnedExcerpt } from '../../types';
 import { DEFAULT_CHARACTER_PROFILE, DEFAULT_INVENTORY, migrateLegacyContext } from '../../types';
 import { toast } from '../../components/Toast';
 import { debouncedSaveSettings } from './settingsSlice';
@@ -274,6 +274,11 @@ export type CampaignSlice = {
     mergeOrRenameNpc: (from: string, to: string, turn: number) => 'merged' | 'renamed' | 'none';
     onStageNpcIds: string[];
     setOnStageNpcIds: (ids: string[]) => void;
+    // WO-11.3 — NPC suggestions: auto-detected names awaiting player promotion.
+    npcSuggestions: NpcSuggestion[];
+    addNpcSuggestions: (names: string[], context?: string) => void;
+    dismissNpcSuggestion: (name: string) => void;
+    clearNpcSuggestions: () => void;
     semanticFacts: SemanticFact[];
     setSemanticFacts: (facts: SemanticFact[]) => void;
     timeline: TimelineEvent[];
@@ -455,6 +460,39 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
     },
     onStageNpcIds: [],
     setOnStageNpcIds: (ids) => set({ onStageNpcIds: ids } as Partial<CampaignDeps>),
+    // WO-11.3 — NPC suggestions. Detection runs in postTurnPipeline; names land
+    // here for the player to accept/dismiss in NPCLedgerModal. Skips anything
+    // already tracked in the ledger (or a name variant of it).
+    npcSuggestions: [],
+    addNpcSuggestions: (names, context) => set((s) => {
+        const existing = new Set(s.npcSuggestions.map(x => x.name.toLowerCase()));
+        const now = Date.now();
+        const fresh: NpcSuggestion[] = [];
+        for (const raw of names) {
+            const name = raw.trim();
+            if (!name) continue;
+            const key = name.toLowerCase();
+            if (existing.has(key)) continue;
+            // Skip anything already tracked in the ledger (or a name variant of it)
+            const inLedger = s.npcLedger.some(n => {
+                if (!n.name) return false;
+                const allNames = [n.name, ...(n.aliases || '').split(',').map(a => a.trim())].filter(Boolean);
+                return allNames.some(n2 => {
+                    const lo = n2.toLowerCase();
+                    return lo === key || lo.startsWith(key + ' ') || lo.endsWith(' ' + key);
+                });
+            });
+            if (inLedger) continue;
+            existing.add(key);
+            fresh.push({ name, context, firstSeen: now });
+        }
+        if (fresh.length === 0) return {};
+        return { npcSuggestions: [...s.npcSuggestions, ...fresh] } as Partial<CampaignDeps>;
+    }),
+    dismissNpcSuggestion: (name) => set((s) => ({
+        npcSuggestions: s.npcSuggestions.filter(x => x.name.toLowerCase() !== name.toLowerCase()),
+    }) as Partial<CampaignDeps>),
+    clearNpcSuggestions: () => set({ npcSuggestions: [] } as Partial<CampaignDeps>),
     semanticFacts: [],
     setSemanticFacts: (facts) => set({ semanticFacts: facts } as Partial<CampaignDeps>),
     timeline: [],

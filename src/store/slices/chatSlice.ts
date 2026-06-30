@@ -96,6 +96,10 @@ export type ChatSlice = {
     toggleDivergenceCategory: (chapterId: string, category: DivergenceCategory, on: boolean) => void;
     pinDivergenceFact: (entryId: string) => void;
     editDivergenceFact: (entryId: string, text: string) => void;
+    /** Set who knows a fact. undefined = public, [] = secret, tokens = scoped. */
+    editDivergenceKnownBy: (entryId: string, knownBy: string[] | undefined) => void;
+    /** Apply non-destructive subjectToken updates from Find-Similarity clustering. */
+    applySubjectTokens: (updates: Array<{ id: string; subjectToken: string }>) => void;
     deleteDivergenceFact: (entryId: string) => void;
     addDivergenceEntry: (entry: DivergenceEntry) => void;
     dismissDivergenceReviewFlag: (entryId: string) => void;
@@ -197,6 +201,25 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
             const entries = s.divergenceRegister.entries.map(e =>
                 e.id === entryId ? { ...e, text, source: 'manual' as const } : e
             );
+            debouncedSaveCampaignState();
+            return { divergenceRegister: { ...s.divergenceRegister, entries, lastUpdatedAt: Date.now() } };
+        }),
+    editDivergenceKnownBy: (entryId, knownBy) =>
+        set((s) => {
+            const entries = s.divergenceRegister.entries.map(e =>
+                e.id === entryId ? { ...e, knownBy } : e
+            );
+            debouncedSaveCampaignState();
+            return { divergenceRegister: { ...s.divergenceRegister, entries, lastUpdatedAt: Date.now() } };
+        }),
+    applySubjectTokens: (updates) =>
+        set((s) => {
+            if (updates.length === 0) return {};
+            const updateMap = new Map(updates.map(u => [u.id, u.subjectToken]));
+            const entries = s.divergenceRegister.entries.map(e => {
+                const tok = updateMap.get(e.id);
+                return tok !== undefined ? { ...e, subjectToken: tok } : e;
+            });
             debouncedSaveCampaignState();
             return { divergenceRegister: { ...s.divergenceRegister, entries, lastUpdatedAt: Date.now() } };
         }),

@@ -28,6 +28,7 @@ export type TurnCallbacks = {
     setPipelinePhase?: (phase: PipelinePhase) => void;
     setDivergenceRegister?: (register: DivergenceRegister) => void;
     setOnStageNpcIds?: (ids: string[]) => void;
+    addNpcSuggestions?: (names: string[], context?: string) => void;
     archiveNPC: (id: string, turn: number, reason: string) => void;
     restoreNPC: (id: string) => void;
     /** Stage a GM-proposed inventory change for user confirmation (Phase 6). The

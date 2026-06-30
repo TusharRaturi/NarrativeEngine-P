@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
+import { useAppStore } from '../store/useAppStore';
 import { useUtilityCalls, extendCall } from '../services/llm/utilityCallTracker';
+import type { PipelinePhase, StreamingStats } from '../types';
 
 const LABEL_MAP: Record<string, string> = {
     'expandQuery': 'Query Expansion',
@@ -9,20 +11,86 @@ const LABEL_MAP: Record<string, string> = {
     'planner': 'Planner',
 };
 
+const PHASE_LABEL: Record<PipelinePhase, string> = {
+    'idle': '',
+    'rolling-dice': 'rolling dice',
+    'gathering-context': 'gathering context',
+    'building-prompt': 'building prompt',
+    'generating': 'generating',
+    'checking-notes': 'checking notes',
+    'post-processing': 'post-processing',
+};
+
+function formatElapsed(ms: number): string {
+    const totalSec = Math.floor(ms / 1000);
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return m > 0 ? `${m}:${String(s).padStart(2, '0')}` : `${s}s`;
+}
+
+function GenerationStrip({ phase, stats }: { phase: PipelinePhase; stats: StreamingStats | null }) {
+    const modelName = useAppStore.getState().getActiveStoryEndpoint?.()?.modelName;
+    const isGenerating = phase === 'generating' || phase === 'checking-notes';
+    const isPreGen = phase !== 'idle' && phase !== 'generating' && phase !== 'checking-notes' && phase !== 'post-processing';
+    const isPost = phase === 'post-processing';
+
+    if (phase === 'idle') return null;
+
+    return (
+        <div className="flex items-center gap-2 px-4 py-1.5 bg-void-lighter/30 border-t border-border/30 text-text-dim text-[9px] uppercase tracking-wider font-mono">
+            {(isGenerating || isPost) && (
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-terminal animate-pulse" />
+            )}
+            {isPreGen && (
+                <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            )}
+            <span className="text-text-dim/70">{PHASE_LABEL[phase]}</span>
+            {modelName && (
+                <>
+                    <span className="text-text-dim/30">·</span>
+                    <span className="text-text-dim/50 normal-case truncate max-w-[140px]">{modelName}</span>
+                </>
+            )}
+            {isGenerating && stats && stats.tokens > 0 && (
+                <>
+                    <span className="text-text-dim/30">·</span>
+                    <span className="tabular-nums">{stats.tokens} tok</span>
+                    <span className="text-text-dim/30">·</span>
+                    <span className="tabular-nums">{formatElapsed(stats.elapsed)}</span>
+                    <span className="text-text-dim/30">·</span>
+                    <span className="tabular-nums">{stats.speed.toFixed(0)} tok/s</span>
+                </>
+            )}
+        </div>
+    );
+}
+
+/**
+ * Telemetry strip (WO-11.7) — upgraded UtilityCallStrip. Now shows the live
+ * generation status (phase, model, tokens, elapsed, speed) alongside the
+ * active utility-call tracker. Desktop previously had a simpler strip + a
+ * separate GenerationProgress stepper; this consolidates the per-call telemetry
+ * mobile's TelemetryStrip surfaces, while the stepper remains for the
+ * phase pipeline visualization.
+ */
 export function UtilityCallStrip() {
     const { active } = useUtilityCalls();
+    const pipelinePhase = useAppStore(s => s.pipelinePhase);
+    const streamingStats = useAppStore(s => s.streamingStats);
     const [, setTick] = useState(0);
 
     useEffect(() => {
-        if (active.length === 0) return;
+        if (active.length === 0 && pipelinePhase === 'idle') return;
         const id = setInterval(() => setTick(t => t + 1), 1000);
         return () => clearInterval(id);
-    }, [active.length]);
+    }, [active.length, pipelinePhase]);
 
-    if (active.length === 0) return null;
+    const hasGeneration = pipelinePhase !== 'idle';
+    if (active.length === 0 && !hasGeneration) return null;
 
     return (
         <div className="border-b border-terminal/20 bg-terminal/5">
+            {hasGeneration && <GenerationStrip phase={pipelinePhase} stats={streamingStats} />}
             {active.map(call => {
                 const now = Date.now();
                 const elapsed = Math.floor((now - call.startedAt) / 1000);

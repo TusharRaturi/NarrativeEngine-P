@@ -2,6 +2,7 @@ import type { DivergenceRegister, TopicClusters, TopicCluster, EndpointConfig, P
 import { llmCall } from '../../utils/llmCall';
 import { countTokens } from '../infrastructure/tokenizer';
 import { extractJsonRobust } from '../infrastructure/jsonExtract';
+import { normalizeSubjectToken } from './knowledgeScope';
 
 export type ClusteringCancelled = { cancelled: boolean };
 
@@ -100,4 +101,120 @@ RULES:
 
     console.log(`[FactClusterer] Done — ${groups.length} groups, ${assignedIds.size} assigned, ${unassigned.length} uncategorized`);
     return result;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Find Similarity (WO-11.2): assign / repair `subjectToken` across the register.
+// Reuses runFactClustering (the existing single LLM grouping call). NEVER
+// disables or deletes facts — only subjectToken changes. Distinct action and
+// button from Find Duplicates.
+// ─────────────────────────────────────────────────────────────────────────
+
+export type SubjectTokenUpdate = { id: string; subjectToken: string };
+export type AssignSubjectTokensResult = {
+    updates: SubjectTokenUpdate[];
+    groupCount: number;
+    factCount: number;
+};
+
+/**
+ * Derive canonical subjectToken updates from a clustering result.
+ * Pure — no LLM call. Exposed for testing.
+ *
+ * Canonical-token selection rule:
+ *   1. For each cluster with >= 2 facts: if any member already has a subjectToken,
+ *      reuse the MOST COMMON existing token among members (drift repair — merges
+ *      two tokens that should have been one). If there is no existing token,
+ *      synthesize one from the cluster's `name` via normalizeSubjectToken
+ *      (the clusterer emits readable labels like "Yuki" or "Alex Chen").
+ *   2. Singleton clusters (1 fact) are left alone: a fact with an existing token
+ *      keeps it; a fact with no token stays undefined. (We never overwrite a
+ *      singleton's token — it may already be correctly grouped with facts the
+ *      clusterer happened to put in another bucket this run.)
+ *
+ * The "Uncategorized" bucket from runFactClustering is treated as singletons:
+ * we do NOT assign all uncategorized facts one shared token.
+ */
+export function deriveSubjectTokenUpdates(
+    register: DivergenceRegister,
+    clusters: TopicClusters,
+): SubjectTokenUpdate[] {
+    const byId = new Map(register.entries.map(e => [e.id, e]));
+    const updates: SubjectTokenUpdate[] = [];
+
+    for (const group of clusters.groups) {
+        // Only multi-fact groups get a shared token. Singletons are left alone.
+        if (group.factIds.length < 2) continue;
+
+        const members = group.factIds
+            .map(id => byId.get(id))
+            .filter((e): e is NonNullable<typeof e> => !!e);
+        if (members.length < 2) continue;
+
+        // Tally existing tokens among members.
+        const tokenCounts = new Map<string, number>();
+        for (const m of members) {
+            if (typeof m.subjectToken === 'string' && m.subjectToken) {
+                tokenCounts.set(m.subjectToken, (tokenCounts.get(m.subjectToken) ?? 0) + 1);
+            }
+        }
+
+        let canonical: string | undefined;
+        if (tokenCounts.size > 0) {
+            // Pick the most common existing token (drift repair — unifies tokens).
+            let best = '';
+            let bestCount = -1;
+            for (const [tok, count] of tokenCounts) {
+                if (count > bestCount || (count === bestCount && tok < best)) {
+                    best = tok;
+                    bestCount = count;
+                }
+            }
+            canonical = best;
+        } else {
+            // No existing token — synthesize from the cluster's readable name.
+            canonical = normalizeSubjectToken(group.name) ?? undefined;
+        }
+
+        if (!canonical) continue;
+
+        for (const m of members) {
+            // Only emit an update when the token would actually change.
+            if (m.subjectToken !== canonical) {
+                updates.push({ id: m.id, subjectToken: canonical });
+            }
+        }
+    }
+
+    return updates;
+}
+
+/**
+ * Run the clustering pass and produce subjectToken updates. Reuses the existing
+ * runFactClustering LLM call — NO new call type. Cancel-safe (mirrors dedup).
+ * Never disables or deletes facts.
+ */
+export async function assignSubjectTokens(
+    register: DivergenceRegister,
+    utilityProvider: EndpointConfig | ProviderConfig,
+    contextLimit: number,
+    cancel: ClusteringCancelled,
+    onStatus: (msg: string) => void,
+): Promise<AssignSubjectTokensResult> {
+    if (register.entries.length === 0) {
+        return { updates: [], groupCount: 0, factCount: 0 };
+    }
+
+    onStatus('Grouping facts by subject…');
+    const clusters = await runFactClustering(register, utilityProvider, contextLimit, cancel, onStatus);
+    if (cancel.cancelled) throw new Error('Find Similarity cancelled.');
+
+    const updates = deriveSubjectTokenUpdates(register, clusters);
+    const grouped = new Set(updates.map(u => u.id));
+
+    return {
+        updates,
+        groupCount: clusters.groups.filter(g => g.factIds.length >= 2).length,
+        factCount: grouped.size,
+    };
 }

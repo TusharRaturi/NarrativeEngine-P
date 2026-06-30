@@ -1,13 +1,14 @@
 import { useState, useRef } from 'react';
-import { Edit2, Check, Pin, PinOff, ChevronDown, ChevronUp, Trash2, Sparkles, Loader2 } from 'lucide-react';
+import { Edit2, Check, Pin, PinOff, ChevronDown, ChevronUp, Trash2, Sparkles, Loader2, Users, X, Link2 } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
-import type { DivergenceCategory, DivergenceEntry } from '../../../types';
+import type { DivergenceCategory, DivergenceEntry, NPCEntry } from '../../../types';
 import { EMPTY_REGISTER, CATEGORY_LABELS } from '../../../services/campaign-state/divergenceRegister';
-import { runFactClustering } from '../../../services/campaign-state/factClusterer';
+import { runFactClustering, assignSubjectTokens, type ClusteringCancelled } from '../../../services/campaign-state/factClusterer';
 import { runFactDedup, type DedupResult, type DedupCancelled } from '../../../services/campaign-state/factDeduper';
+import { normalizeFaction, parseKnownByToken, groupDivergencesBySubject } from '../../../services/campaign-state/knowledgeScope';
 import { DedupReviewModal } from '../../DedupReviewModal';
 
-type FactsSubView = 'chapter' | 'topic';
+type FactsSubView = 'chapter' | 'topic' | 'subject';
 
 const CATEGORY_COLORS: Record<DivergenceCategory, string> = {
     locations: 'text-blue-400',
@@ -29,6 +30,161 @@ const CATEGORY_DOTS: Record<DivergenceCategory, string> = {
     misc: 'bg-gray-400',
 };
 
+// ── Known-By helpers (WO-11.1) ─────────────────────────────────────────
+
+function knownByTokenLabel(tok: string, npcLedger: NPCEntry[]): string {
+    const parsed = parseKnownByToken(tok);
+    if (!parsed) {
+        const npc = npcLedger.find(n => n.id === tok.trim());
+        return npc ? npc.name : 'unknown';
+    }
+    if (parsed.kind === 'player') return 'the player';
+    if (parsed.kind === 'faction') return `${parsed.name} members`;
+    const npc = npcLedger.find(n => n.id === parsed.id);
+    return npc ? npc.name : 'someone (removed)';
+}
+
+function knownBySummary(knownBy: string[] | undefined, npcLedger: NPCEntry[]): string {
+    if (knownBy === undefined) return 'public';
+    if (knownBy.length === 0) return 'secret (player only)';
+    return knownBy.map(t => knownByTokenLabel(t, npcLedger)).join(', ');
+}
+
+function knownByChipClass(knownBy: string[] | undefined): string {
+    if (knownBy === undefined) return 'text-emerald-400';
+    if (knownBy.length === 0) return 'text-red-400';
+    return 'text-amber-400';
+}
+
+/** Derive a readable group label from a subjectToken slug. e.g. "alex_chen.identity" -> "Alex Chen · identity". */
+function subjectLabel(token: string): string {
+    const parts = token.split(/[._]/).filter(Boolean);
+    if (parts.length === 0) return token;
+    const pretty = parts.map(p =>
+        p.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())
+    );
+    if (pretty.length >= 2) {
+        const attr = pretty.pop();
+        return `${pretty.join(' ')} · ${attr}`;
+    }
+    return pretty.join(' ');
+}
+
+/** KnownBy editor popover — inline, matches existing inline-edit pattern. */
+function KnownByEditor({ entry, npcLedger, onApply, onClose }: {
+    entry: DivergenceEntry;
+    npcLedger: NPCEntry[];
+    onApply: (knownBy: string[] | undefined) => void;
+    onClose: () => void;
+}) {
+    const [tokens, setTokens] = useState<string[]>(entry.knownBy === undefined ? [] : [...entry.knownBy]);
+    const isPublic = entry.knownBy === undefined;
+    const [factionInput, setFactionInput] = useState('');
+
+    const addToken = (tok: string) => {
+        if (tokens.includes(tok)) return;
+        setTokens([...tokens, tok]);
+    };
+    const removeToken = (tok: string) => {
+        setTokens(tokens.filter(t => t !== tok));
+    };
+
+    return (
+        <div className="bg-void border border-amber-500/30 p-1.5 rounded space-y-1.5 text-[10px]">
+            <div className="flex items-center gap-1 flex-wrap">
+                <span className="text-text-dim uppercase tracking-wider text-[8px]">Knows:</span>
+                {isPublic && (
+                    <span className="text-emerald-400 px-1 py-0.5 bg-emerald-500/10 rounded">public</span>
+                )}
+                {!isPublic && tokens.length === 0 && (
+                    <span className="text-red-400 px-1 py-0.5 bg-red-500/10 rounded">secret (player only)</span>
+                )}
+                {!isPublic && tokens.map(t => (
+                    <span key={t} className={`px-1 py-0.5 rounded flex items-center gap-0.5 ${t === 'player' ? 'text-ice bg-ice/10' : t.startsWith('faction:') ? 'text-purple-400 bg-purple-500/10' : 'text-amber-400 bg-amber-500/10'}`}>
+                        {knownByTokenLabel(t, npcLedger)}
+                        <button onClick={() => removeToken(t)} className="hover:text-red-400"><X size={8} /></button>
+                    </span>
+                ))}
+            </div>
+
+            <div className="space-y-1">
+                <div className="text-text-dim text-[9px] uppercase tracking-wider">Add knower:</div>
+                <div className="flex items-center gap-1 flex-wrap">
+                    <button
+                        onClick={() => addToken('player')}
+                        className={`px-1 py-0.5 rounded text-ice bg-ice/10 hover:bg-ice/20 ${tokens.includes('player') ? 'opacity-40 cursor-not-allowed' : ''}`}
+                        disabled={tokens.includes('player')}
+                    >
+                        + player
+                    </button>
+                    <button
+                        onClick={() => onApply(undefined)}
+                        className="px-1 py-0.5 rounded text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20"
+                        title="Set to public/broadcast (knownBy = undefined)"
+                    >
+                        make public
+                    </button>
+                </div>
+
+                <div className="flex items-center gap-0.5 flex-wrap">
+                    <span className="text-text-dim text-[9px] flex items-center gap-0.5"><Users size={9} /> NPC:</span>
+                    {npcLedger.length === 0 && <span className="text-text-dim/50 italic">no NPCs in ledger</span>}
+                    {npcLedger.slice(0, 12).map(n => {
+                        const tok = `npc:${n.id}`;
+                        return (
+                            <button
+                                key={n.id}
+                                onClick={() => addToken(tok)}
+                                disabled={tokens.includes(tok)}
+                                className={`px-1 py-0.5 rounded text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 ${tokens.includes(tok) ? 'opacity-40 cursor-not-allowed' : ''}`}
+                            >
+                                + {n.name}
+                            </button>
+                        );
+                    })}
+                </div>
+
+                <div className="flex items-center gap-0.5">
+                    <span className="text-text-dim text-[9px]">faction:</span>
+                    <input
+                        type="text"
+                        value={factionInput}
+                        onChange={ev => setFactionInput(ev.target.value)}
+                        placeholder="e.g. Ironspire Knights"
+                        className="flex-1 bg-void border border-white/10 text-text-primary text-[10px] px-1 py-0.5 rounded outline-none min-w-0"
+                        onKeyDown={ev => {
+                            if (ev.key === 'Enter' && factionInput.trim()) {
+                                const f = normalizeFaction(factionInput);
+                                if (f) { addToken(`faction:${f}`); setFactionInput(''); }
+                            }
+                        }}
+                    />
+                    <button
+                        onClick={() => {
+                            const f = normalizeFaction(factionInput);
+                            if (f) { addToken(`faction:${f}`); setFactionInput(''); }
+                        }}
+                        disabled={!factionInput.trim()}
+                        className="px-1 py-0.5 rounded text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 disabled:opacity-40"
+                    >
+                        + add
+                    </button>
+                </div>
+            </div>
+
+            <div className="flex gap-1.5 justify-end">
+                <button
+                    onClick={() => onApply(tokens)}
+                    className="flex items-center gap-0.5 text-emerald-400 hover:text-emerald-300 px-1"
+                >
+                    <Check size={8} /> Save
+                </button>
+                <button onClick={onClose} className="text-text-dim hover:text-red-400 px-1">Cancel</button>
+            </div>
+        </div>
+    );
+}
+
 export function FactsView() {
     const divergenceRegister = useAppStore(s => s.divergenceRegister);
     const chapters = useAppStore(s => s.chapters);
@@ -43,15 +199,27 @@ export function FactsView() {
     const setTopicClusters = useAppStore(s => s.setTopicClusters);
     const getActiveUtilityEndpoint = useAppStore(s => s.getActiveUtilityEndpoint);
     const npcLedger = useAppStore(s => s.npcLedger);
+    // WO-11.1 / WO-11.2 store setters
+    const editDivergenceKnownBy = useAppStore(s => s.editDivergenceKnownBy);
+    const applySubjectTokens = useAppStore(s => s.applySubjectTokens);
 
     const [factsView, setFactsView] = useState<FactsSubView>('chapter');
     const [editingId, setEditingId] = useState<string | null>(null);
     const [editText, setEditText] = useState('');
+    const [knownByEditingId, setKnownByEditingId] = useState<string | null>(null);
     const [expandedChapter, setExpandedChapter] = useState<string | null>(null);
     const [expandedCategory, setExpandedCategory] = useState<string | null>(null);
     const [expandedGroup, setExpandedGroup] = useState<string | null>(null);
+    const [expandedSubject, setExpandedSubject] = useState<string | null>(null);
     const [clustering, setClustering] = useState(false);
     const [clusterError, setClusterError] = useState<string | null>(null);
+
+    // WO-11.2 — Find Similarity state (distinct from Find Duplicates; never disables/deletes).
+    const [simRunning, setSimRunning] = useState(false);
+    const [simStatus, setSimStatus] = useState<string | null>(null);
+    const [simSummary, setSimSummary] = useState<string | null>(null);
+    const [simError, setSimError] = useState<string | null>(null);
+    const simCancelRef = useRef<ClusteringCancelled>({ cancelled: false });
 
     const [dedupOpen, setDedupOpen] = useState(false);
     const [dedupRunning, setDedupRunning] = useState(false);
@@ -90,6 +258,9 @@ export function FactsView() {
         ? Math.round((Date.now() - new Date(topicClusters.generatedAt).getTime()) / 60_000)
         : null;
 
+    // By-subject grouping (WO-11.2) — computed from existing data, no AI needed.
+    const subjectGroups = groupDivergencesBySubject(unpinnedEntries);
+
     // Find the open chapter for the placeholder
     const openChapter = chapters?.find(c => !c.sealedAt);
 
@@ -127,6 +298,47 @@ export function FactsView() {
         } finally {
             setClustering(false);
         }
+    };
+
+    // WO-11.2 — Find Similarity: group facts by subject via the existing clustering LLM
+    // call, then assign/repair subjectToken. NEVER disables or deletes facts.
+    const handleStartSimilarity = () => {
+        const utilityProvider = getActiveUtilityEndpoint();
+        if (!utilityProvider?.endpoint) {
+            setSimError('No utility AI configured.');
+            return;
+        }
+        setSimRunning(true);
+        setSimStatus('Starting…');
+        setSimSummary(null);
+        setSimError(null);
+        simCancelRef.current = { cancelled: false };
+
+        assignSubjectTokens(reg, utilityProvider, settings.contextLimit || 8192, simCancelRef.current, setSimStatus)
+            .then(result => {
+                if (result.updates.length > 0) {
+                    applySubjectTokens(result.updates);
+                }
+                setSimSummary(`Grouped ${result.factCount} fact${result.factCount === 1 ? '' : 's'} into ${result.groupCount} subject${result.groupCount === 1 ? '' : 's'}.`);
+                setSimRunning(false);
+                setSimStatus(null);
+            })
+            .catch(err => {
+                if (err.message === 'Find Similarity cancelled.') {
+                    setSimRunning(false);
+                    setSimStatus(null);
+                } else {
+                    setSimError(err.message || String(err));
+                    setSimRunning(false);
+                    setSimStatus(null);
+                }
+            });
+    };
+
+    const handleStopSimilarity = () => {
+        simCancelRef.current.cancelled = true;
+        setSimRunning(false);
+        setSimStatus(null);
     };
 
     const handleToggleGroup = (factIds: string[], allEnabled: boolean) => {
@@ -222,16 +434,68 @@ export function FactsView() {
         setDedupError(null);
     };
 
+    // Shared per-row action buttons (edit/pin/delete) so the three views stay in sync.
+    const rowActions = (e: DivergenceEntry) => (
+        <span className="flex items-center gap-0.5 shrink-0">
+            <button onClick={() => setKnownByEditingId(e.id)} className="text-text-muted hover:text-amber-400 p-0.5" title="Edit who knows">
+                <Users size={9} />
+            </button>
+            <button onClick={() => pinDivergenceFact(e.id)} className="text-text-muted hover:text-amber-400 p-0.5" title="Pin">
+                <Pin size={9} />
+            </button>
+            <button onClick={() => handleStartEdit(e)} className="text-text-muted hover:text-amber-400 p-0.5" title="Edit">
+                <Edit2 size={9} />
+            </button>
+            <button onClick={() => handleDelete(e.id)} className="text-text-muted hover:text-red-400 p-0.5" title="Delete">
+                <Trash2 size={9} className="inline" />
+            </button>
+        </span>
+    );
+
+    // Shared knownBy suffix chip rendered after a fact's text.
+    const knownBySuffix = (e: DivergenceEntry) => (
+        <span className={`text-[9px] ml-1 ${knownByChipClass(e.knownBy)}`}>(known to: {knownBySummary(e.knownBy, npcLedger ?? [])})</span>
+    );
+
     return (
         <>
-            <button
-                onClick={handleStartDedup}
-                disabled={dedupRunning}
-                className="flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-                <Sparkles size={9} />
-                Find Duplicates
-            </button>
+            <div className="flex items-center gap-1 flex-wrap">
+                <button
+                    onClick={handleStartDedup}
+                    disabled={dedupRunning}
+                    className="flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded text-amber-400 bg-amber-500/10 hover:bg-amber-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                    <Sparkles size={9} />
+                    Find Duplicates
+                </button>
+                <button
+                    onClick={handleStartSimilarity}
+                    disabled={simRunning}
+                    className="flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Group facts by subject and assign/repair subject tokens. Does NOT disable or delete any fact."
+                >
+                    <Link2 size={9} />
+                    Find Similarity
+                </button>
+                {simRunning && (
+                    <button
+                        onClick={handleStopSimilarity}
+                        className="flex items-center gap-0.5 text-[9px] text-red-400 hover:text-red-300 px-1"
+                    >
+                        <X size={9} /> Stop
+                    </button>
+                )}
+            </div>
+
+            {simStatus && (
+                <div className="text-[9px] text-text-dim">{simStatus}</div>
+            )}
+            {simSummary && !simRunning && (
+                <div className="text-[9px] text-purple-400">{simSummary}</div>
+            )}
+            {simError && !simRunning && (
+                <div className="text-[9px] text-red-400">{simError}</div>
+            )}
 
             <div className="flex items-center gap-1">
                 <button
@@ -245,6 +509,12 @@ export function FactsView() {
                     className={`text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded ${factsView === 'topic' ? 'text-terminal bg-terminal/10' : 'text-text-dim'}`}
                 >
                     By Topic
+                </button>
+                <button
+                    onClick={() => setFactsView('subject')}
+                    className={`text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded ${factsView === 'subject' ? 'text-terminal bg-terminal/10' : 'text-text-dim'}`}
+                >
+                    By Subject
                 </button>
             </div>
 
@@ -326,6 +596,14 @@ export function FactsView() {
                                                                 </button>
                                                             </div>
                                                         </div>
+                                                    ) : knownByEditingId === e.id ? (
+                                                        <KnownByEditor
+                                                            key={e.id}
+                                                            entry={e}
+                                                            npcLedger={npcLedger ?? []}
+                                                            onApply={(kb) => { editDivergenceKnownBy(e.id, kb); setKnownByEditingId(null); }}
+                                                            onClose={() => setKnownByEditingId(null)}
+                                                        />
                                                     ) : (
                                                         <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
                                                             <input
@@ -338,18 +616,9 @@ export function FactsView() {
                                                             <span className="min-w-0 flex-1">
                                                                 {e.text}
                                                                 <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
+                                                                {knownBySuffix(e)}
                                                             </span>
-                                                            <span className="flex items-center gap-0.5 shrink-0">
-                                                                <button onClick={() => pinDivergenceFact(e.id)} className="text-text-muted hover:text-amber-400 p-0.5" title="Pin">
-                                                                    <Pin size={9} />
-                                                                </button>
-                                                                <button onClick={() => handleStartEdit(e)} className="text-text-muted hover:text-amber-400 p-0.5" title="Edit">
-                                                                    <Edit2 size={9} />
-                                                                </button>
-                                                                <button onClick={() => handleDelete(e.id)} className="text-text-muted hover:text-red-400 p-0.5" title="Delete">
-                                                                    <Trash2 size={9} />
-                                                                </button>
-                                                            </span>
+                                                            {rowActions(e)}
                                                         </div>
                                                     )
                                                 ))}
@@ -358,6 +627,92 @@ export function FactsView() {
                                     </div>
                                 );
                             })}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            {factsView === 'subject' && (
+                <div className="space-y-2">
+                    {pinnedEntries.length > 0 && (
+                        <div className="space-y-1">
+                            <div className="text-[9px] uppercase font-bold text-amber-400 tracking-wider flex items-center gap-1">
+                                <Pin size={9} /> Pinned
+                            </div>
+                            {pinnedEntries.map(e => (
+                                <div key={e.id} className="flex items-start gap-1 text-[11px] text-text-primary">
+                                    <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
+                                    <span className="min-w-0 flex-1">
+                                        <span className={`${CATEGORY_COLORS[e.category]} text-[9px] uppercase`}>{CATEGORY_LABELS[e.category]}</span>
+                                        {' '}{e.text}
+                                        <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
+                                        {knownBySuffix(e)}
+                                    </span>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    {subjectGroups.map(group => {
+                        const isTokened = group.entries[0].subjectToken !== undefined;
+                        const label = isTokened ? subjectLabel(group.token) : '(ungrouped)';
+                        const isExpanded = expandedSubject === group.token;
+                        const latestSceneRef = group.entries[group.entries.length - 1].sceneRef;
+
+                        return (
+                            <div key={group.token} className="border border-border/30 rounded">
+                                <button
+                                    className="w-full flex items-center justify-between px-2 py-1.5 text-left"
+                                    onClick={() => setExpandedSubject(isExpanded ? null : group.token)}
+                                >
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <span className="text-[11px] font-bold text-text-primary truncate">{label}</span>
+                                        <span className="text-[9px] text-text-dim shrink-0">{group.entries.length} beat{group.entries.length === 1 ? '' : 's'}</span>
+                                    </div>
+                                    {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+                                </button>
+
+                                {isExpanded && (
+                                    <div className="border-t border-border/20 px-3 pb-1.5 pt-1 space-y-0.5">
+                                        {group.entries.map(e => {
+                                            const isLatest = e.sceneRef === latestSceneRef;
+                                            return knownByEditingId === e.id ? (
+                                                <KnownByEditor
+                                                    key={e.id}
+                                                    entry={e}
+                                                    npcLedger={npcLedger ?? []}
+                                                    onApply={(kb) => { editDivergenceKnownBy(e.id, kb); setKnownByEditingId(null); }}
+                                                    onClose={() => setKnownByEditingId(null)}
+                                                />
+                                            ) : (
+                                                <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
+                                                    <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
+                                                    <span className="min-w-0 flex-1">
+                                                        <span className="text-text-dim/50 text-[9px]">[#{e.sceneRef}]</span>{' '}
+                                                        {e.text}
+                                                        {isLatest && group.entries.length > 1 && (
+                                                            <span className="ml-1 text-[8px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1 rounded">latest</span>
+                                                        )}
+                                                        {knownBySuffix(e)}
+                                                    </span>
+                                                    {rowActions(e)}
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
+
+                    {entries.length === 0 && (
+                        <div className="text-[11px] text-text-dim/50 italic py-4 text-center">
+                            No established facts yet. Facts are extracted when chapters seal.
+                        </div>
+                    )}
+                    {entries.length > 0 && subjectGroups.length === 0 && (
+                        <div className="text-[11px] text-text-dim/50 italic py-4 text-center">
+                            No subject groups yet. Run Find Similarity to group facts by subject.
                         </div>
                     )}
                 </div>
@@ -377,6 +732,7 @@ export function FactsView() {
                                         <span className={`${CATEGORY_COLORS[e.category]} text-[9px] uppercase`}>{CATEGORY_LABELS[e.category]}</span>
                                         {' '}{e.text}
                                         <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
+                                        {knownBySuffix(e)}
                                     </span>
                                     <span className="flex items-center gap-0.5 shrink-0">
                                         <button onClick={() => pinDivergenceFact(e.id)} className="text-amber-400 p-0.5" title="Unpin">
@@ -469,6 +825,14 @@ export function FactsView() {
                                                                     </button>
                                                                 </div>
                                                             </div>
+                                                        ) : knownByEditingId === e.id ? (
+                                                            <KnownByEditor
+                                                                key={e.id}
+                                                                entry={e}
+                                                                npcLedger={npcLedger ?? []}
+                                                                onApply={(kb) => { editDivergenceKnownBy(e.id, kb); setKnownByEditingId(null); }}
+                                                                onClose={() => setKnownByEditingId(null)}
+                                                            />
                                                         ) : (
                                                             <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
                                                                 <input
@@ -481,18 +845,9 @@ export function FactsView() {
                                                                 <span className="min-w-0 flex-1">
                                                                     {e.text}
                                                                     <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
+                                                                    {knownBySuffix(e)}
                                                                 </span>
-                                                                <span className="flex items-center gap-0.5 shrink-0">
-                                                                    <button onClick={() => pinDivergenceFact(e.id)} className="text-text-muted hover:text-amber-400 p-0.5" title="Pin">
-                                                                        <Pin size={9} />
-                                                                    </button>
-                                                                    <button onClick={() => handleStartEdit(e)} className="text-text-muted hover:text-amber-400 p-0.5" title="Edit">
-                                                                        <Edit2 size={9} />
-                                                                    </button>
-                                                                    <button onClick={() => handleDelete(e.id)} className="text-text-muted hover:text-red-400 p-0.5" title="Delete">
-                                                                        <Trash2 size={9} className="inline" />
-                                                                    </button>
-                                                                </span>
+                                                                {rowActions(e)}
                                                             </div>
                                                         )
                                                     ))}

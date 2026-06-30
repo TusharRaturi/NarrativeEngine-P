@@ -155,6 +155,9 @@ export type NPCPressure = {
     history: NPCPressureHistory[];
 };
 
+/** A name the auto-detector noticed but did NOT add — the player decides. (WO-11.3) */
+export type NpcSuggestion = { name: string; context?: string; firstSeen: number };
+
 export type NPCEntry = {
     id: string;
     name: string;

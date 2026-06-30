@@ -3,6 +3,7 @@ import remarkGfm from 'remark-gfm';
 import { Edit2, RotateCcw, Trash2, Loader2 } from 'lucide-react';
 import type { ChatMessage, DebugSection } from '../types';
 import { DebugPayloadView } from './DebugPayloadView';
+import { ToolCallChips } from './chat/ToolCallChips';
 
 // WO-J: NPC names arrive wrapped in [Name] / [**Name**] brackets so the ledger detector
 // can read them out of the raw content. Render them as inline **bold** markdown instead of
@@ -29,6 +30,8 @@ interface MessageBubbleProps {
     onStartEdit: (message: ChatMessage) => void;
     onRegenerate: (id: string) => void;
     onDelete: (id: string) => void;
+    /** Raw result content for the first tool call on this message, if any. */
+    toolResult?: string;
 }
 
 export function MessageBubble({
@@ -40,6 +43,7 @@ export function MessageBubble({
     onStartEdit,
     onRegenerate,
     onDelete,
+    toolResult,
 }: MessageBubbleProps) {
     let markdownContent: string = typeof msg.displayContent === 'string'
         ? msg.displayContent
@@ -112,6 +116,9 @@ export function MessageBubble({
                 </div>
 
                 <div className="gm-prose">
+                    {msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0 && (
+                        <ToolCallChips toolCalls={msg.tool_calls} toolResult={toolResult} />
+                    )}
                     {thinkingBlock && showReasoning && (
                         <details className="mb-3 bg-void-darker border border-terminal/20 rounded overflow-hidden">
                             <summary className="cursor-pointer p-2 text-[10px] text-terminal/60 hover:text-terminal transition-colors select-none uppercase tracking-widest flex items-center gap-2 bg-terminal/5">

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { Send, Save, Loader2, Zap, Scroll, Edit2, X, Square, Search, Check, Package, BookCheck, Pin, Replace, UserPlus, Dices } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
@@ -72,6 +72,18 @@ export function ChatArea() {
     const [showPCCreator, setShowPCCreator] = useState(false);
     // Phase 6: GM-proposed inventory change awaiting user confirmation.
     const [pendingProposal, setPendingProposal] = useState<InventoryProposal | null>(null);
+
+    // WO-11.6 — Map tool_call_id -> result content, sourced from the (filtered-out)
+    // `tool` role messages, so each assistant bubble can surface what its tool call
+    // returned as a clean chip instead of raw system text.
+    const toolResultById = useMemo(() => {
+        const map = new Map<string, string>();
+        for (const m of messages) {
+            if (m.role === 'tool' && m.tool_call_id) map.set(m.tool_call_id, m.content);
+        }
+        return map;
+    }, [messages]);
+
     const deepArmed = useAppStore(s => s.deepArmed);
 
     // Selection state & action handlers (moved from Header for bottom toolbar visibility)
@@ -365,6 +377,7 @@ export function ChatArea() {
             setLastPayloadTrace: storeSnapshot.setLastPayloadTrace,
             setDivergenceRegister: storeSnapshot.setDivergenceRegister,
             setOnStageNpcIds: storeSnapshot.setOnStageNpcIds,
+            addNpcSuggestions: storeSnapshot.addNpcSuggestions,
             archiveNPC: storeSnapshot.archiveNPC,
             restoreNPC: storeSnapshot.restoreNPC,
             stageInventoryProposal: (proposal) => setPendingProposal(proposal),
@@ -562,6 +575,7 @@ export function ChatArea() {
                         onStartEdit={startEditing}
                         onRegenerate={handleRegenerate}
                         onDelete={(id) => handleDeleteOutput(id)}
+                        toolResult={msg.tool_calls?.[0] ? toolResultById.get(msg.tool_calls[0].id) : undefined}
                     />
                 ))}
 

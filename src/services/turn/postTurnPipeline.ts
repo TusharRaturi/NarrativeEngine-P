@@ -8,7 +8,7 @@ import { sealChapterCombined } from '../saveFileEngine';
 import { backgroundQueue } from '../infrastructure/backgroundQueue';
 import { extractSceneEvents } from '../archive-memory/sceneEventExtractor';
 import { extractNPCNames, classifyNPCNames, validateNPCCandidates } from '../npc/npcDetector';
-import { generateNPCProfile, updateExistingNPCs, backfillNPCDrives } from '../chatEngine';
+import { updateExistingNPCs, backfillNPCDrives } from '../chatEngine';
 import { scanPressure, buildPressurePatch, shouldArchiveNPC, findArchivedToRestore } from '../npc/npcPressureTracker';
 import { scanCharacterProfile } from '../characterProfileParser';
 import { scanCharacterTraits } from '../characterTraitParser';
@@ -471,15 +471,6 @@ async function runNPCTrack(
 
     const { newNames, existingNpcs: existingNpcsToUpdate } = classifyNPCNames(validatedNames, npcLedger, excludeNames);
 
-    const guardedAddNPC = (npc: Parameters<typeof callbacks.addNPC>[0]) => {
-        const currentId = useAppStore.getState().activeCampaignId;
-        if (currentId !== activeCampaignId) {
-            console.warn(`[NPC Auto-Gen] Dropping NPC "${npc.name}" — campaign switched (${activeCampaignId} → ${currentId})`);
-            return;
-        }
-        callbacks.addNPC(npc);
-    };
-
     const guardedUpdateNPC = (id: string, patch: Parameters<typeof callbacks.updateNPC>[1]) => {
         const currentId = useAppStore.getState().activeCampaignId;
         if (currentId !== activeCampaignId) {
@@ -490,14 +481,8 @@ async function runNPCTrack(
     };
 
     for (const potentialName of newNames) {
-        console.log(`[NPC Auto-Gen] New character detected: "${potentialName}" — queuing background profile generation...`);
-        const genProvider = state.getFreshProvider();
-        if (genProvider) {
-            backgroundQueue.push(
-                `NPC-Gen:${potentialName}`,
-                () => generateNPCProfile(genProvider, allMsgs, potentialName, guardedAddNPC)
-            ).catch(err => console.warn(`[NPC Auto-Gen] Background generation failed for "${potentialName}":`, err));
-        }
+        console.log(`[NPC Auto-Gen] New character detected: "${potentialName}" — adding to suggestions for player review...`);
+        callbacks.addNpcSuggestions?.([potentialName], lastAssistantContent);
     }
 
     if (existingNpcsToUpdate.length > 0) {

@@ -98,6 +98,7 @@ const makeCallbacks = (): TurnCallbacks => ({
     setCondensed: vi.fn(),
     setStreaming: vi.fn(),
     setLoadingStatus: vi.fn(),
+    addNpcSuggestions: vi.fn(),
 });
 
 const ASSISTANT_CONTENT = 'The goblin falls to the ground.';
@@ -176,7 +177,7 @@ describe('runPostTurnPipeline', () => {
         expect(autoSealCalls).toHaveLength(0);
     });
 
-    it('queues NPC-Gen for new NPC names detected in assistant content', async () => {
+    it('populates NPC suggestions for new NPC names detected in assistant content', async () => {
         mockApi.archive.append.mockResolvedValueOnce({ sceneId: '001' });
         mockApi.chapters.list.mockResolvedValueOnce([]);
 
@@ -184,9 +185,12 @@ describe('runPostTurnPipeline', () => {
         mockValidateNPCCandidates.mockResolvedValueOnce(['Kaelen']);
         mockClassifyNPCNames.mockReturnValueOnce({ newNames: ['Kaelen'], existingNpcs: [] });
 
-        await runPostTurnPipeline(makeState(), makeCallbacks(), ASSISTANT_CONTENT, ALL_MSGS);
+        const callbacks = makeCallbacks();
+        await runPostTurnPipeline(makeState(), callbacks, ASSISTANT_CONTENT, ALL_MSGS);
 
-        expect(mockBQ.push).toHaveBeenCalledWith('NPC-Gen:Kaelen', expect.any(Function));
+        expect(callbacks.addNpcSuggestions).toHaveBeenCalledWith(['Kaelen'], ASSISTANT_CONTENT);
+        const npcGenCalls = vi.mocked(mockBQ.push).mock.calls.filter(c => c[0] === 'NPC-Gen:Kaelen');
+        expect(npcGenCalls).toHaveLength(0);
     });
 
     it('calls incrementBookkeepingTurnCounter and resetBookkeepingTurnCounter when turnCount >= interval', async () => {
