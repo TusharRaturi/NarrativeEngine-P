@@ -94,6 +94,38 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
         updateMeta(chunkId, { activationModes: modes });
     };
 
+    const persistBulk = (resolve: (meta: RuleChunkMeta) => ('vector' | 'keyword' | 'always')[]) => {
+        const currentMeta = context.rulesChunkMeta ?? {};
+        const newMeta = { ...currentMeta };
+        for (const cwm of chunksWithMeta) {
+            const existing = currentMeta[cwm.chunk.id] ?? cwm.meta;
+            newMeta[cwm.chunk.id] = { ...existing, activationModes: resolve(existing) };
+        }
+        updateContext({ rulesChunkMeta: newMeta });
+        setChunksWithMeta(prev => prev.map(c => ({ ...c, meta: { ...c.meta, activationModes: resolve(c.meta) } })));
+    };
+
+    const bulkToggleMode = (mode: 'vector' | 'keyword' | 'always') => {
+        if (chunksWithMeta.length === 0) return;
+        const withMode = chunksWithMeta.filter(c => c.meta.activationModes.includes(mode)).length;
+        const turnOn = withMode < chunksWithMeta.length / 2;
+        persistBulk(meta => {
+            const has = meta.activationModes.includes(mode);
+            return turnOn
+                ? (has ? meta.activationModes : [...meta.activationModes, mode])
+                : meta.activationModes.filter(m => m !== mode);
+        });
+    };
+
+    const bulkDisableAll = () => {
+        if (chunksWithMeta.length === 0) return;
+        persistBulk(() => []);
+    };
+
+    const bulkModeIsOn = (mode: 'vector' | 'keyword' | 'always') =>
+        chunksWithMeta.length > 0 &&
+        chunksWithMeta.filter(c => c.meta.activationModes.includes(mode)).length >= chunksWithMeta.length / 2;
+
     const addKeyword = (chunkId: string) => {
         const kw = (newKeyword[chunkId] || '').trim().toLowerCase();
         if (!kw) return;
@@ -326,6 +358,36 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
                         className="h-full bg-terminal transition-all duration-200"
                         style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
                     />
+                </div>
+            )}
+
+            {chunksWithMeta.length > 0 && (
+                <div className="flex items-center gap-1.5 pt-1">
+                    <span className="text-[8px] text-text-dim/60 uppercase tracking-wider shrink-0">Bulk:</span>
+                    {(['vector', 'keyword', 'always'] as const).map(mode => {
+                        const on = bulkModeIsOn(mode);
+                        return (
+                            <button
+                                key={mode}
+                                onClick={() => bulkToggleMode(mode)}
+                                title={`${on ? 'Turn off' : 'Turn on'} ${mode} for all chunks`}
+                                className={`flex-1 py-1.5 md:py-1 text-[9px] uppercase tracking-wider rounded border transition-colors ${
+                                    on
+                                        ? 'bg-terminal/15 text-terminal border-terminal/40'
+                                        : 'bg-surface text-text-dim border-transparent hover:text-terminal hover:bg-terminal/10'
+                                }`}
+                            >
+                                {mode}
+                            </button>
+                        );
+                    })}
+                    <button
+                        onClick={bulkDisableAll}
+                        title="Disable all chunks (clears every mode)"
+                        className="flex-1 py-1.5 md:py-1 text-[9px] uppercase tracking-wider rounded bg-surface text-text-dim hover:text-danger hover:bg-danger/10 transition-colors"
+                    >
+                        Disable All
+                    </button>
                 </div>
             )}
 
