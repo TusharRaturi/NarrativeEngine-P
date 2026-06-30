@@ -12,6 +12,8 @@ import {
     DEFAULT_WORLD_WHO, DEFAULT_WORLD_WHERE, DEFAULT_WORLD_WHY, DEFAULT_WORLD_WHAT,
 } from '../store/slices/settingsSlice';
 import { dedupeNPCLedger } from '../store/slices/campaignSlice';
+import { loadLootTree } from './lore/lootTreeLoader';
+
 
 export const DEFAULT_CONTEXT = {
     loreRaw: '', rulesRaw: '', canonState: '', headerIndex: '',
@@ -36,8 +38,9 @@ export async function initializeCampaignState(params: {
     campaignId: string;
     loreFile: File | null;
     rulesFile: File | null;
+    lootFile?: File | null;
 }): Promise<void> {
-    const { campaignId, loreFile, rulesFile } = params;
+    const { campaignId, loreFile, rulesFile, lootFile } = params;
 
     let seeds: ReturnType<typeof extractEngineSeeds> | null = null;
     if (loreFile) {
@@ -67,10 +70,21 @@ export async function initializeCampaignState(params: {
         seeds = extractEngineSeeds(chunks);
     }
 
+    let lootTree: any = null;
+    if (lootFile) {
+        try {
+            const rawLoot = JSON.parse(await lootFile.text());
+            lootTree = loadLootTree(rawLoot);
+        } catch (e) {
+            console.error('[LootLoader] Failed to parse lootFile:', e);
+        }
+    }
+
     const existingState = await loadCampaignState(campaignId);
-    if (!existingState || rulesFile || seeds) {
+    if (!existingState || rulesFile || seeds || lootTree) {
         const ctx = { ...DEFAULT_CONTEXT, ...(existingState?.context ?? {}) } as GameContext;
         if (rulesFile) ctx.rulesRaw = await rulesFile.text();
+        if (lootTree) ctx.lootTree = lootTree;
         if (seeds) {
             ctx.surpriseConfig = {
                 ...ctx.surpriseConfig, initialDC: ctx.surpriseConfig?.initialDC ?? 95,

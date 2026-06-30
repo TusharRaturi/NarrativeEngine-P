@@ -3,6 +3,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Send, Save, Loader2, Zap, Scroll, Edit2, X, Square, Search, Check, Package, BookCheck, Pin, Replace, UserPlus, Dices } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { runTurn } from '../services/turn/turnOrchestrator';
+import { LootRollModal } from './chat/LootRollModal';
 import { uid } from '../utils/uid';
 import type { InventoryProposal, InventoryItem, InventoryItemCategory, ManualRollMode } from '../types';
 import { set } from 'idb-keyval';
@@ -110,6 +111,8 @@ export function ChatArea() {
     const openRenameModal = useAppStore(s => s.openRenameModal);
     const armedRoll = useAppStore(s => s.armedRoll);
     const setArmedRoll = useAppStore(s => s.setArmedRoll);
+    const armedLoot = useAppStore(s => s.armedLoot);
+    const openLootRollModal = useAppStore(s => s.openLootRollModal);
 
     const [loreSel, setLoreSel] = useState<SelectionSnapshot | null>(null);
     const [pinSel, setPinSel] = useState<SelectionSnapshot | null>(null);
@@ -298,6 +301,9 @@ export function ChatArea() {
         const useArmedRoll = useAppStore.getState().armedRoll;
         useAppStore.getState().setArmedRoll(null);
 
+        const useArmedLoot = useAppStore.getState().armedLoot;
+        useAppStore.getState().clearArmedLoot();
+
         if (!overrideText) {
             setInput('');
             resetTextareaHeight();
@@ -337,6 +343,7 @@ export function ChatArea() {
             onStageNpcIds: storeSnapshot.onStageNpcIds,
             pinnedExcerpts: storeSnapshot.pinnedExcerpts,
             armedRoll: useArmedRoll,
+            armedLoot: useArmedLoot,
             getFreshAuxiliaryProvider: () => {
                 const aux = useAppStore.getState().getActiveAuxiliaryEndpoint();
                 return aux?.modelName ? aux : useAppStore.getState().getActiveStoryEndpoint();
@@ -620,6 +627,33 @@ export function ChatArea() {
                     <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-terminal pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </div>
 
+                {/* Loot Engine WO-05: manual loot drop trigger. Mirrors the dice button. */}
+                {context?.lootTree && (
+                    <button
+                        onClick={() => {
+                            if (!context?.lootTree) {
+                                toast.warning('No loot table for this world');
+                                    return;
+                            }
+                            openLootRollModal();
+                        }}
+                        className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all whitespace-nowrap ${
+                            armedLoot
+                                ? 'border-amber-500 text-amber-500 bg-amber-500/10 hover:bg-amber-500/20 animate-pulse'
+                                : 'border-terminal/30 text-terminal/60 hover:text-terminal hover:bg-terminal/5'
+                        }`}
+                        title={
+                            armedLoot
+                                ? `Loot armed (${armedLoot.rolls}) — send to drop`
+                                : 'Roll loot — arm a drop, send to resolve'
+                        }
+                    >
+                        <Package size={13} />
+                        <span className="hidden xs:inline">{armedLoot ? `LOOT ARMED (${armedLoot.rolls})` : 'Roll Loot'}</span>
+                        <span className="inline xs:hidden">{armedLoot ? `ARMED (${armedLoot.rolls})` : 'Loot'}</span>
+                    </button>
+                )}
+
                 {/* Text Selection Actions - always clickable with adaptive styling and informational toasts */}
                 <button
                     onMouseDown={handleLoreCheck}
@@ -773,6 +807,8 @@ export function ChatArea() {
                     onCancel={() => setShowPCCreator(false)}
                 />
             )}
+
+            <LootRollModal />
         </div>
     );
 }

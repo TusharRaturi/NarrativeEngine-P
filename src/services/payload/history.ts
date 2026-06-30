@@ -40,13 +40,17 @@ export function buildHistory(opts: {
     let historyUsed = 0;
     for (let i = candidateMessages.length - 1; i >= 0; i--) {
         const msg = candidateMessages[i];
-        const textToEstimate = msg.content || JSON.stringify(msg.tool_calls || '') || '';
+        let content = msg.content ?? null;
+        if (msg.role === 'user' && typeof content === 'string') {
+            content = content.replace(/\n?\[(?:DICE OUTCOMES:|SURPRISE EVENT:|ENCOUNTER EVENT:|WORLD_EVENT:|LOOT DROP:)[^\]]*\]/g, '');
+        }
+        const textToEstimate = content || JSON.stringify(msg.tool_calls || '') || '';
         const cost = countTokens(textToEstimate);
         if (historyUsed + cost > historyBudget) break;
 
         const openAIMsg: OpenAIMessage = {
             role: msg.role as 'system' | 'user' | 'assistant' | 'tool',
-            content: msg.content ?? null
+            content
         };
         if (msg.name) openAIMsg.name = msg.name;
         if (msg.tool_calls) openAIMsg.tool_calls = msg.tool_calls;

@@ -16,6 +16,9 @@ export interface CampaignFormModalProps {
     rulesName: string;
     setRulesFile: (f: File) => void;
     setRulesName: (v: string) => void;
+    lootName: string;
+    setLootFile: (f: File) => void;
+    setLootName: (v: string) => void;
     handleSave: () => void;
     resetForm: () => void;
     onClose: () => void;
@@ -27,6 +30,7 @@ export function CampaignFormModal(props: CampaignFormModalProps) {
         coverPreview, handleCoverChange, clearCover,
         loreName, setLoreFile, setLoreName,
         rulesName, setRulesFile, setRulesName,
+        lootName, setLootFile, setLootName,
         handleSave, resetForm, onClose,
     } = props;
 
@@ -113,6 +117,14 @@ export function CampaignFormModal(props: CampaignFormModalProps) {
                 </ModalLabel>
                 <FilePickerRow icon={<BookOpen size={13} />} label={rulesName || 'Choose file…'} accept=".md,.txt"
                     onChange={f => { setRulesFile(f); setRulesName(f.name); }} />
+
+                <div style={{ height: 16 }} />
+
+                <ModalLabel>
+                    World Loot (.json){editingCampaign && <span style={{ color: 'rgba(107,107,107,0.45)', fontWeight: 400, marginLeft: 6, textTransform: 'none', letterSpacing: 0 }}>— re-upload to replace</span>}
+                </ModalLabel>
+                <FilePickerRow icon={<BookOpen size={13} />} label={lootName || 'Choose file…'} accept=".json"
+                    onChange={f => { setLootFile(f); setLootName(f.name); }} />
 
                 <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', marginTop: 28 }}>
                     <GhostBtn onClick={close}>Cancel</GhostBtn>

@@ -18,11 +18,14 @@ export function useCampaignForm(params: {
     const [loreName, setLoreName] = useState('');
     const [rulesFile, setRulesFile] = useState<File | null>(null);
     const [rulesName, setRulesName] = useState('');
+    const [lootFile, setLootFile] = useState<File | null>(null);
+    const [lootName, setLootName] = useState('');
 
     const resetForm = () => {
         setName(''); setCoverFile(null); setCoverPreview('');
         setLoreFile(null); setLoreName('');
         setRulesFile(null); setRulesName('');
+        setLootFile(null); setLootName('');
         setEditingCampaign(null);
     };
 
@@ -32,8 +35,8 @@ export function useCampaignForm(params: {
         setEditingCampaign(campaign);
         setName(campaign.name);
         setCoverPreview(campaign.coverImage || '');
-        setLoreName(''); setRulesName('');
-        setLoreFile(null); setRulesFile(null); setCoverFile(null);
+        setLoreName(''); setRulesName(''); setLootName('');
+        setLoreFile(null); setRulesFile(null); setLootFile(null); setCoverFile(null);
     };
 
     const handleCoverChange = (file: File) => {
@@ -58,7 +61,7 @@ export function useCampaignForm(params: {
         else if (isEdit) campaign.coverImage = coverPreview;
 
         await saveCampaign(campaign);
-        await initializeCampaignState({ campaignId: campaign.id, loreFile, rulesFile });
+        await initializeCampaignState({ campaignId: campaign.id, loreFile, rulesFile, lootFile });
 
         resetForm();
         onDone();
@@ -71,6 +74,7 @@ export function useCampaignForm(params: {
         coverFile, coverPreview, handleCoverChange, clearCover,
         loreFile, setLoreFile, loreName, setLoreName,
         rulesFile, setRulesFile, rulesName, setRulesName,
+        lootFile, setLootFile, lootName, setLootName,
         resetForm, openCreate, openEdit, handleSave,
         editingCampaign,
     };

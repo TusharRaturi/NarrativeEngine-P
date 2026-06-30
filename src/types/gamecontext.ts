@@ -5,6 +5,8 @@ export type { SceneStakes };
 import type { LoreChunk, RuleChunkMeta } from './lore';
 import type { ArcRecord } from './arc';
 export type { ArcRecord };
+import type { LootTree } from './loot';
+
 
 export type PipelinePhase =
     | 'idle'
@@ -164,6 +166,8 @@ export type GameContext = {
         combatKeywords?: string[];
     };
     statLabelMap?: Record<string, string>;
+    lootTree?: LootTree;
+    activeLootProfileId?: string;
 };
 
 export type OpenAITool = {

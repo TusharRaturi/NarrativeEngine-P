@@ -68,9 +68,8 @@ export function TokenGauge() {
     const total = settings.contextLimit;
     const remaining = Math.max(0, total - adjustedSystemTokens - historyTokens);
 
-    const pctSystem = Math.min((adjustedSystemTokens / total) * 100, 100);
-    const pctHistory = Math.min((historyTokens / total) * 100, 100 - pctSystem);
-    const pctFree = 100 - pctSystem - pctHistory;
+
+
 
     return (
         <div className="flex items-center gap-2.5 shrink-0 px-3">

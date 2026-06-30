@@ -286,6 +286,9 @@ export function CampaignHub() {
                     rulesName={form.rulesName}
                     setRulesFile={form.setRulesFile}
                     setRulesName={form.setRulesName}
+                    lootName={form.lootName}
+                    setLootFile={form.setLootFile}
+                    setLootName={form.setLootName}
                     handleSave={form.handleSave}
                     resetForm={form.resetForm}
                     onClose={() => setModalOpen(false)}
