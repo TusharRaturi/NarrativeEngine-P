@@ -7,6 +7,27 @@ export function LoreTab() {
     const updateLoreChunk = useAppStore((s) => s.updateLoreChunk);
     const [newKeyword, setNewKeyword] = useState<Record<string, string>>({});
 
+    const bulkModeIsOn = (mode: 'vector' | 'keyword' | 'always') =>
+        loreChunks.length > 0 &&
+        loreChunks.filter(c => c.ragMode === mode).length >= loreChunks.length / 2;
+
+    const bulkToggleMode = (mode: 'vector' | 'keyword' | 'always') => {
+        if (loreChunks.length === 0) return;
+        const withMode = loreChunks.filter(c => c.ragMode === mode).length;
+        const turnOn = withMode < loreChunks.length / 2;
+        loreChunks.forEach(chunk => {
+            const nextMode = turnOn ? mode : undefined;
+            updateLoreChunk(chunk.id, { ragMode: nextMode });
+        });
+    };
+
+    const bulkDisableAll = () => {
+        if (loreChunks.length === 0) return;
+        loreChunks.forEach(chunk => {
+            updateLoreChunk(chunk.id, { ragMode: undefined });
+        });
+    };
+
     const addKeyword = (chunkId: string) => {
         const kw = (newKeyword[chunkId] || '').trim().toLowerCase();
         if (!kw) return;
@@ -56,7 +77,7 @@ export function LoreTab() {
             </div>
 
             {/* Controls row */}
-            <div className="flex items-center gap-2 mb-1.5">
+            <div className="flex items-center gap-2 mb-1.5 flex-wrap">
                 <label className="flex items-center gap-1 text-[9px] text-text-dim cursor-pointer">
                     <input
                         type="checkbox"
@@ -78,6 +99,23 @@ export function LoreTab() {
                         <option value={3}>3</option>
                         <option value={5}>5</option>
                         <option value={10}>10</option>
+                    </select>
+                </label>
+                {/* WO-11.8 — Per-chunk RAG activation mode. Authoritative over
+                    heuristics; 'always' is the explicit equivalent of the
+                    alwaysInclude checkbox for the hybrid retrieval path. */}
+                <label className="flex items-center gap-1 text-[9px] text-text-dim">
+                    Match:
+                    <select
+                        value={chunk.ragMode ?? ''}
+                        onChange={(e) => updateLoreChunk(chunk.id, { ragMode: (e.target.value || undefined) as LoreChunk['ragMode'] })}
+                        className="bg-surface border border-border rounded px-1 py-0.5 text-[9px] text-text-primary"
+                        title="How this chunk is matched during hybrid retrieval. Blank = auto (heuristics decide)."
+                    >
+                        <option value="">auto</option>
+                        <option value="vector">vector</option>
+                        <option value="keyword">keyword</option>
+                        <option value="always">always</option>
                     </select>
                 </label>
             </div>
@@ -119,9 +157,40 @@ export function LoreTab() {
 
     return (
         <div className="px-4 py-4 space-y-4">
-            <p className="text-[9px] text-text-dim/50">
-                Chunks trigger when keywords appear in recent messages
-            </p>
+            <div className="space-y-1">
+                <p className="text-[9px] text-text-dim/50">
+                    Chunks trigger when keywords appear in recent messages
+                </p>
+                {loreChunks.length > 0 && (
+                    <div className="flex items-center gap-1.5 pt-2">
+                        <span className="text-[8px] text-text-dim/60 uppercase tracking-wider shrink-0">Bulk:</span>
+                        {(['vector', 'keyword', 'always'] as const).map(mode => {
+                            const on = bulkModeIsOn(mode);
+                            return (
+                                <button
+                                    key={mode}
+                                    onClick={() => bulkToggleMode(mode)}
+                                    title={`${on ? 'Turn off' : 'Turn on'} ${mode} for all chunks`}
+                                    className={`flex-1 py-1.5 md:py-1 text-[9px] uppercase tracking-wider rounded border transition-colors ${
+                                        on
+                                            ? 'bg-terminal/15 text-terminal border-terminal/40'
+                                            : 'bg-surface text-text-dim border-transparent hover:text-terminal hover:bg-terminal/10'
+                                    }`}
+                                >
+                                    {mode}
+                                </button>
+                            );
+                        })}
+                        <button
+                            onClick={bulkDisableAll}
+                            title="Disable all chunks (sets match to auto)"
+                            className="flex-1 py-1.5 md:py-1 text-[9px] uppercase tracking-wider rounded bg-surface text-text-dim hover:text-danger hover:bg-danger/10 transition-colors"
+                        >
+                            Disable All
+                        </button>
+                    </div>
+                )}
+            </div>
             {loreChunks.length === 0 ? (
                 <p className="text-text-dim/50 text-xs text-center mt-8">
                     No lore uploaded for this campaign.
