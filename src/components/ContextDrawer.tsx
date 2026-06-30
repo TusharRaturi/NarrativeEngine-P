@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ScrollText, Database, Sparkles, Save, BookOpen, Brain, Sliders } from 'lucide-react';
+import { ScrollText, Database, Sparkles, Save, BookOpen, Brain, Sliders, User } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { RulesTab } from './context-drawer/RulesTab';
 import { RulesManagerTab } from './context-drawer/RulesManagerTab';
@@ -8,6 +8,7 @@ import { EnginesTab } from './context-drawer/EnginesTab';
 import { BookkeepingTab } from './context-drawer/BookkeepingTab';
 import { ChapterTab } from './context-drawer/ChapterTab';
 import { MemoryTab } from './context-drawer/MemoryTab';
+import { CharacterProfileEditor } from './context-drawer/CharacterProfileEditor';
 
 const TABS = [
     { key: 'sys'   as const, Icon: ScrollText, label: 'System Context' },
@@ -16,6 +17,7 @@ const TABS = [
     { key: 'eng'   as const, Icon: Sparkles,   label: 'Engine Tuning' },
     { key: 'chpt'  as const, Icon: BookOpen,   label: 'Chapters' },
     { key: 'mem'   as const, Icon: Brain,      label: 'Memory' },
+    { key: 'pc'    as const, Icon: User,        label: 'Character Profile' },
     { key: 'book'  as const, Icon: Save,       label: 'Bookkeeping' },
 ];
 
@@ -25,8 +27,12 @@ export function ContextDrawer() {
     const drawerOpen = useAppStore((s) => s.drawerOpen);
     const toggleDrawer = useAppStore((s) => s.toggleDrawer);
     const [activeTab, setActiveTab] = useState<TabKey>('sys');
+    const showPcTab = useAppStore((s) => s.settings.showPcTab ?? true);
 
     if (!drawerOpen) return null;
+
+    const filteredTabs = TABS.filter(tab => tab.key !== 'pc' || showPcTab);
+    const currentActiveTab = filteredTabs.some(t => t.key === activeTab) ? activeTab : 'sys';
 
     return (
         <>
@@ -54,12 +60,12 @@ export function ContextDrawer() {
 
                 {/* Tab Bar */}
                 <div className="flex border-b border-border shrink-0 overflow-x-auto no-scrollbar">
-                    {TABS.map(({ key, Icon: TabIcon, label }) => (
+                    {filteredTabs.map(({ key, Icon: TabIcon, label }) => (
                         <button
                             key={key}
                             onClick={() => setActiveTab(key)}
                             className={`flex-1 flex flex-col items-center gap-0.5 py-2 px-1 text-[9px] uppercase tracking-wider transition-colors ${
-                                activeTab === key
+                                currentActiveTab === key
                                     ? 'text-terminal border-b-2 border-terminal -mb-px'
                                     : 'text-text-dim hover:text-text-primary'
                             }`}
@@ -73,13 +79,14 @@ export function ContextDrawer() {
 
                 {/* Tab Panels */}
                 <div className="flex-1 overflow-y-auto">
-                    {activeTab === 'sys' && <RulesTab onOpenManager={() => setActiveTab('rules-mgr')} />}
-                    {activeTab === 'rules-mgr' && <RulesManagerTab onBack={() => setActiveTab('sys')} />}
-                    {activeTab === 'world' && <LoreTab />}
-                    {activeTab === 'eng' && <EnginesTab />}
-                    {activeTab === 'chpt' && <ChapterTab />}
-                    {activeTab === 'mem' && <MemoryTab />}
-                    {activeTab === 'book' && <BookkeepingTab />}
+                    {currentActiveTab === 'sys' && <RulesTab onOpenManager={() => setActiveTab('rules-mgr')} />}
+                    {currentActiveTab === 'rules-mgr' && <RulesManagerTab onBack={() => setActiveTab('sys')} />}
+                    {currentActiveTab === 'world' && <LoreTab />}
+                    {currentActiveTab === 'eng' && <EnginesTab />}
+                    {currentActiveTab === 'chpt' && <ChapterTab />}
+                    {currentActiveTab === 'mem' && <MemoryTab />}
+                    {currentActiveTab === 'pc' && showPcTab && <CharacterProfileEditor />}
+                    {currentActiveTab === 'book' && <BookkeepingTab />}
                 </div>
             </aside>
         </>

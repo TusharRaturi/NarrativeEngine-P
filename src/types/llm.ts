@@ -99,6 +99,7 @@ export type AppSettings = {
     embeddingModel?: 'standard' | 'high';  // kept for type parity with mobile; mainApp runs a single server-side embedder, so this is informational only
     imageStylePrompt?: string;       // prepended to every image generation prompt
     imageNegativePrompt?: string;    // negative prompt for image models that support it
+    showPcTab?: boolean;             // default true; hides/shows Character Profile tab in Context Drawer
 
     // Two-tier providers (new) — reusable endpoint configs referenced by preset *AIProviderId
     providers: LLMProvider[];

@@ -100,6 +100,7 @@ export const defaultSettings: AppSettings = {
     uiScale: 1.0,
     imageStylePrompt: '',
     imageNegativePrompt: '',
+    showPcTab: true,
 };
 
 export function applyTheme(theme: 'light' | 'dark' | 'system') {
@@ -311,6 +312,7 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         embeddingModel: raw.embeddingModel as ('standard' | 'high') | undefined,
         imageStylePrompt: (raw.imageStylePrompt as string) ?? '',
         imageNegativePrompt: (raw.imageNegativePrompt as string) ?? '',
+        showPcTab: (raw.showPcTab as boolean) ?? true,
     };
 }
 
