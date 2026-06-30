@@ -1,8 +1,9 @@
-import { ScrollText, Settings2 } from 'lucide-react';
+import { ScrollText, Settings2, Sparkles } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { PayloadTraceView } from '../PayloadTraceView';
 import { SceneNoteEditor } from '../SceneNoteEditor';
 import { countTokens } from '../../services/infrastructure/tokenizer';
+import { DEFAULT_RULES } from '../../services/rules/defaultRules';
 
 export function RulesTab({ onOpenManager }: { onOpenManager?: () => void }) {
     const context = useAppStore((s) => s.context);
@@ -25,8 +26,18 @@ export function RulesTab({ onOpenManager }: { onOpenManager?: () => void }) {
                     Rules / Mechanics
                 </label>
                 {usingDefaults && (
-                    <div className="text-[10px] text-terminal/80 mb-2">
-                        Using built-in default rules. Paste your own below to override.
+                    <div className="flex items-center justify-between mb-2">
+                        <span className="text-[10px] text-terminal/80">
+                            Using built-in default rules. Paste your own below to override.
+                        </span>
+                        <button
+                            onClick={() => updateContext({ rulesRaw: DEFAULT_RULES })}
+                            className="flex items-center gap-1 text-[9px] text-terminal hover:text-text-primary transition-colors font-bold uppercase tracking-wider bg-terminal/10 hover:bg-terminal/20 px-1.5 py-0.5 rounded-sm border border-terminal/20"
+                            title="Load AI GM OS v4.0 as a starting point"
+                        >
+                            <Sparkles size={9} />
+                            Load v4.0 Example
+                        </button>
                     </div>
                 )}
                 <textarea

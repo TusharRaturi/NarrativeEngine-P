@@ -25,7 +25,7 @@ Trigger: Player attempts an action with an uncertain outcome — combat hits, sk
 - Narrative Boon: flawless. Massive strategic or narrative advantage.`;
 
 function swapActionResolutionForToolMode(rules: string): string {
-    const marker = '### ACTION RESOLUTION';
+    const marker = '### Action Resolution';
     const idx = rules.indexOf(marker);
     if (idx === -1) return rules;
     const nextSectionMatch = rules.substring(idx + marker.length).match(/\n### /);

@@ -61,7 +61,7 @@ describe('buildPayload — default rules fallback', () => {
         const result = buildPayload(baseSettings(), ctx, [], 'I look around');
         const firstSystem = result.messages.find(m => m.role === 'system');
         expect(firstSystem).toBeDefined();
-        expect(firstSystem!.content).toContain('ROLE: Impartial GM.');
+        expect(firstSystem!.content).toContain('ROLE: Dynamic-Realism GM.');
     });
 
     it('uses user-provided rulesRaw instead of DEFAULT_RULES', () => {
@@ -75,12 +75,13 @@ describe('buildPayload — default rules fallback', () => {
     });
 
     it('DEFAULT_RULES contains all expected sections', () => {
-        expect(DEFAULT_RULES).toContain('### OUTPUT RULES');
-        expect(DEFAULT_RULES).toContain('### NPC ENGINE');
-        expect(DEFAULT_RULES).toContain('### NAME GENERATION');
-        expect(DEFAULT_RULES).toContain('### LORE');
-        expect(DEFAULT_RULES).toContain('### ACTION RESOLUTION');
-        expect(DEFAULT_RULES).toContain('### EVENT PROTOCOL');
+        expect(DEFAULT_RULES).toContain('### Output Format');
+        expect(DEFAULT_RULES).toContain('### NPC Engine');
+        expect(DEFAULT_RULES).toContain('### Name Generation');
+        expect(DEFAULT_RULES).toContain('### Lore Handling');
+        expect(DEFAULT_RULES).toContain('### Action Resolution');
+        expect(DEFAULT_RULES).toContain('### Event Protocol');
+        expect(DEFAULT_RULES).toContain('### World Pressures');
     });
 });
 
@@ -193,7 +194,7 @@ describe('buildPayload — scenario 1: minimal', () => {
         expect(result.messages.length).toBeGreaterThanOrEqual(2);
         expect(result.messages[0].role).toBe('system');
         // rules text is in the first system message
-        expect(result.messages[0].content).toContain('ROLE: Impartial GM.');
+        expect(result.messages[0].content).toContain('ROLE: Dynamic-Realism GM.');
     });
 
     it('the final user message contains the GM REMINDER literal', () => {
@@ -930,7 +931,7 @@ describe('buildPayload — cache_control: ephemeral markers', () => {
     it('stable content system message has cache_control: ephemeral', () => {
         const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
         const stableMsg = result.messages.find(
-            m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('ROLE: Impartial GM.')
+            m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('ROLE: Dynamic-Realism GM.')
         );
         expect(stableMsg).toBeDefined();
         expect((stableMsg as any).cache_control).toEqual({ type: 'ephemeral' });
