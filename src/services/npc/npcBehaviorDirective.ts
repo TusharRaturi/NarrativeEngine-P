@@ -80,37 +80,45 @@ export function buildBehaviorDirective(npc: NPCEntry, opts: BehaviorDirectiveOpt
     const example = npc.exampleOutput || '';
     if (example) parts.push(`Example: ${truncate(example, 80)}`);
 
-    // Phase 2 §9.1 — engine-built reaction menu. The engine scores REACTION_VOCAB against
-    // the NPC's fixed hex+traits and surfaces rank-1 + 2 sampled alternatives. The story AI
-    // may only pick ONE from the list — the load-bearing enforcement clause prevents it from
-    // inventing a softer, out-of-character reaction (the sycophant-smoothing failure mode).
-    // Skipped entirely for legacy hex-less NPCs or when the menu is empty.
-    // NOTE: `context` defaults to 'peaceful'; wire it from encounter/combat state when
-    // available at the call site (a later refinement). `matureMode` threads the same gate
-    // the want/action draws use.
-    if (npc.personalityHex) {
-        const context = opts.context ?? 'peaceful';
-        const rng = opts.rng ?? Math.random;
-        const matureMode = opts.matureMode ?? false;
-        const rawMenu = buildReactionMenu(npc, context, rng, matureMode);
-        // Inner repression (peaceful only): if the NPC's top impulse is a hostile/self-interested
-        // one, the engine rolls whether they hide it and rewrites that entry into a leak/mask
-        // token. The `event` (pressure delta / catharsis) is intentionally discarded here —
-        // payload assembly can re-run, so booking happens once-per-turn elsewhere, not in this
-        // read path. See reactionRepression.ts.
-        const { menu } = applyRepressionToMenu(rawMenu, npc, context, rng);
-        if (menu.length > 0) {
-            // NOTE: fallback switch point — if playtest shows the AI still always grabs the
-            // gentlest, replace the menu with a single engine-picked reaction (rank-1 or
-            // weighted-random among the surfaced set) asserted as fact. Same principle as the
-            // dice forcing function. Ship AI-picks-from-menu first; keep engine-picks in reserve.
-            parts.push(
-                `REACTIONS (choose ONE and play it — do NOT invent a softer reaction; prefer the less obvious when several fit): ${menu.join(' | ')}`
-            );
-        }
-    }
+    // Phase 2 §9.1 — engine-built reaction menu (extracted to buildReactionMenuLine so the
+    // payload world-context path can inject the same line for on-stage NPCs; see world.ts).
+    const menuLine = buildReactionMenuLine(npc, opts);
+    if (menuLine) parts.push(menuLine);
 
     return `PLAY AS: ${parts.join(' | ')}`;
+}
+
+/**
+ * Phase 2 §9.1 — the engine-built reaction menu line, as a standalone string.
+ *
+ * The engine scores REACTION_VOCAB against the NPC's fixed hex+traits and surfaces rank-1 + 2
+ * sampled alternatives. The story AI may only pick ONE — the load-bearing enforcement clause
+ * prevents it inventing a softer, out-of-character reaction (the sycophant-smoothing failure mode).
+ * Returns '' for legacy hex-less NPCs or when the menu is empty.
+ *
+ * Exported because the payload assembler (`payload/world.ts`) injects this same line for on-stage
+ * NPCs — `buildBehaviorDirective` is no longer the production payload path. Keep ONE implementation
+ * here so both callers stay in lockstep.
+ *
+ * NOTE: `context` defaults to 'peaceful'; wire it from encounter/combat state at the call site (a
+ * later refinement). `matureMode` threads the same gate the want/action draws use.
+ *
+ * The repression `event` (pressure delta / catharsis) is intentionally DISCARDED here — this is a
+ * read path that can re-run, so booking happens once-per-turn elsewhere (postTurnPipeline), never in
+ * payload assembly. See reactionRepression.ts.
+ */
+export function buildReactionMenuLine(npc: NPCEntry, opts: BehaviorDirectiveOpts = {}): string {
+    if (!npc.personalityHex) return '';
+    const context = opts.context ?? 'peaceful';
+    const rng = opts.rng ?? Math.random;
+    const matureMode = opts.matureMode ?? false;
+    const rawMenu = buildReactionMenu(npc, context, rng, matureMode);
+    const { menu } = applyRepressionToMenu(rawMenu, npc, context, rng);
+    if (menu.length === 0) return '';
+    // Fallback switch point — if playtest shows the AI still always grabs the gentlest, replace the
+    // menu with a single engine-picked reaction (rank-1 or weighted-random) asserted as fact, same
+    // principle as the dice forcing function. Ship AI-picks-from-menu first; keep engine-picks in reserve.
+    return `REACTIONS (choose ONE and play it — do NOT invent a softer reaction; prefer the less obvious when several fit): ${menu.join(' | ')}`;
 }
 
 export function buildDriftAlert(npc: NPCEntry): string | null {

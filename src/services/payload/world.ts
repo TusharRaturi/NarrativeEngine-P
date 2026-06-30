@@ -1,6 +1,6 @@
 import type { ChatMessage, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, TimelineEvent, DivergenceRegister, DivergenceEntry, ArchiveChapter, SceneEvent, SceneEventType } from '../../types';
 import { countTokens } from '../infrastructure/tokenizer';
-import { buildDriftAlert, buildKnowledgeBoundary } from '../npc/npcBehaviorDirective';
+import { buildDriftAlert, buildKnowledgeBoundary, buildReactionMenuLine } from '../npc/npcBehaviorDirective';
 import { relationBand, describeHex } from '../npc/agency/agencyBands';
 import { minifyLoreChunk, minifyNPC } from '../turn/contextMinifier';
 import { resolveTimeline, formatResolvedForContext } from '../campaign-state/timelineResolver';
@@ -117,6 +117,7 @@ export function buildWorld(opts: {
     budgetWorld: number;
     npcBudgetFloor: number;
     plannerEventTypes?: SceneEventType[];
+    matureMode?: boolean;
     isDebug: boolean;
     collector: TraceCollector;
 }): { worldContent: string; currentWorldTokens: number; divergenceContent: string; divergenceTokens: number; plannerEventTypes: SceneEventType[] } {
@@ -141,6 +142,7 @@ export function buildWorld(opts: {
         budgetWorld,
         npcBudgetFloor,
         plannerEventTypes: plannerEventTypesOpt,
+        matureMode,
         isDebug,
         collector,
     } = opts;
@@ -319,6 +321,7 @@ export function buildWorld(opts: {
 
         if (activeNPCs.length > 0) {
             const plannerTags = plannerEventTypes.length > 0 ? new Set(plannerEventTypes) : null;
+            const onStageSet = new Set(onStageNpcIds ?? []);
             const npcSegments: { npcId: string; content: string; tokens: number }[] = [];
 
             for (const npc of activeNPCs) {
@@ -339,6 +342,15 @@ export function buildWorld(opts: {
                     const boundary = buildKnowledgeBoundary(npc, archiveIndex, divergenceFacts);
                     if (boundary) extParts.push(boundary);
                 }
+                // Reaction menu (Phase 2 §9.1) — on-stage NPCs only; the engine-scored menu is the
+                // anti-sycophancy forcing function and is meaningful only for NPCs actually in the
+                // scene. matureMode threads the same gate the want draws use; context stays
+                // 'peaceful' until encounter/combat state is available here. The repression event is
+                // discarded (read path) — booking is once-per-turn in postTurnPipeline (WO-3).
+                if (onStageSet.has(npc.id)) {
+                    const menuLine = buildReactionMenuLine(npc, { matureMode });
+                    if (menuLine) extParts.push(menuLine);
+                }
                 const extLine = extParts.length > 0 ? extParts.join(' | ') : '';
                 const fullLine = extLine ? `${coreLine} | ${extLine}` : coreLine;
                 npcSegments.push({ npcId: npc.id, content: fullLine, tokens: countTokens(fullLine) });
@@ -346,7 +358,6 @@ export function buildWorld(opts: {
 
             // On-stage NPC↔NPC relations (sparse, directed). Main's relations are numeric
             // meters (-100..+100); render as a signed integer arrow.
-            const onStageSet = new Set(onStageNpcIds ?? []);
             const present = activeNPCs.filter(n => onStageSet.has(n.id));
             const relationLines: string[] = [];
             for (let i = 0; i < present.length; i++) {
