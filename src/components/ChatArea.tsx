@@ -543,7 +543,7 @@ export function ChatArea() {
                 </div>
             )}
 
-            <div ref={scrollContainerRef} className="chat-panel flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-3">
+            <div ref={scrollContainerRef} className="chat-panel flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-3 relative">
                 {messages.length === 0 && (
                     <div className="flex items-center justify-center h-full">
                         <div className="text-center space-y-3">
@@ -612,6 +612,23 @@ export function ChatArea() {
                 )}
 
                 <div ref={bottomRef} />
+
+                <div className="absolute right-3 bottom-3 flex flex-col gap-1.5 z-10">
+                    <button
+                        onClick={handlePrevMessage}
+                        className="flex items-center justify-center w-9 h-9 rounded-full bg-void-darker border border-text-dim/30 hover:border-text-dim text-text-dim hover:text-text-primary shadow-lg transition-all hover:bg-text-dim/10"
+                        title="Jump up one message"
+                    >
+                        <ChevronUp size={16} />
+                    </button>
+                    <button
+                        onClick={handleJumpToBottom}
+                        className="flex items-center justify-center w-9 h-9 rounded-full bg-void-darker border border-text-dim/30 hover:border-text-dim text-text-dim hover:text-text-primary shadow-lg transition-all hover:bg-text-dim/10"
+                        title="Jump to latest message"
+                    >
+                        <ArrowDown size={16} />
+                    </button>
+                </div>
             </div>
 
             <div className="px-2 md:px-4 pb-1 flex gap-2 overflow-x-auto no-scrollbar">
@@ -737,22 +754,6 @@ export function ChatArea() {
                 {activeCampaignId && (
                     <ArcInjectorButton />
                 )}
-                <button
-                    onClick={handlePrevMessage}
-                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-text-dim/30 hover:border-text-dim text-text-dim hover:text-text-primary text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-text-dim/5 whitespace-nowrap"
-                    title="Jump up one message"
-                >
-                    <ChevronUp size={13} />
-                    <span className="hidden xs:inline">Prev</span>
-                </button>
-                <button
-                    onClick={handleJumpToBottom}
-                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-text-dim/30 hover:border-text-dim text-text-dim hover:text-text-primary text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-text-dim/5 whitespace-nowrap"
-                    title="Jump to latest message"
-                >
-                    <ArrowDown size={13} />
-                    <span className="hidden xs:inline">Latest</span>
-                </button>
                 <button
                     onClick={handleOpenArchive}
                     disabled={!activeCampaignId}
