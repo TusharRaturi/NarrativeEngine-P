@@ -2,6 +2,7 @@ import type { ProviderConfig, EndpointConfig, DivergenceEntry, SceneEvent, Scene
 import { countTokens } from '../infrastructure/tokenizer';
 import { extractJson } from '../infrastructure/jsonExtract';
 import { llmCall } from '../../utils/llmCall';
+import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 import { DIVERGENCE_CATEGORIES, CATEGORY_DEFINITIONS, coerceCategory } from '../campaign-state/divergenceRegister';
 import { uid } from '../../utils/uid';
 import { truncateScenesToBudget } from './shared';
@@ -375,7 +376,7 @@ export async function sealChapterCombined(
             promptTokens: countTokens(prompt),
         });
 
-        const output = await llmCall(provider, prompt, { priority: 'low', maxTokens: scanBudget > 0 ? scanBudget : 2000 });
+        const output = await llmCall(provider, prompt, { priority: 'low', maxTokens: scanBudget > 0 ? scanBudget : 2000, trackingLabel: 'chapter-seal', timeoutMs: AI_CALL_TIMEOUT_MS });
         const result = parseCombinedSealOutput(output, chapterId, sceneIds, npcLedger);
 
         if (result.summary && !result.divergenceParseError) {

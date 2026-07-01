@@ -1,12 +1,12 @@
 import type { EndpointConfig, ProviderConfig, ArchiveIndexEntry } from '../../types';
 import { llmCall } from '../../utils/llmCall';
 import { extractJsonRobust } from '../infrastructure/jsonExtract';
+import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 
 export async function runArchivePlanner(
     provider: EndpointConfig | ProviderConfig,
     finalInput: string,
     candidateScenes: ArchiveIndexEntry[],
-    timeoutMs: number,
     signal?: AbortSignal,
 ): Promise<string[]> {
     try {
@@ -45,15 +45,13 @@ RULES:
 3. If no scenes are relevant, return an empty array [].
 4. Output a single JSON array of strings only. No markdown formatting, no prose, no reasoning tags, no backticks.`;
 
-        const abortSignal = signal
-            ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
-            : AbortSignal.timeout(timeoutMs);
-
         const raw = await llmCall(provider, prompt, {
             temperature: 0.1,
             priority: 'high',
             maxTokens: 300,
-            signal: abortSignal,
+            signal,
+            trackingLabel: 'archive-planner',
+            timeoutMs: AI_CALL_TIMEOUT_MS,
         });
 
         const { value: parsed, parseOk } = extractJsonRobust<string[]>(raw, []);

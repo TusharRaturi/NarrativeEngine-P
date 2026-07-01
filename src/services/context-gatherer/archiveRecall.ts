@@ -15,10 +15,9 @@ export async function gatherPlannerSceneIds(
     signal?: AbortSignal
 ): Promise<string[] | undefined> {
     const plannerEndpoint = state.getUtilityEndpoint?.();
-    const plannerTimeoutMs = (state.settings.utilityTimeoutSeconds ?? 45) * 1000;
     if (state.settings.enableArchivePlanner && plannerEndpoint?.endpoint) {
         try {
-            return await runArchivePlanner(plannerEndpoint, state.input, state.archiveIndex, plannerTimeoutMs, signal);
+            return await runArchivePlanner(plannerEndpoint, state.input, state.archiveIndex, signal);
         } catch {
             return undefined;
         }

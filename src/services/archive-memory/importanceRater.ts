@@ -1,5 +1,6 @@
 import type { ChatMessage, ProviderConfig, EndpointConfig } from '../../types';
 import { llmCall } from '../../utils/llmCall';
+import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 
 const IMPORTANCE_PROMPT = `Rate the narrative importance of the scene below on a 1-5 scale.
 
@@ -38,7 +39,7 @@ export async function rateImportance(
         .replace('{gmText}', gmText.slice(0, 1200));
 
     try {
-        const raw = await llmCall(provider, prompt, { priority: 'low' });
+        const raw = await llmCall(provider, prompt, { priority: 'low', trackingLabel: 'importance-rating', timeoutMs: AI_CALL_TIMEOUT_MS });
         const match = raw.trim().match(/\b([1-5])\b/);
         if (match) return parseInt(match[1], 10);
     } catch (err) {

@@ -44,7 +44,7 @@ RESPOND ONLY WITH VALID JSON. NO MARKDOWN FORMATTING. NO EXPLANATIONS.
         ];
 
         try {
-            const { parsed } = await sendMessageAndParseJson(provider, messages, `NPC Drives Backfill/${npc.name}`);
+            const { parsed } = await sendMessageAndParseJson(provider, messages, `NPC Drives Backfill/${npc.name}`, 'npc-drives-backfill');
 
             const patch: Partial<NPCEntry> = {
                 drives: {

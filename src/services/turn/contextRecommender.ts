@@ -10,6 +10,7 @@
 
 import type { EndpointConfig, NPCEntry, LoreChunk, ChatMessage, ArchiveChapter, InventoryItem, CharacterProfile, InventoryItemCategory } from '../../types';
 import { llmCall } from '../../utils/llmCall';
+import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 import { buildInventoryIndex, buildProfileIndex } from './contextMinifier';
 import { extractJsonRobust } from '../infrastructure/jsonExtract';
 
@@ -132,7 +133,7 @@ export async function recommendContext(
         signal,
         priority: 'high',
         trackingLabel: 'context-recommender',
-        timeoutMs: timeoutMs ?? 30000,
+        timeoutMs: timeoutMs ?? AI_CALL_TIMEOUT_MS,
     });
 
     // Parse the JSON response — handle thinker blocks and markdown wrapping

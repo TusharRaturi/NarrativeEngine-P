@@ -4,8 +4,10 @@ import { getQueueForEndpoint } from './llmRequestQueue';
 import { getChatUrl, getModelsUrl, buildChatHeaders, buildChatBody, getApiFormat, extractStreamDelta, extractStreamToolCall } from '../../utils/llmApiHelper';
 import { recordCacheUsage, type LLMUsage } from './cacheTelemetry';
 import { llmFetch } from './llmFetch';
+import { startUtilityCall } from './utilityCallTracker';
 
 const STORY_LABEL = 'story-generation';
+const STREAM_IDLE_TIMEOUT_MS = 120_000;
 
 export type OpenAIMessage = {
     role: 'system' | 'user' | 'assistant' | 'tool';
@@ -26,17 +28,26 @@ export async function sendMessage(
     tools?: unknown[],
     abortController?: AbortController,
     sampling?: SamplingConfig,
-    thinkingEffort?: ThinkingEffort
+    thinkingEffort?: ThinkingEffort,
+    trackingLabel?: string,
 ) {
     const format = getApiFormat(provider);
     const url = getChatUrl(provider, { stream: true });
     const headers = buildChatHeaders(provider);
 
+    // Hoisted out of the try block so the catch can see them for terminal-state classification.
+    const controller = abortController || new AbortController();
+    const trackingName = (provider as EndpointConfig).modelName || provider.endpoint;
+    const label = trackingLabel ?? STORY_LABEL;
+    const trackerHandle = startUtilityCall(label, trackingName, STREAM_IDLE_TIMEOUT_MS);
+    let streamTimedOut = false;
+    trackerHandle.deadlinePromise.then(() => {
+        streamTimedOut = true;
+        controller.abort();
+    });
+
     try {
         const payload = buildChatBody(provider, messages, { stream: true, tools: tools ?? [], sampling, thinkingEffort });
-
-        const controller = abortController || new AbortController();
-        let timeoutId = setTimeout(() => controller.abort(), 120000);
 
         // Gemini auth: append ?key= to URL
         let fetchUrl = url;
@@ -58,12 +69,14 @@ export async function sendMessage(
             if (!res.ok) {
                 const errBody = await res.text();
                 if (res.status === 429 || res.status === 503 || res.status === 529) queue.onRateLimitHit();
+                trackerHandle.settleError('error', `API error ${res.status}: ${errBody}`);
                 onError(`API error ${res.status}: ${errBody}`);
                 return;
             }
 
             const reader = res.body?.getReader();
             if (!reader) {
+                trackerHandle.settleError('error', 'No readable stream in response');
                 onError('No readable stream in response');
                 return;
             }
@@ -80,10 +93,11 @@ export async function sendMessage(
 
             while (true) {
                 const { done, value } = await reader.read();
-                clearTimeout(timeoutId);
                 if (done) break;
 
-                timeoutId = setTimeout(() => controller.abort(), 120000);
+                // Rolling idle timeout: each chunk resets the tracker deadline so a slow-but-
+                // streaming reply isn't killed mid-token. EXTEND from the UI pushes it further.
+                trackerHandle.resetDeadline(STREAM_IDLE_TIMEOUT_MS);
 
                 buffer += decoder.decode(value, { stream: true });
                 const lines = buffer.split('\n');
@@ -200,15 +214,26 @@ export async function sendMessage(
             recordCacheUsage(STORY_LABEL, streamUsage);
 
             if (tcName) {
+                trackerHandle.settleSuccess();
                 onDone(fullText, { id: tcId, name: tcName, arguments: tcArgs }, reasoningContent || undefined);
             } else {
+                trackerHandle.settleSuccess();
                 onDone(fullText, undefined, reasoningContent || undefined);
             }
         } finally {
             queue.releaseSlot();
-            clearTimeout(timeoutId);
         }
     } catch (err) {
+        // Distinguish tracker-idle-timeout from user abort from real errors so the strip
+        // shows the right terminal state (timeout vs aborted vs error).
+        if (streamTimedOut) {
+            trackerHandle.settleError('timeout');
+        } else if (abortController?.signal.aborted || controller.signal.aborted) {
+            trackerHandle.settleError('aborted');
+        } else {
+            const msg = err instanceof Error ? err.message : 'Unknown network error';
+            trackerHandle.settleError('error', msg);
+        }
         onError(err instanceof Error ? err.message : 'Unknown network error');
     }
 }

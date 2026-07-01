@@ -1,6 +1,7 @@
 import type { SceneStakes, EndpointConfig, ProviderConfig } from '../../types';
 import { llmCall } from '../../utils/llmCall';
 import { recordSceneStakesFallback } from './sceneStakesTelemetry';
+import { ENGINE_CALL_TIMEOUT_MS } from '../llm/timeouts';
 
 // Phase 2 port: mobile used a shared infrastructure/utilityPrompts module for these constant
 // sections; desktop has no equivalent shared module. Inlined here (small + only used by this
@@ -59,7 +60,7 @@ export async function classifySceneStakes(
             maxTokens: 20,
             thinkingEffort: 'off',
             trackingLabel: 'scene-stakes-classify',
-            timeoutMs: 30000,
+            timeoutMs: ENGINE_CALL_TIMEOUT_MS,
         });
         const cleaned = raw.replace(/<think[\s\S]*?<\/think>/gi, '').trim();
         const parsed = JSON.parse(cleaned);

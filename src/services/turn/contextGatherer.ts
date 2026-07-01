@@ -7,7 +7,20 @@ import { gatherRecommender } from '../context-gatherer/recommenderGather';
 import { gatherLoreAndRules } from '../context-gatherer/loreRulesGather';
 import { injectPinnedChapters } from '../context-gatherer/pinnedChaptersGather';
 import { gatherDeepSearch, gatherSemanticFacts } from '../context-gatherer/deepSearchGather';
+import { beginGatherStage, endGatherStage, clearGatherStages } from './gatherProgress';
+import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 import type { LoreChunk } from '../../types';
+
+// Friendly, user-facing labels for the live step indicator (keyed by internal stage id).
+const STAGE_LABELS: Record<string, string> = {
+    'planner': 'Planning search',
+    'semantic-candidates': 'Searching memory',
+    'next-scene': 'Assigning scene',
+    'archive-recall': 'Recalling scenes',
+    'recommender': 'Selecting context',
+    'lore-rules': 'Loading lore & rules',
+    'deep-search': 'Deep archive search',
+};
 
 export type GatheredContext = {
     sceneNumber: string | undefined;
@@ -43,16 +56,35 @@ export async function gatherContext(
 
     const excludeSceneIds = buildExcludeSceneIds(state);
 
-    // ─── Kick off planner and semantic candidates in parallel ───
-    const plannerPromise = gatherPlannerSceneIds(state, signal);
+    // ─── Per-stage timing (debug only) ───
+    // Surfaces what's actually slow during "GATHERING CONTEXT" — including non-LLM work
+    // (fetches, archive recall) that the UtilityCallStrip can't see. Logged as one line
+    // when debugMode or verbose utility logging is on; zero overhead otherwise.
+    const debugTrace = !!(state.settings.debugMode || state.settings.verboseUtilityLogging);
+    const gatherStart = performance.now();
+    const traceTimings: Record<string, number> = {};
+    clearGatherStages();
+    // Always publishes the active stage to the live UI; records timing only under debug.
+    const timed = <T,>(label: string, p: Promise<T>): Promise<T> => {
+        const friendly = STAGE_LABELS[label] ?? label;
+        beginGatherStage(friendly);
+        const t0 = performance.now();
+        return p.finally(() => {
+            endGatherStage(friendly);
+            if (debugTrace) traceTimings[label] = Math.round(performance.now() - t0);
+        });
+    };
 
-    const semanticPromise = activeCampaignId
+    // ─── Kick off planner and semantic candidates in parallel ───
+    const plannerPromise = timed('planner', gatherPlannerSceneIds(state, signal));
+
+    const semanticPromise = timed('semantic-candidates', activeCampaignId
         ? gatherSemanticCandidates(state, signal)
-        : Promise.resolve({ semanticArchiveIds: undefined, semanticLoreIds: undefined, semanticRuleIds: undefined });
+        : Promise.resolve({ semanticArchiveIds: undefined, semanticLoreIds: undefined, semanticRuleIds: undefined }));
 
     // Scene number (next-scene endpoint) — fire-and-forget, result captured via mutation
     let sceneNumber: string | undefined;
-    const timelinePromise = activeCampaignId
+    const timelinePromise = timed('next-scene', activeCampaignId
         ? fetch(`${API}/campaigns/${activeCampaignId}/archive/next-scene`, { signal })
             .then(async res => {
                 if (res.ok) {
@@ -61,7 +93,7 @@ export async function gatherContext(
                     console.log(`[Scene Engine] Pre-assigned scene #${sceneNumber}`);
                 }
             }).catch(() => { /* ignored */ })
-        : Promise.resolve();
+        : Promise.resolve());
 
     // Pinned chapters for recommender (computed before awaiting)
     const pinnedChaptersForRecommender = deps.pinnedChapterIds.length > 0
@@ -69,25 +101,29 @@ export async function gatherContext(
         : undefined;
 
     // ─── Archive recall — depends on semantic candidates + planner ───
-    const archiveRecallPromise = (async () => {
+    const archiveRecallPromise = timed('archive-recall', (async () => {
         const [semanticCandidates, plannerSceneIds] = await Promise.all([semanticPromise, plannerPromise]);
         return gatherArchiveRecall(state, { chapters: deps.chapters }, semanticCandidates, plannerSceneIds, excludeSceneIds, signal);
-    })();
+    })());
 
     // ─── Recommender — independent ───
-    const recommenderPromise = gatherRecommender(state, finalInput, pinnedChaptersForRecommender, signal);
+    const recommenderPromise = timed('recommender', gatherRecommender(state, finalInput, pinnedChaptersForRecommender, signal));
 
     // ─── Lore & rules — depend on semantic candidates ───
-    const loreRulesPromise = (async () => {
+    const loreRulesPromise = timed('lore-rules', (async () => {
         const semanticCandidates = await semanticPromise;
         return gatherLoreAndRules(state, semanticCandidates);
-    })();
+    })());
 
     // Timeline events — from state, used directly
     const timelineEvents: TimelineEvent[] = state.timeline || [];
 
-    // ─── Await all async operations with a 15s safety timeout ───
-    const CONTEXT_GATHER_TIMEOUT_MS = 15_000;
+    // ─── Await all async operations with a safety backstop ───
+    // Raised to match the AI-call budget: gather waits for slow stages rather than
+    // bailing early, and the live step indicator (GenerationProgress) shows what's
+    // running so the user sees movement instead of a frozen "GATHERING CONTEXT".
+    // Individual calls have their own (tighter) timeouts, so this is just a backstop.
+    const CONTEXT_GATHER_TIMEOUT_MS = AI_CALL_TIMEOUT_MS;
     await Promise.race([
         Promise.all([timelinePromise, archiveRecallPromise, recommenderPromise, loreRulesPromise, plannerPromise]),
         new Promise<void>((resolve) => setTimeout(() => {
@@ -113,15 +149,24 @@ export async function gatherContext(
     );
 
     // ─── Deep Archive Search (one-shot) ───
-    const deepContextSummary = await gatherDeepSearch(
+    const deepContextSummary = await timed('deep-search', gatherDeepSearch(
         state,
         { deepSearchThisTurn: deps.deepSearchThisTurn, chapters: deps.chapters, setLoadingStatus: deps.setLoadingStatus },
         finalInput,
         signal
-    );
+    ));
 
     // ─── Semantic Facts ───
     const semanticFactText = gatherSemanticFacts(state, finalInput);
+
+    if (debugTrace) {
+        const total = Math.round(performance.now() - gatherStart);
+        const breakdown = Object.entries(traceTimings)
+            .sort((a, b) => b[1] - a[1])
+            .map(([k, v]) => `${k}=${v}ms`)
+            .join('  ');
+        console.log(`[GatherTrace] total=${total}ms | ${breakdown}`);
+    }
 
     return {
         sceneNumber,

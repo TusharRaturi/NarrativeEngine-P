@@ -11,6 +11,25 @@ let extractor = null;
 let warmupPromise = null;
 let modelReady = false;
 
+const EMBED_CACHE_MAX = 512;
+const embedCache = new Map();
+
+function cacheGet(text) {
+    if (!embedCache.has(text)) return null;
+    const v = embedCache.get(text);
+    embedCache.delete(text);
+    embedCache.set(text, v);
+    return new Float32Array(v);
+}
+
+function cacheSet(text, vec) {
+    if (embedCache.size >= EMBED_CACHE_MAX) {
+        const oldest = embedCache.keys().next().value;
+        if (oldest !== undefined) embedCache.delete(oldest);
+    }
+    embedCache.set(text, new Float32Array(vec));
+}
+
 /**
  * True once the model is loaded AND has served at least one inference (warmup or a
  * real embed). Until this flips, the first embed call pays the full cold-load cost,
@@ -81,22 +100,67 @@ export async function warmup() {
     return warmupPromise;
 }
 
+async function runInference(texts) {
+    const model = await loadModel();
+    const output = await model(texts, { pooling: 'mean', normalize: true });
+    modelReady = true;
+    const data = output.data;
+    const src = data.buffer ? new Float32Array(data.buffer, data.byteOffset, data.length) : Float32Array.from(data);
+    const batch = texts.length;
+    const dims = src.length / batch;
+    const out = new Array(batch);
+    for (let i = 0; i < batch; i++) {
+        out[i] = src.slice(i * dims, (i + 1) * dims);
+    }
+    return out;
+}
+
 export async function embedText(text) {
     if (!text || !text.trim()) return new Float32Array(ACTIVE_DIMS);
 
-    const model = await loadModel();
-    const output = await model(text, { pooling: 'mean', normalize: true });
-    modelReady = true;
-    const data = output.data;
-    return new Float32Array(data.buffer ? data : Float32Array.from(data));
+    const cached = cacheGet(text);
+    if (cached) return cached;
+
+    const [vec] = await runInference([text]);
+    cacheSet(text, vec);
+    return vec;
 }
 
 export async function embedBatch(texts, batchSize = 10, delayMs = 100) {
-    const results = [];
+    const results = new Array(texts.length);
+
     for (let i = 0; i < texts.length; i += batchSize) {
-        const batch = texts.slice(i, i + batchSize);
-        const batchResults = await Promise.all(batch.map(t => embedText(t)));
-        results.push(...batchResults);
+        const batchSlice = texts.slice(i, i + batchSize);
+        const batchPositions = [];
+        const uncached = [];
+        const cachedVecs = [];
+
+        for (let j = 0; j < batchSlice.length; j++) {
+            const text = batchSlice[j];
+            if (!text || !text.trim()) {
+                cachedVecs[j] = new Float32Array(ACTIVE_DIMS);
+                continue;
+            }
+            const c = cacheGet(text);
+            if (c) {
+                cachedVecs[j] = c;
+            } else {
+                batchPositions.push(j);
+                uncached.push(text);
+            }
+        }
+
+        if (uncached.length > 0) {
+            const out = await runInference(uncached);
+            for (let k = 0; k < uncached.length; k++) {
+                cachedVecs[batchPositions[k]] = out[k];
+                cacheSet(uncached[k], out[k]);
+            }
+        }
+
+        for (let j = 0; j < batchSlice.length; j++) {
+            results[i + j] = cachedVecs[j];
+        }
 
         if (i + batchSize < texts.length && delayMs > 0) {
             await new Promise(r => setTimeout(r, delayMs));

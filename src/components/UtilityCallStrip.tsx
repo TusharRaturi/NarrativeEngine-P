@@ -9,6 +9,23 @@ const LABEL_MAP: Record<string, string> = {
     'rerank-lore': 'Reranking Lore',
     'recommender': 'AI Recommender',
     'planner': 'Planner',
+    'archive-planner': 'Archive Planner',
+    'deep-search-chapters': 'Deep Search · Chapters',
+    'deep-search-scenes': 'Deep Search · Scenes',
+    'deep-search-summarize': 'Deep Search · Summarize',
+    'deep-search-merge': 'Deep Search · Merge',
+    'scene-stakes-classify': 'Scene Stakes',
+    'story-generation': 'Story Generation',
+    'importance-rating': 'Rating Scene Importance',
+    'scene-event-extract': 'Extracting Scene Events',
+    'profile-scan': 'Scanning Character Profile',
+    'trait-scan': 'Scanning Character Traits',
+    'inventory-scan': 'Scanning Inventory',
+    'npc-validate': 'Validating NPCs',
+    'npc-update': 'Updating NPCs',
+    'npc-drives-backfill': 'Backfilling NPC Drives',
+    'witness-capture': 'Capturing Witnesses',
+    'chapter-seal': 'Sealing Chapter',
 };
 
 const PHASE_LABEL: Record<PipelinePhase, string> = {

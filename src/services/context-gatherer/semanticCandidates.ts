@@ -4,6 +4,7 @@ import { API_BASE as API } from '../../lib/apiBase';
 import { rerankCandidates, type RerankCandidate } from '../retrieval/semanticReranker';
 import { llmCall } from '../../utils/llmCall';
 import { extractJsonRobust } from '../infrastructure/jsonExtract';
+import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 
 const CALLBACK_REGEX = /\b(remember|earlier|back when|before|previously|that .*(we|i) (did|met|fought|saw|found|got))\b/i;
 
@@ -18,6 +19,8 @@ Generate 2 alternative phrasings that expand pronouns, add likely entity names f
             temperature: 0.2,
             priority: 'high',
             maxTokens: 200,
+            trackingLabel: 'query-expansion',
+            timeoutMs: AI_CALL_TIMEOUT_MS,
         });
 
         const { value: parsed, parseOk } = extractJsonRobust<string[]>(raw, []);

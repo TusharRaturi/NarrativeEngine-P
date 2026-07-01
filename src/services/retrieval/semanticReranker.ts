@@ -1,6 +1,7 @@
 import type { EndpointConfig } from '../../types';
 import { llmCall } from '../../utils/llmCall';
 import { extractJsonRobust } from '../infrastructure/jsonExtract';
+import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 
 export type RerankCandidate = {
     id: string;
@@ -12,7 +13,7 @@ export async function rerankCandidates(
     query: string,
     candidates: RerankCandidate[],
     utilityEndpoint: EndpointConfig,
-    opts?: { maxCandidates?: number; topN?: number }
+    opts?: { maxCandidates?: number; topN?: number; timeoutMs?: number }
 ): Promise<string[]> {
     const maxCandidates = opts?.maxCandidates ?? 30;
     const topN = opts?.topN ?? 12;
@@ -37,6 +38,8 @@ Return ONLY a JSON array of the candidate ids most relevant to the query, in des
             temperature: 0.1,
             priority: 'high',
             maxTokens: 500,
+            trackingLabel: 'semantic-rerank',
+            timeoutMs: opts?.timeoutMs ?? AI_CALL_TIMEOUT_MS,
         });
 
         const { value: parsed, parseOk } = extractJsonRobust<string[]>(raw, []);

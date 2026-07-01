@@ -8,7 +8,8 @@ export const RETRY_SUFFIX = '\n\nIMPORTANT: Your previous response was not valid
 export async function sendMessageAndParseJson(
     provider: EndpointConfig | ProviderConfig,
     messages: OpenAIMessage[],
-    contextLabel: string
+    contextLabel: string,
+    trackingLabel?: string,
 ): Promise<{ parsed: any; rawStr: string }> {
     let fullJsonStr = '';
 
@@ -17,7 +18,12 @@ export async function sendMessageAndParseJson(
         messages,
         (chunk) => { fullJsonStr = chunk; },
         () => { },
-        (err) => console.error(`[${contextLabel}] Stream error:`, err)
+        (err) => console.error(`[${contextLabel}] Stream error:`, err),
+        undefined,
+        undefined,
+        undefined,
+        undefined,
+        trackingLabel,
     );
 
     if (!fullJsonStr) throw new Error(`[${contextLabel}] Empty response from LLM`);
@@ -42,7 +48,12 @@ export async function sendMessageAndParseJson(
             retryMessages,
             (chunk) => { retryStr = chunk; },
             () => { },
-            (err) => console.error(`[${contextLabel}] Retry stream error:`, err)
+            (err) => console.error(`[${contextLabel}] Retry stream error:`, err),
+            undefined,
+            undefined,
+            undefined,
+            undefined,
+            trackingLabel,
         );
 
         if (!retryStr) throw new Error(`[${contextLabel}] Empty retry response`);

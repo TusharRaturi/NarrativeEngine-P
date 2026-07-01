@@ -1,6 +1,7 @@
 import type { NPCEntry, EndpointConfig } from '../../types';
 import { llmCall } from '../../utils/llmCall';
 import { extractJson } from '../infrastructure/jsonExtract';
+import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 
 export function extractNpcIdsFromBody(text: string, npcLedger: NPCEntry[]): string[] {
     const lower = text.toLowerCase();
@@ -39,7 +40,7 @@ ${npcList}
 Return a JSON array of NPC IDs only: ["id1", "id2"]`;
 
     try {
-        const response = await llmCall(provider, prompt, { temperature: 0, maxTokens: 200, priority: 'low' as const });
+        const response = await llmCall(provider, prompt, { temperature: 0, maxTokens: 200, priority: 'low' as const, trackingLabel: 'witness-capture', timeoutMs: AI_CALL_TIMEOUT_MS });
 
         const jsonStr = extractJson(response);
         const ids = JSON.parse(jsonStr);

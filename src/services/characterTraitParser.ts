@@ -20,6 +20,7 @@
 import type { ChatMessage, ProviderConfig, EndpointConfig, CharacterProfileState, CharacterTrait, CharacterIdentity, DivergenceCategory, SceneEventType } from '../types';
 import { uid } from '../utils/uid';
 import { llmCall } from '../utils/llmCall';
+import { AI_CALL_TIMEOUT_MS } from './llm/timeouts';
 
 const VALID_CATEGORIES: ReadonlySet<DivergenceCategory> = new Set([
     'locations', 'npc_events', 'promises_debts', 'world_state', 'party_facts', 'rules_lore', 'misc',
@@ -105,7 +106,7 @@ export async function scanCharacterTraits(
     ].join('\n');
 
     try {
-        const result = await llmCall(provider, prompt, { priority: 'low', maxTokens: 4096 });
+        const result = await llmCall(provider, prompt, { priority: 'low', maxTokens: 4096, trackingLabel: 'trait-scan', timeoutMs: AI_CALL_TIMEOUT_MS });
         let clean = result.replace(/<think[\s\S]*?<\/think>/gi, '');
         const mdMatch = clean.match(/```(?:json)?\s*([\s\S]*?)```/i);
         if (mdMatch) clean = mdMatch[1];

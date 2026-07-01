@@ -1,6 +1,7 @@
 import type { NPCEntry, EndpointConfig, ProviderConfig } from '../../types';
 import { llmCall } from '../../utils/llmCall';
 import { extractJson } from '../chatEngine';
+import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 import TITLES from '../../data/titles.json';
 
 const TITLES_SET = new Set(TITLES.map(t => t.toLowerCase()));
@@ -233,7 +234,7 @@ If none are character names, respond with [].
 Example: ["Captain Aldric", "Orin"]`;
 
     try {
-        const raw = await llmCall(provider, prompt, { priority: 'low' });
+        const raw = await llmCall(provider, prompt, { priority: 'low', trackingLabel: 'npc-validate', timeoutMs: AI_CALL_TIMEOUT_MS });
 
         if (raw) {
             const cleanStr = extractJson(raw);

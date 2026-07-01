@@ -12,18 +12,6 @@ function estimateTokens(text: string): number {
     return Math.ceil(text.length / 4);
 }
 
-function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
-    return new Promise<T>((resolve, reject) => {
-        const timer = setTimeout(() => {
-            reject(new Error(`[DeepArchiveSearch] ${label} timed out after ${ms}ms`));
-        }, ms);
-        promise.then(
-            (val) => { clearTimeout(timer); resolve(val); },
-            (err) => { clearTimeout(timer); reject(err); }
-        );
-    });
-}
-
 function buildConversationExcerpt(messages: ChatMessage[], userMessage: string, depth = 6): string {
     const recent = messages.slice(-depth);
     const lines = recent.map(m => {
@@ -101,15 +89,13 @@ async function scanChapters(
         '{"chapters": ["CH01", "CH03", ...]}',
     ].join('\n');
 
-    const rawContent = await withTimeout(
-        llmCall(utilityEndpoint, prompt, {
+    const rawContent = await llmCall(utilityEndpoint, prompt, {
             temperature: 0.1,
             signal,
             priority: 'high',
-        }),
-        TIMEOUT_CHAPTER_SCAN_MS,
-        'Chapter scan'
-    );
+            trackingLabel: 'deep-search-chapters',
+            timeoutMs: TIMEOUT_CHAPTER_SCAN_MS,
+        });
 
     const { value: parsed, parseOk } = extractJsonRobust<{ chapters?: string[] }>(rawContent, {});
     if (!parseOk) {
@@ -152,15 +138,13 @@ async function scanScenes(
         '{"scenes": ["042", "011", ...]}',
     ].join('\n');
 
-    const rawContent = await withTimeout(
-        llmCall(utilityEndpoint, prompt, {
+    const rawContent = await llmCall(utilityEndpoint, prompt, {
             temperature: 0.1,
             signal,
             priority: 'high',
-        }),
-        TIMEOUT_SCENE_SCAN_MS,
-        'Scene scan'
-    );
+            trackingLabel: 'deep-search-scenes',
+            timeoutMs: TIMEOUT_SCENE_SCAN_MS,
+        });
 
     const { value: parsed, parseOk } = extractJsonRobust<{ scenes?: string[] }>(rawContent, {});
     const result = new Set<string>();
@@ -198,16 +182,14 @@ async function summarizeToBudget(
         text,
     ].join('\n');
 
-    return withTimeout(
-        llmCall(utilityEndpoint, prompt, {
-            temperature: 0.2,
-            signal,
-            priority: 'high',
-            maxTokens: Math.min(budget * 2, 8000),
-        }),
-        TIMEOUT_SUMMARIZE_MS,
-        'Summarize'
-    );
+    return llmCall(utilityEndpoint, prompt, {
+        temperature: 0.2,
+        signal,
+        priority: 'high',
+        maxTokens: Math.min(budget * 2, 8000),
+        trackingLabel: 'deep-search-summarize',
+        timeoutMs: TIMEOUT_SUMMARIZE_MS,
+    });
 }
 
 async function summarizePartitions(
@@ -277,6 +259,8 @@ async function summarizePartitions(
         signal,
         priority: 'high',
         maxTokens: Math.min(budget * 2, 8000),
+        trackingLabel: 'deep-search-merge',
+        timeoutMs: TIMEOUT_SUMMARIZE_MS,
     });
 }
 

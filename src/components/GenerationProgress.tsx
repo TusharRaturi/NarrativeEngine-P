@@ -1,4 +1,5 @@
 import type { PipelinePhase, StreamingStats } from '../types';
+import { useGatherStages } from '../services/turn/gatherProgress';
 
 const STEPS: { phase: PipelinePhase; label: string }[] = [
     { phase: 'rolling-dice', label: 'Dice' },
@@ -31,10 +32,13 @@ type Props = {
 };
 
 export function GenerationProgress({ phase, stats }: Props) {
+    const gatherStages = useGatherStages();
+
     if (phase === 'idle') return null;
 
     const currentIdx = PHASE_INDEX[phase];
     const isCheckingNotes = phase === 'checking-notes';
+    const showGatherStages = phase === 'gathering-context' && gatherStages.length > 0;
 
     return (
         <div className="flex items-center gap-2 px-4 py-1.5 bg-void border-t border-border/50" aria-live="polite">
@@ -86,6 +90,13 @@ export function GenerationProgress({ phase, stats }: Props) {
             {isCheckingNotes && (
                 <span className="text-[9px] uppercase tracking-wider text-amber-500/80 animate-pulse-slow ml-1">
                     Checking notes...
+                </span>
+            )}
+
+            {showGatherStages && (
+                <span className="ml-1 flex items-center gap-1.5 min-w-0 text-[9px] uppercase tracking-wider text-terminal/70">
+                    <span className="text-terminal/30">·</span>
+                    <span className="truncate animate-pulse-slow">{gatherStages.join(' · ')}</span>
                 </span>
             )}
 

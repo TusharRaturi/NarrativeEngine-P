@@ -195,7 +195,7 @@ RESPOND ONLY WITH VALID JSON. NO MARKDOWN FORMATTING. NO EXPLANATIONS.`;
     }];
 
     try {
-        const { parsed } = await sendMessageAndParseJson(provider, messages, 'NPC Updater');
+        const { parsed } = await sendMessageAndParseJson(provider, messages, 'NPC Updater', 'npc-update');
 
         const findTarget = (name: string) => npcsToCheck.find(n =>
             n.name?.toLowerCase() === name.toLowerCase() ||

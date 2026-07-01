@@ -1,6 +1,7 @@
 import type { EndpointConfig, ProviderConfig, SceneEvent, SceneEventType } from '../../types';
 import { llmCall } from '../../utils/llmCall';
 import { extractJsonRobust } from '../infrastructure/jsonExtract';
+import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 
 export async function extractSceneEvents(
     provider: EndpointConfig | ProviderConfig,
@@ -45,6 +46,8 @@ Respond with a JSON array only. No markdown formatting, no prose, no reasoning t
             priority: 'low',
             maxTokens: 1000,
             signal,
+            trackingLabel: 'scene-event-extract',
+            timeoutMs: AI_CALL_TIMEOUT_MS,
         });
 
         const { value: parsed, parseOk } = extractJsonRobust<unknown[]>(raw, []);
