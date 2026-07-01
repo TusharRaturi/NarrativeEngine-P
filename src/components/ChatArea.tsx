@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Send, Save, Loader2, Zap, Scroll, Edit2, X, Square, Search, Check, Package, BookCheck, Pin, Replace, UserPlus, Dices } from 'lucide-react';
+import { Send, Save, Loader2, Zap, Scroll, Edit2, X, Square, Search, Check, Package, BookCheck, Pin, Replace, UserPlus, Dices, ChevronUp, ArrowDown } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { runTurn } from '../services/turn/turnOrchestrator';
 import { LootRollModal } from './chat/LootRollModal';
@@ -252,6 +252,7 @@ export function ChatArea() {
         }
     }, [composerInjection, consumeComposerInjection]);
     const bottomRef = useRef<HTMLDivElement>(null);
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLTextAreaElement>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const streamStartRef = useRef<number>(0);
@@ -259,6 +260,27 @@ export function ChatArea() {
     useEffect(() => {
         bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [messages.length]);
+
+    // WO-NAV — mobile-style message navigation: jump up one message, or snap to the latest.
+    const handlePrevMessage = () => {
+        const sc = scrollContainerRef.current;
+        if (!sc) return;
+        // Find the last bubble whose bottom is above the current viewport top (i.e. previous).
+        const bubbles = Array.from(sc.querySelectorAll<HTMLElement>('[data-message-id], .chat-bubble-base'));
+        const viewTop = sc.scrollTop;
+        let target: HTMLElement | null = null;
+        for (const b of bubbles) {
+            const top = b.offsetTop;
+            if (top < viewTop - 4) target = b;
+            else break;
+        }
+        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        else sc.scrollTo({ top: 0, behavior: 'smooth' });
+    };
+
+    const handleJumpToBottom = () => {
+        bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    };
 
     useEffect(() => {
         if (pipelinePhase === 'generating') {
@@ -403,12 +425,8 @@ export function ChatArea() {
         getMessages: () => useAppStore.getState().messages,
     };
 
-    const { editingMessageId, startEditing, cancelEditing, handleEditSubmit, handleRegenerate, handleDeleteOutput } = useMessageEditor({
+    const { editingMessageId, inlineDraft, setInlineDraft, startEditing, cancelEditing, handleEditSubmit, handleRegenerate, handleDeleteOutput } = useMessageEditor({
         messages,
-        input,
-        setInput,
-        inputRef,
-        resetTextareaHeight,
         rollbackArchive: (ts) => rollbackArchiveFrom(archiveDeps, ts),
         deleteMessagesFrom,
         updateMessageContent: (id, content) => useAppStore.getState().updateMessageContent(id, content),
@@ -482,11 +500,7 @@ export function ChatArea() {
     const handleKeyDown = (e: React.KeyboardEvent) => {
         if (e.key === 'Enter' && !e.shiftKey) {
             e.preventDefault();
-            if (editingMessageId) {
-                handleEditSubmit();
-            } else {
-                handleSend();
-            }
+            handleSend();
         }
     };
 
@@ -529,7 +543,7 @@ export function ChatArea() {
                 </div>
             )}
 
-            <div className="chat-panel flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-3">
+            <div ref={scrollContainerRef} className="chat-panel flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-3">
                 {messages.length === 0 && (
                     <div className="flex items-center justify-center h-full">
                         <div className="text-center space-y-3">
@@ -579,6 +593,11 @@ export function ChatArea() {
                         onRegenerate={handleRegenerate}
                         onDelete={(id) => handleDeleteOutput(id)}
                         toolResult={msg.tool_calls?.[0] ? toolResultById.get(msg.tool_calls[0].id) : undefined}
+                        isEditing={editingMessageId === msg.id}
+                        inlineDraft={editingMessageId === msg.id ? inlineDraft : undefined}
+                        onInlineDraftChange={setInlineDraft}
+                        onInlineSubmit={handleEditSubmit}
+                        onInlineCancel={cancelEditing}
                     />
                 ))}
 
@@ -719,6 +738,22 @@ export function ChatArea() {
                     <ArcInjectorButton />
                 )}
                 <button
+                    onClick={handlePrevMessage}
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-text-dim/30 hover:border-text-dim text-text-dim hover:text-text-primary text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-text-dim/5 whitespace-nowrap"
+                    title="Jump up one message"
+                >
+                    <ChevronUp size={13} />
+                    <span className="hidden xs:inline">Prev</span>
+                </button>
+                <button
+                    onClick={handleJumpToBottom}
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-text-dim/30 hover:border-text-dim text-text-dim hover:text-text-primary text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-text-dim/5 whitespace-nowrap"
+                    title="Jump to latest message"
+                >
+                    <ArrowDown size={13} />
+                    <span className="hidden xs:inline">Latest</span>
+                </button>
+                <button
                     onClick={handleOpenArchive}
                     disabled={!activeCampaignId}
                     className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-ice/30 hover:border-ice text-ice text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-ice/5 disabled:opacity-30 disabled:cursor-not-allowed ml-auto whitespace-nowrap"
@@ -759,19 +794,6 @@ export function ChatArea() {
                         </div>
                     </div>
                 )}
-                {editingMessageId && (
-                    <div className="bg-terminal/10 border-b border-border px-4 py-2 flex items-center justify-between">
-                        <span className="text-terminal text-[11px] uppercase tracking-wider font-bold flex items-center gap-2">
-                            <Edit2 size={12} /> Editing Message
-                        </span>
-                        <button
-                            onClick={cancelEditing}
-                            className="text-text-dim hover:text-text-primary flex items-center gap-1 text-[10px] uppercase tracking-wider"
-                        >
-                            <X size={12} /> Cancel
-                        </button>
-                    </div>
-                )}
                 <div className="px-2 sm:px-4 pb-3 sm:pb-4 pt-3 sm:pt-4">
                     <div className="flex gap-1 border border-border bg-void focus-within:border-terminal transition-colors items-end p-1 rounded-sm">
                         <div className="relative shrink-0 mb-[4px] ml-1">
@@ -797,15 +819,15 @@ export function ChatArea() {
                             value={input}
                             onChange={handleInputChange}
                             onKeyDown={handleKeyDown}
-                            placeholder={editingMessageId ? "Edit message..." : "What do you do?"}
+                            placeholder="What do you do?"
                             className="flex-1 bg-transparent px-2 py-2.5 text-sm text-text-primary placeholder:text-text-dim/40 font-mono resize-none border-none outline-none min-h-[40px] leading-5"
                         />
                         <button
-                            onClick={isStreaming ? handleStop : (editingMessageId ? handleEditSubmit : () => handleSend())}
+                            onClick={isStreaming ? handleStop : () => handleSend()}
                             disabled={!isStreaming && !input.trim()}
                             className={`h-[32px] w-[44px] mb-[4px] rounded transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center shrink-0 ${isStreaming ? 'text-amber-500 hover:bg-amber-500/10' : 'text-terminal hover:bg-terminal/10'}`}
                         >
-                            {isStreaming ? <Square size={16} fill="currentColor" /> : (editingMessageId ? <Edit2 size={16} /> : <Send size={16} />)}
+                            {isStreaming ? <Square size={16} fill="currentColor" /> : <Send size={16} />}
                         </button>
                     </div>
                 </div>

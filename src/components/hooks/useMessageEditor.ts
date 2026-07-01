@@ -5,10 +5,6 @@ import type { ArchiveManagerDeps } from '../../services/archive-memory/archiveMa
 
 interface UseMessageEditorDeps {
     messages: ChatMessage[];
-    input: string;
-    setInput: (v: string) => void;
-    inputRef: React.RefObject<HTMLTextAreaElement | null>;
-    resetTextareaHeight: () => void;
     rollbackArchive: (timestamp: number) => Promise<void>;
     deleteMessagesFrom: (id: string) => void;
     updateMessageContent: (id: string, content: string) => void;
@@ -34,6 +30,9 @@ export function findSceneIdForMessage(messages: ChatMessage[], messageId: string
 
 export function useMessageEditor(deps: UseMessageEditorDeps) {
     const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
+    // WO-EDIT — inline draft text for the message currently being edited. Kept here so the
+    // bubble itself becomes the editor (mobile-style) instead of hijacking the composer textarea.
+    const [inlineDraft, setInlineDraft] = useState<string>('');
 
     /**
      * WO-12.6 — collect the archived sceneIds of all assistant messages being dropped by a
@@ -51,13 +50,12 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
 
     const startEditing = (msg: ChatMessage) => {
         setEditingMessageId(msg.id);
-        deps.setInput(msg.displayContent || msg.content);
-        deps.inputRef.current?.focus();
+        setInlineDraft(msg.displayContent || msg.content);
     };
 
     const cancelEditing = () => {
         setEditingMessageId(null);
-        deps.setInput('');
+        setInlineDraft('');
     };
 
     const handleEditSubmit = () => {
@@ -65,27 +63,30 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
         const msg = deps.messages.find(m => m.id === editingMessageId);
         if (!msg) return;
 
+        const trimmed = inlineDraft.trim();
+        if (!trimmed) {
+            cancelEditing();
+            return;
+        }
+
         if (msg.role === 'user') {
             const droppedSceneIds = collectDroppedSceneIds(msg.id);
             deps.rollbackArchive(msg.timestamp);
             deps.deleteMessagesFrom(msg.id);
             // WO-12.6 — purge client divergence facts for every archived scene being dropped.
             for (const sid of droppedSceneIds) deps.deleteDivergenceChapter(sid);
-            const textToResend = deps.input.trim();
-            deps.setInput('');
-            deps.resetTextareaHeight();
             setEditingMessageId(null);
+            setInlineDraft('');
             setTimeout(() => {
-                deps.onAfterEdit(textToResend);
+                deps.onAfterEdit(trimmed);
             }, 50);
         } else {
-            deps.updateMessageContent(msg.id, deps.input.trim());
+            deps.updateMessageContent(msg.id, trimmed);
             // WO-F — sync the edited GM text into long-term memory so the AI stops recalling the
             // old version. Fire-and-forget; non-fatal if it fails (the on-screen edit still holds).
-            syncEditedSceneText(msg.id, deps.input.trim());
-            deps.setInput('');
-            deps.resetTextareaHeight();
+            syncEditedSceneText(msg.id, trimmed);
             setEditingMessageId(null);
+            setInlineDraft('');
         }
     };
 
@@ -152,6 +153,8 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
 
     return {
         editingMessageId,
+        inlineDraft,
+        setInlineDraft,
         startEditing,
         cancelEditing,
         handleEditSubmit,

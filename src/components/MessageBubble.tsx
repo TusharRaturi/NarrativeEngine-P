@@ -1,9 +1,10 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Edit2, RotateCcw, Trash2, Loader2 } from 'lucide-react';
+import { Edit2, RotateCcw, Trash2, Loader2, Check, X } from 'lucide-react';
 import type { ChatMessage, DebugSection } from '../types';
 import { DebugPayloadView } from './DebugPayloadView';
 import { ToolCallChips } from './chat/ToolCallChips';
+import { useRef, useEffect } from 'react';
 
 // WO-J: NPC names arrive wrapped in [Name] / [**Name**] brackets so the ledger detector
 // can read them out of the raw content. Render them as inline **bold** markdown instead of
@@ -32,6 +33,12 @@ interface MessageBubbleProps {
     onDelete: (id: string) => void;
     /** Raw result content for the first tool call on this message, if any. */
     toolResult?: string;
+    /** WO-EDIT — inline edit wiring. When set, this bubble is the live editor. */
+    isEditing?: boolean;
+    inlineDraft?: string;
+    onInlineDraftChange?: (v: string) => void;
+    onInlineSubmit?: () => void;
+    onInlineCancel?: () => void;
 }
 
 export function MessageBubble({
@@ -44,6 +51,11 @@ export function MessageBubble({
     onRegenerate,
     onDelete,
     toolResult,
+    isEditing,
+    inlineDraft,
+    onInlineDraftChange,
+    onInlineSubmit,
+    onInlineCancel,
 }: MessageBubbleProps) {
     let markdownContent: string = typeof msg.displayContent === 'string'
         ? msg.displayContent
@@ -64,14 +76,46 @@ export function MessageBubble({
     const hasSummary = msg.role === 'tool' && parsedArgs && Array.isArray(parsedArgs.summary);
     const hasDebug = debugMode === true && !!msg.debugPayload;
 
+    // WO-EDIT — autofocus + auto-grow the inline editor when this bubble enters edit mode.
+    const inlineRef = useRef<HTMLTextAreaElement | null>(null);
+    useEffect(() => {
+        if (!isEditing) return;
+        const ta = inlineRef.current;
+        if (!ta) return;
+        ta.focus();
+        // Defer one frame so the textarea has its final width before we measure scrollHeight.
+        const raf = requestAnimationFrame(() => {
+            ta.style.height = 'auto';
+            ta.style.height = `${Math.max(ta.scrollHeight, 160)}px`;
+        });
+        return () => cancelAnimationFrame(raf);
+    }, [isEditing]);
+
+    const onInlineKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+            e.preventDefault();
+            onInlineSubmit?.();
+        } else if (e.key === 'Escape') {
+            e.preventDefault();
+            onInlineCancel?.();
+        }
+    };
+
+    const onInlineChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+        onInlineDraftChange?.(e.target.value);
+        const ta = e.currentTarget;
+        ta.style.height = 'auto';
+        ta.style.height = `${Math.max(ta.scrollHeight, 160)}px`;
+    };
+
     return (
         <div
             key={msg.id}
-            className={`group flex animate-[msg-in_0.2s_ease-out] ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+            className={`group flex animate-[msg-in_0.2s_ease-out] ${isEditing ? 'w-full' : msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
         >
             <div
                 {...(msg.role === 'assistant' ? { 'data-lore-checkable': 'true', 'data-message-id': msg.id } : {})}
-                className={`chat-bubble-base max-w-[95%] md:max-w-[75%] px-3 md:px-4 py-2 md:py-3 text-sm font-mono leading-relaxed relative ${msg.role === 'user'
+                className={`chat-bubble-base ${isEditing ? 'w-full max-w-full' : 'max-w-[95%] md:max-w-[75%]'} px-3 md:px-4 py-2 md:py-3 text-sm font-mono leading-relaxed relative ${msg.role === 'user'
                     ? 'bg-terminal/8 border-l-2 border-terminal text-text-primary'
                     : msg.role === 'system'
                         ? 'bg-ember/8 border-l-2 border-ember text-ember/80'
@@ -79,19 +123,32 @@ export function MessageBubble({
                     }`}
             >
                 <div className={`absolute -top-3 ${msg.role === 'user' ? 'left-2' : 'right-2'} flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-void-darker border border-border p-[2px] rounded z-10`}>
-                    {msg.role !== 'system' && (
-                        <button title="Edit" onClick={() => onStartEdit(msg)} className="text-text-dim hover:text-terminal p-1 bg-void-lighter rounded">
-                            <Edit2 size={10} />
-                        </button>
+                    {isEditing ? (
+                        <>
+                            <button title="Save edit (Enter)" onClick={() => onInlineSubmit?.()} className="text-terminal hover:text-terminal p-1 bg-void-lighter rounded">
+                                <Check size={10} />
+                            </button>
+                            <button title="Cancel (Esc)" onClick={() => onInlineCancel?.()} className="text-text-dim hover:text-red-400 p-1 bg-void-lighter rounded">
+                                <X size={10} />
+                            </button>
+                        </>
+                    ) : (
+                        <>
+                            {msg.role !== 'system' && (
+                                <button title="Edit" onClick={() => onStartEdit(msg)} className="text-text-dim hover:text-terminal p-1 bg-void-lighter rounded">
+                                    <Edit2 size={10} />
+                                </button>
+                            )}
+                            {msg.role === 'assistant' && (
+                                <button title="Regenerate" onClick={() => onRegenerate(msg.id)} className="text-text-dim hover:text-terminal p-1 bg-void-lighter rounded">
+                                    <RotateCcw size={10} />
+                                </button>
+                            )}
+                            <button title="Delete" onClick={() => onDelete(msg.id)} className="text-text-dim hover:text-red-400 p-1 bg-void-lighter rounded">
+                                <Trash2 size={10} />
+                            </button>
+                        </>
                     )}
-                    {msg.role === 'assistant' && (
-                        <button title="Regenerate" onClick={() => onRegenerate(msg.id)} className="text-text-dim hover:text-terminal p-1 bg-void-lighter rounded">
-                            <RotateCcw size={10} />
-                        </button>
-                    )}
-                    <button title="Delete" onClick={() => onDelete(msg.id)} className="text-text-dim hover:text-red-400 p-1 bg-void-lighter rounded">
-                        <Trash2 size={10} />
-                    </button>
                 </div>
 
                 <div className="flex items-center gap-2 mb-1">
@@ -130,7 +187,18 @@ export function MessageBubble({
                             </div>
                         </details>
                     )}
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{inlineNameBrackets(markdownContent)}</ReactMarkdown>
+                    {isEditing ? (
+                        <textarea
+                            ref={inlineRef}
+                            value={inlineDraft}
+                            onChange={onInlineChange}
+                            onKeyDown={onInlineKeyDown}
+                            className="w-full bg-void-darker border border-terminal/40 text-text-primary font-mono text-sm p-2 rounded resize-none outline-none focus:border-terminal min-h-[160px] leading-relaxed"
+                            placeholder="Edit message..."
+                        />
+                    ) : (
+                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{inlineNameBrackets(markdownContent)}</ReactMarkdown>
+                    )}
                     {hasSummary && (
                         <div className="mt-2 pl-3 border-l-2 border-terminal/30 text-[10px] text-text-dim">
                             <div className="uppercase tracking-widest text-terminal/60 mb-1">Generated Output:</div>
