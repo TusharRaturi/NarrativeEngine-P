@@ -20,6 +20,7 @@ import { VaultUnlockModal } from './components/VaultUnlockModal';
 // import { MapPanel } from './components/map/MapPanel';
 import { hydrateCampaign } from './store/campaignHydrator';
 import { useRulesIndexer } from './hooks/useRulesIndexer';
+import { loadBackground } from './services/background/backgroundManager';
 
 export default function App() {
   const activeCampaignId = useAppStore((s) => s.activeCampaignId);
@@ -60,6 +61,11 @@ export default function App() {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
+
+  // Apply the persisted chat background image (if any) once on mount.
+  useEffect(() => {
+    loadBackground();
+  }, []);
 
   // After settings load, if we already have an activeCampaignId (restored from a previous
   // session), we MUST load the campaign's data before rendering ChatArea.

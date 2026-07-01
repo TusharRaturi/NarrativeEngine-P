@@ -126,6 +126,12 @@
     z-index: 9999;
   }
 
+  /* The background image itself is applied as inline styles on <html> by
+     backgroundManager.ts (CSS-var-in-background-image proved unreliable). The
+     chat-panel/bubble translucency rules live OUTSIDE this layer (bottom of file)
+     so they can win over Tailwind's `bg-*` utilities, which sit in @layer utilities
+     and would otherwise beat any same-or-lower-layer rule regardless of specificity. */
+
   /* Scrollbar styling */
   ::-webkit-scrollbar {
     width: 6px;
@@ -349,4 +355,26 @@
   background: var(--color-void-lighter);
   color: var(--color-ice);
   font-weight: 600;
+}
+
+/* ─── Chat background translucency (UNLAYERED on purpose) ───
+   These must sit outside @layer base so they override Tailwind's `bg-*`
+   utilities (which live in @layer utilities and win over any layered rule
+   regardless of specificity). Gated by data-has-bg so there is zero visual
+   change until the user picks a background image. --chat-opacity (a percentage)
+   is driven by the header slider. */
+html[data-has-bg="true"] .chat-panel {
+  background-color: color-mix(in srgb, var(--color-void) var(--chat-opacity, 70%), transparent);
+  backdrop-filter: blur(3px);
+}
+
+/* Blur behind every bubble keeps text legible over a busy image. */
+html[data-has-bg="true"] .chat-bubble-base {
+  backdrop-filter: blur(4px);
+}
+
+/* The otherwise-opaque assistant (GM) bubble follows the opacity slider;
+   tinted user/system bubbles already read through, so they keep their hue. */
+html[data-has-bg="true"] .chat-bubble {
+  background-color: color-mix(in srgb, var(--color-void-lighter) var(--chat-opacity, 70%), transparent);
 }

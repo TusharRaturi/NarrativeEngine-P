@@ -529,7 +529,7 @@ export function ChatArea() {
                 </div>
             )}
 
-            <div className="flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-3">
+            <div className="chat-panel flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-3">
                 {messages.length === 0 && (
                     <div className="flex items-center justify-center h-full">
                         <div className="text-center space-y-3">

@@ -4,6 +4,7 @@ import { flushAllPendingSaves } from '../store/slices/campaignSlice';
 import { toast } from './Toast';
 import { useAppStore } from '../store/useAppStore';
 import { TokenGauge } from './TokenGauge';
+import { BackgroundControl } from './BackgroundControl';
 import { saveCampaignState } from '../store/campaignStore';
 
 export function Header() {
@@ -57,6 +58,8 @@ export function Header() {
             </div>
 
             <div className="flex items-center gap-1.5 ml-auto overflow-x-auto no-scrollbar py-1 shrink-0">
+                <BackgroundControl />
+
                 <button
                     onClick={async () => {
                         if (!activeCampaignId) return;

@@ -71,11 +71,11 @@ export function MessageBubble({
         >
             <div
                 {...(msg.role === 'assistant' ? { 'data-lore-checkable': 'true', 'data-message-id': msg.id } : {})}
-                className={`max-w-[95%] md:max-w-[75%] px-3 md:px-4 py-2 md:py-3 text-sm font-mono leading-relaxed relative ${msg.role === 'user'
+                className={`chat-bubble-base max-w-[95%] md:max-w-[75%] px-3 md:px-4 py-2 md:py-3 text-sm font-mono leading-relaxed relative ${msg.role === 'user'
                     ? 'bg-terminal/8 border-l-2 border-terminal text-text-primary'
                     : msg.role === 'system'
                         ? 'bg-ember/8 border-l-2 border-ember text-ember/80'
-                        : 'bg-void-lighter border-l-2 border-border text-text-primary'
+                        : 'chat-bubble bg-void-lighter border-l-2 border-border text-text-primary'
                     }`}
             >
                 <div className={`absolute -top-3 ${msg.role === 'user' ? 'left-2' : 'right-2'} flex gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-void-darker border border-border p-[2px] rounded z-10`}>
