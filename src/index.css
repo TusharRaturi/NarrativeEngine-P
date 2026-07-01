@@ -378,3 +378,16 @@ html[data-has-bg="true"] .chat-bubble-base {
 html[data-has-bg="true"] .chat-bubble {
   background-color: color-mix(in srgb, var(--color-void-lighter) var(--chat-opacity, 70%), transparent);
 }
+
+/* ─── Floating chat nav buttons (Prev/Latest) ───
+   In dark mode the default border/icon colors blend into the background,
+   so bump the border + icon contrast and add a subtle surface lift. */
+[data-theme="dark"] .chat-nav-fab {
+  background-color: var(--color-void-lighter);
+  border-color: var(--color-border);
+  color: var(--color-ice-dim);
+}
+[data-theme="dark"] .chat-nav-fab:hover {
+  border-color: var(--color-terminal);
+  color: var(--color-ice);
+}
