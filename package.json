@@ -23,6 +23,7 @@
     "express": "^5.2.1",
     "idb-keyval": "^6.2.2",
     "js-tiktoken": "^1.0.21",
+    "kokoro-js": "^1.2.1",
     "lucide-react": "^0.564.0",
     "pixi-filters": "^6.1.5",
     "pixi.js": "^8.18.1",

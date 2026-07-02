@@ -102,6 +102,8 @@ export const defaultSettings: AppSettings = {
     imageNegativePrompt: '',
     showPcTab: true,
     indexingSpeed: 'balanced',
+    ttsEnabled: false,
+    ttsVoice: 'af_heart',
 };
 
 export function applyTheme(theme: 'light' | 'dark' | 'system') {
@@ -316,6 +318,8 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         showPcTab: (raw.showPcTab as boolean) ?? true,
         indexingSpeed: (raw.indexingSpeed as 'eco' | 'balanced' | 'aggressive') ?? 'balanced',
         indexingSpeedPrompted: (raw.indexingSpeedPrompted as boolean) ?? false,
+        ttsEnabled: (raw.ttsEnabled as boolean) ?? false,
+        ttsVoice: (raw.ttsVoice as string) ?? 'af_heart',
     };
 }
 

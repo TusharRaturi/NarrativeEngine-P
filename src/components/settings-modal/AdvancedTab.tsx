@@ -1,11 +1,12 @@
-import { useState, useEffect } from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { useState, useEffect, useRef } from 'react';
+import { Loader2, RefreshCw, Volume2, Download } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { getEmbeddingStatus, runBackfill } from '../../services/archive-memory/backfillRunner';
 import { api } from '../../services/llm/apiClient';
 import { API_BASE } from '../../lib/apiBase';
 import { toast } from '../Toast';
 import type { BackfillStatus } from '../../services/archive-memory/backfillRunner';
+import { getTtsStatus, initTtsModel, type TtsStatus } from '../../services/tts/ttsClient';
 
 type EmbedderInfo = {
     modelId: string;
@@ -21,6 +22,25 @@ export function AdvancedTab() {
     const [reindexing, setReindexing] = useState(false);
     const [reindexStatus, setReindexStatus] = useState('');
     const [rebuildingRules, setRebuildingRules] = useState(false);
+
+    // TTS (Kokoro) state
+    const settings = useAppStore(s => s.settings);
+    const updateSettings = useAppStore(s => s.updateSettings);
+    const [ttsStatus, setTtsStatus] = useState<TtsStatus | null>(null);
+    const [ttsIniting, setTtsIniting] = useState(false);
+    const [ttsPolling, setTtsPolling] = useState(false);
+    const ttsPollTimer = useRef<ReturnType<typeof setInterval> | null>(null);
+    const TTS_VOICES = [
+        { id: 'af_heart', label: 'Heart (F, warm)' },
+        { id: 'af_bella', label: 'Bella (F, expressive)' },
+        { id: 'af_nicole', label: 'Nicole (F, headphones)' },
+        { id: 'af_sarah', label: 'Sarah (F)' },
+        { id: 'am_michael', label: 'Michael (M)' },
+        { id: 'am_puck', label: 'Puck (M, dynamic)' },
+        { id: 'am_onyx', label: 'Onyx (M)' },
+        { id: 'bf_emma', label: 'Emma (F, British)' },
+        { id: 'bm_george', label: 'George (M, British)' },
+    ];
 
     useEffect(() => {
         let cancelled = false;
@@ -83,9 +103,127 @@ export function AdvancedTab() {
         }
     };
 
+    // ── TTS (Kokoro) ──
+    const refreshTtsStatus = () => {
+        getTtsStatus().then(setTtsStatus).catch(() => { /* best-effort */ });
+    };
+
+    useEffect(() => {
+        refreshTtsStatus();
+        return () => {
+            if (ttsPollTimer.current) clearInterval(ttsPollTimer.current);
+        };
+    }, []);
+
+    const startTtsPolling = () => {
+        if (ttsPollTimer.current) return;
+        setTtsPolling(true);
+        ttsPollTimer.current = setInterval(() => {
+            getTtsStatus().then(s => {
+                setTtsStatus(s);
+                if (s.modelReady) {
+                    if (ttsPollTimer.current) clearInterval(ttsPollTimer.current);
+                    ttsPollTimer.current = null;
+                    setTtsPolling(false);
+                    setTtsIniting(false);
+                    toast.success('Kokoro TTS model ready');
+                }
+            }).catch(() => {});
+        }, 2000);
+    };
+
+    const handleTtsDownload = async () => {
+        setTtsIniting(true);
+        startTtsPolling();
+        try {
+            await initTtsModel();
+            refreshTtsStatus();
+            toast.success('Kokoro TTS model downloaded');
+        } catch (err) {
+            toast.error(`TTS download failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
+            setTtsIniting(false);
+            setTtsPolling(false);
+            if (ttsPollTimer.current) { clearInterval(ttsPollTimer.current); ttsPollTimer.current = null; }
+        }
+    };
+
+    const ttsReady = !!ttsStatus?.modelReady;
+
     return (
         <div className="space-y-6">
             <label className="text-text-dim text-xs uppercase tracking-widest font-bold block">Advanced</label>
+
+            {/* Kokoro TTS — local text-to-speech for GM narration */}
+            <div className="bg-void p-4 border border-border rounded space-y-3">
+                <div>
+                    <label className="block text-[11px] text-text-primary uppercase tracking-wider font-bold mb-1 flex items-center gap-1.5">
+                        <Volume2 size={11} /> Text-to-Speech (Kokoro)
+                    </label>
+                    <p className="text-[9px] text-text-dim max-w-[320px] leading-tight">
+                        Local neural TTS for GM narration. ~90MB one-time download (q8), runs fully offline.
+                        Not bundled — opt in here. A speaker icon appears on GM messages once ready.
+                    </p>
+                </div>
+
+                {/* Status pill */}
+                <div className="border border-terminal/30 bg-terminal/5 rounded p-3 flex items-center justify-between">
+                    <div>
+                        <div className="text-[11px] font-bold text-text-primary">
+                            {ttsStatus?.modelId?.split('/').pop() ?? 'Kokoro-82M'}
+                        </div>
+                        <div className="text-[9px] text-text-dim">
+                            {ttsReady
+                                ? `Ready · voice: ${ttsStatus?.voice}`
+                                : ttsIniting || ttsPolling
+                                    ? 'Downloading / warming up...'
+                                    : 'Not downloaded'}
+                        </div>
+                    </div>
+                    <span className={`text-[9px] font-bold uppercase ${ttsReady ? 'text-terminal' : 'text-text-dim'}`}>
+                        {ttsReady ? 'Ready' : 'Idle'}
+                    </span>
+                </div>
+
+                {/* Download / init button — shown until ready */}
+                {!ttsReady && (
+                    <button
+                        disabled={ttsIniting || ttsPolling}
+                        onClick={handleTtsDownload}
+                        className="text-[10px] uppercase tracking-widest bg-terminal/10 border border-terminal/30 text-terminal px-3 py-1.5 rounded hover:bg-terminal/20 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
+                    >
+                        {ttsIniting || ttsPolling ? <Loader2 size={10} className="animate-spin" /> : <Download size={10} />}
+                        {ttsIniting || ttsPolling ? 'Downloading...' : 'Download Model'}
+                    </button>
+                )}
+
+                {/* Toggle + voice picker — shown once ready */}
+                {ttsReady && (
+                    <>
+                        <label className="flex items-center gap-2 text-[10px] text-text-primary cursor-pointer">
+                            <input
+                                type="checkbox"
+                                checked={!!settings.ttsEnabled}
+                                onChange={e => updateSettings({ ttsEnabled: e.target.checked })}
+                                className="accent-terminal"
+                            />
+                            <span className="uppercase tracking-wider">Read GM replies aloud (speaker button)</span>
+                        </label>
+
+                        <div>
+                            <label className="block text-[9px] text-text-dim uppercase tracking-wider mb-1">Voice</label>
+                            <select
+                                value={settings.ttsVoice ?? 'af_heart'}
+                                onChange={e => updateSettings({ ttsVoice: e.target.value })}
+                                className="bg-void-darker border border-border text-text-primary text-[11px] px-2 py-1 rounded outline-none focus:border-terminal w-full"
+                            >
+                                {TTS_VOICES.map(v => (
+                                    <option key={v.id} value={v.id}>{v.label}</option>
+                                ))}
+                            </select>
+                        </div>
+                    </>
+                )}
+            </div>
 
             {/* Active embedder — read-only on desktop (single server-side model) */}
             <div className="bg-void p-4 border border-border rounded space-y-3">

@@ -103,6 +103,10 @@ export type AppSettings = {
     imageNegativePrompt?: string;    // negative prompt for image models that support it
     showPcTab?: boolean;             // default true; hides/shows Character Profile tab in Context Drawer
 
+    // Kokoro TTS (local text-to-speech for GM narration)
+    ttsEnabled?: boolean;            // master toggle; default false
+    ttsVoice?: string;               // kokoro voice id, e.g. 'af_heart'; default 'af_heart'
+
     // Two-tier providers (new) — reusable endpoint configs referenced by preset *AIProviderId
     providers: LLMProvider[];
 

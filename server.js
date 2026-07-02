@@ -17,8 +17,10 @@ import { createDivergenceRouter } from './server/routes/divergence.js';
 import { createRulesRouter } from './server/routes/rules.js';
 import { createLLMProxyRouter } from './server/routes/llmProxy.js';
 import { createEmbeddingRouter } from './server/routes/embedding.js';
+import { createTtsRouter } from './server/routes/tts.js';
 import { initDb } from './server/lib/vectorStore.js';
 import { warmup as warmupEmbedder } from './server/lib/embedder.js';
+import { warmupTts } from './server/lib/tts.js';
 import { serverError } from './server/lib/serverError.js';
 
 const app = express();
@@ -56,6 +58,7 @@ try {
     console.error('[VectorStore] Init failed:', err.message);
 }
 warmupEmbedder().catch(err => console.error('[Embedder] Warmup failed:', err.message));
+warmupTts().catch(err => console.error('[TTS] Warmup failed:', err.message));
 
 // ─── Routes ───
 app.use(createVaultRouter(vault));
@@ -73,6 +76,7 @@ app.use(createDivergenceRouter());
 app.use(createRulesRouter());
 app.use(createLLMProxyRouter());
 app.use(createEmbeddingRouter());
+app.use(createTtsRouter());
 
 // ─── Central Error Handler ───
 app.use((err, _req, res, _next) => {
