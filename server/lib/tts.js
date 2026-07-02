@@ -103,6 +103,7 @@ export async function initTts() {
                 cache_dir: CACHE_DIR,
             });
             modelReady = true;
+            initPromise = null; // clear so getTtsStatus() reports initializing:false once ready
             console.log(`[TTS] Kokoro model loaded: ${MODEL_ID} (${DTYPE})`);
             return tts;
         } catch (err) {
