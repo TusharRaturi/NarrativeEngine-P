@@ -37,7 +37,7 @@ export function buildPayload(
     const limit = settings.contextLimit || 8192;
     const collector = createTraceCollector(isDebug);
     const { rulesBudget, budgetMap } = computeBudgets(limit, settings.rulesBudgetPct, !!deepContextSummary);
-    const { stableContent, stableTokens } = buildStable({ settings, context, sceneNumber, relevantRules, rulesManifest, rulesBudget, budgetStable: budgetMap.stable, collector });
+    const { stableContent, stableTokens, retrievedRulesContent } = buildStable({ settings, context, relevantRules, rulesManifest, rulesBudget, budgetStable: budgetMap.stable, collector });
     const { worldContent, currentWorldTokens, divergenceContent, divergenceTokens, plannerEventTypes: resolvedEventTypes } = buildWorld({ history, userMessage, condensedUpToIndex, relevantLore, npcLedger, archiveRecall, recommendedNPCNames, semanticFactText, archiveIndex, timelineEvents, deepContextSummary, divergenceRegister, chapters, onStageNpcIds, loreRaw: context.loreRaw, agencyDigest: context.agencyDigest, arcDigest: context.arcDigest, budgetWorld: budgetMap.world, npcBudgetFloor: budgetMap.npc, plannerEventTypes, matureMode: settings.matureMode, isDebug, collector });
     const { volatileContent, volatileTokens } = buildVolatile({ context, inventoryCategories, profileFields, budgetVolatile: budgetMap.volatile, collector, plannerEventTypes: resolvedEventTypes, userMessage, history, npcLedger });
     const fitted = buildHistory({ history, condensedUpToIndex, userMessage, limit, stableTokens: stableTokens + divergenceTokens, currentWorldTokens, volatileTokens, context, collector });
@@ -67,8 +67,11 @@ export function buildPayload(
 
     // Fold the per-turn volatile world/NPC block and the GM reminder into the final user message
     // (below the cache boundary) so they never perturb the cached prefix.
+    // RAG-retrieved rules are per-turn dynamic (re-selected by semantic match to user input),
+    // so they ride in the volatile block below the cache boundary — not in stable. Mirrors
+    // mobileApp. Only verbatim full-rules fallback stays in stable (byte-identical across turns).
     const GM_REMINDER = '[GM REMINDER: NPCs push back when their wants/boundaries are crossed. Do not default to facilitation.]';
-    const volatileBlock = [worldContent, volatileContent].filter(Boolean).join('\n\n');
+    const volatileBlock = [retrievedRulesContent, worldContent, volatileContent].filter(Boolean).join('\n\n');
     const finalUserContent = [volatileBlock, GM_REMINDER, userMessage].filter(Boolean).join('\n\n');
     messages.push({ role: 'user', content: finalUserContent });
 

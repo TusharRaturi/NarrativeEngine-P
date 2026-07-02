@@ -36,26 +36,28 @@ function swapActionResolutionForToolMode(rules: string): string {
 export function buildStable(opts: {
     settings: AppSettings;
     context: GameContext;
-    sceneNumber?: string;
     relevantRules?: LoreChunk[];
     rulesManifest?: string;
     rulesBudget: number;
     budgetStable: number;
     collector: TraceCollector;
-}): { stableContent: string; stableTokens: number } {
-    const { settings, context, sceneNumber, relevantRules, rulesManifest, rulesBudget, budgetStable, collector } = opts;
+}): { stableContent: string; stableTokens: number; retrievedRulesContent?: string } {
+    const { settings, context, relevantRules, rulesManifest, rulesBudget, budgetStable, collector } = opts;
 
     const stableParts: string[] = [];
-    if (sceneNumber) stableParts.push(`[CURRENT SCENE: #${sceneNumber}]\n[ENGINE: Scene header is auto-injected. Do NOT write "Scene #${sceneNumber}" yourself. Start your response with the date/location/NPCs line directly.]`);
+    let retrievedRulesContent: string | undefined;
 
-    // Inject either selected Rules RAG chunks or complete raw rules
+    // Inject either selected Rules RAG chunks or complete raw rules.
+    // RAG-retrieved rules are DYNAMIC (re-selected per turn by semantic match to user input),
+    // so they MUST ride in the volatile block below the cache boundary — putting them in
+    // stable busts the prefix cache every turn. Only the verbatim full-rules fallback is
+    // stable (it's byte-identical across turns). Mirrors mobileApp payloadStableContent.ts.
     const effectiveRules = context.rulesRaw || DEFAULT_RULES;
     const rulesWithMode = context.diceFairnessActive === false
         ? swapActionResolutionForToolMode(effectiveRules)
         : effectiveRules;
 
     const hasRulesRAG = (context.rulesChunks?.length ?? 0) > 0;
-    let rulesText = '';
     if (hasRulesRAG && relevantRules && relevantRules.length > 0) {
         let rulesTokens = 0;
         const acceptedChunks: LoreChunk[] = [];
@@ -66,17 +68,17 @@ export function buildStable(opts: {
             }
         }
         const chunksText = acceptedChunks.map(c => `### ${c.header}\n${c.content}`).join('\n\n');
-        rulesText = `## RULES\n\n${chunksText}`;
+        let ragText = `## RULES\n\n${chunksText}`;
         if (rulesManifest) {
-            rulesText += `\n\n${rulesManifest}`;
+            ragText += `\n\n${rulesManifest}`;
         }
-        collector.addTrace({ source: 'RAG Rules', classification: 'stable_truth', tokens: rulesTokens, reason: `RAG injected (${acceptedChunks.length} chunks)`, included: true, position: 'system_static' });
+        retrievedRulesContent = ragText;
+        collector.addTrace({ source: 'RAG Rules', classification: 'volatile_state', tokens: rulesTokens, reason: `RAG injected (${acceptedChunks.length} chunks) — volatile (per-turn selection)`, included: true, position: 'system_dynamic' });
     } else {
-        rulesText = rulesWithMode;
+        const rulesText = rulesWithMode;
+        stableParts.push(rulesText);
         collector.addTrace({ source: 'Raw Rules', classification: 'stable_truth', tokens: countTokens(rulesText), reason: 'Complete rules list (RAG not loaded or below threshold)', included: true, position: 'system_static' });
     }
-
-    if (rulesText) stableParts.push(rulesText);
 
     if (context.canonStateActive && context.canonState) {
         stableParts.push(context.canonState);
@@ -106,5 +108,5 @@ export function buildStable(opts: {
     collector.addTrace({ source: 'Stable Preamble', classification: 'stable_truth', tokens: stableTokens, reason: 'Preamble & Core state', included: true, position: 'system_static', preview: stableContent });
     collector.addSection({ label: 'Stable Preamble', role: 'system', tokens: stableTokens, content: stableContent, classification: 'stable_truth' });
 
-    return { stableContent, stableTokens };
+    return { stableContent, stableTokens, retrievedRulesContent };
 }
