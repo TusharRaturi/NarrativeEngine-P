@@ -46,7 +46,17 @@ export function createLLMProxyRouter() {
         if (ct) res.setHeader('Content-Type', ct);
 
         if (upstream.body) {
-            Readable.fromWeb(upstream.body).pipe(res);
+            Readable.fromWeb(upstream.body)
+                .on('error', (err) => {
+                    // AbortError is expected when the client disconnects mid-stream
+                    // (stop/regenerate/close). Without this handler, the error becomes
+                    // an uncaught exception that crashes the entire Express backend,
+                    // causing 502s on every route until the server is restarted.
+                    if (err.name !== 'AbortError') {
+                        console.error('[LLM Proxy] Stream error:', err.message);
+                    }
+                })
+                .pipe(res);
         } else {
             res.end();
         }
