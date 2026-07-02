@@ -12,6 +12,8 @@ import { gatherContext } from './contextGatherer';
 import { runPostTurnPipeline } from './postTurnPipeline';
 import { tierAllows } from './aiTier';
 
+const MAX_TOOL_CALLS_PER_TURN = 5;
+
 export type TurnCallbacks = {
     onCheckingNotes: (checking: boolean) => void;
     addMessage: (msg: ChatMessage) => void;
@@ -261,7 +263,7 @@ export async function runTurn(
         // Tool-call recursion (existingMsgId + apiRetryCount === 0): preserve existing content
         callbacks.setStreaming(true);
 
-        const allowTools = toolCallCount < 2 && apiRetryCount < 2;
+        const allowTools = toolCallCount < MAX_TOOL_CALLS_PER_TURN && apiRetryCount < 2;
         const requestPayload = sanitizePayloadForApi(currentPayload, allowTools, provider?.modelName);
 
         // Suppress the dice tool when the player armed a manual roll (WO-H) — the resolved
@@ -281,6 +283,10 @@ export async function runTurn(
                 );
             },
             async (finalText, toolCall, reasoningContent) => {
+                if (toolCall && toolCallCount >= MAX_TOOL_CALLS_PER_TURN) {
+                    console.warn(`[Turn] Tool-call cap (${MAX_TOOL_CALLS_PER_TURN}) reached — refusing tool call '${toolCall.name}' and treating model output as final answer.`);
+                    toolCall = undefined;
+                }
                 if (toolCall && toolCall.name === 'query_campaign_lore') {
                     callbacks.setPipelinePhase?.('checking-notes');
                     callbacks.onCheckingNotes(true);

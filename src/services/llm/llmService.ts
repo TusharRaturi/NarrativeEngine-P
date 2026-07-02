@@ -41,7 +41,9 @@ export async function sendMessage(
     const label = trackingLabel ?? STORY_LABEL;
     const trackerHandle = startUtilityCall(label, trackingName, STREAM_IDLE_TIMEOUT_MS);
     let streamTimedOut = false;
+    let streamSettled = false;
     trackerHandle.deadlinePromise.then(() => {
+        if (streamSettled) return;
         streamTimedOut = true;
         controller.abort();
     });
@@ -69,6 +71,7 @@ export async function sendMessage(
             if (!res.ok) {
                 const errBody = await res.text();
                 if (res.status === 429 || res.status === 503 || res.status === 529) queue.onRateLimitHit();
+                streamSettled = true;
                 trackerHandle.settleError('error', `API error ${res.status}: ${errBody}`);
                 onError(`API error ${res.status}: ${errBody}`);
                 return;
@@ -76,6 +79,7 @@ export async function sendMessage(
 
             const reader = res.body?.getReader();
             if (!reader) {
+                streamSettled = true;
                 trackerHandle.settleError('error', 'No readable stream in response');
                 onError('No readable stream in response');
                 return;
@@ -178,7 +182,10 @@ export async function sendMessage(
 
             // --- DeepSeek / Local Model Fallback Parsing ---
             // Gate: only run for OpenAI-compatible format (Claude and Gemini never emit DSML tags)
-            if (format !== 'claude' && format !== 'gemini' && !tcName && fullText.includes('<\uFF5CDSML\uFF5C>function_calls>')) {
+            // AND only when tools were actually offered in this request. If tools were disabled
+            // (e.g. tool-call budget exhausted), parsing DSML tags into a tool call would re-arm
+            // a search the orchestrator has already capped — causing an infinite "Checking Notes" loop.
+            if (format !== 'claude' && format !== 'gemini' && !tcName && tools && tools.length > 0 && fullText.includes('<\uFF5CDSML\uFF5C>function_calls>')) {
                 const funcMatch = fullText.match(/<\uFF5CDSML\uFF5C>invoke name="([^"]+)">/);
                 if (funcMatch) {
                     tcName = funcMatch[1];
@@ -213,6 +220,7 @@ export async function sendMessage(
 
             recordCacheUsage(STORY_LABEL, streamUsage);
 
+            streamSettled = true;
             if (tcName) {
                 trackerHandle.settleSuccess();
                 onDone(fullText, { id: tcId, name: tcName, arguments: tcArgs }, reasoningContent || undefined);
@@ -224,6 +232,7 @@ export async function sendMessage(
             queue.releaseSlot();
         }
     } catch (err) {
+        streamSettled = true;
         // Distinguish tracker-idle-timeout from user abort from real errors so the strip
         // shows the right terminal state (timeout vs aborted vs error).
         if (streamTimedOut) {
