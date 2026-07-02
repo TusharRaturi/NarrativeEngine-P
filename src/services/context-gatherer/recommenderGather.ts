@@ -1,6 +1,7 @@
 import type { ArchiveChapter } from '../../types';
 import type { TurnState } from '../turn/turnOrchestrator';
 import { recommendContext } from '../turn/contextRecommender';
+import { tierAllows } from '../turn/aiTier';
 
 export type RecommenderResult = {
     recommendedNPCNames: string[] | undefined;
@@ -17,7 +18,7 @@ export async function gatherRecommender(
     const { npcLedger, loreChunks, messages, context } = state;
     const utilityEndpoint = state.getUtilityEndpoint?.();
 
-    if (!utilityEndpoint?.endpoint) {
+    if (!utilityEndpoint?.endpoint || !tierAllows(state.settings.aiTier, 'recommender')) {
         return { recommendedNPCNames: undefined, inventoryCategories: undefined, profileFields: undefined };
     }
 

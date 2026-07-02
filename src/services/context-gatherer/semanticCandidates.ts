@@ -5,6 +5,7 @@ import { rerankCandidates, type RerankCandidate } from '../retrieval/semanticRer
 import { llmCall } from '../../utils/llmCall';
 import { extractJsonRobust } from '../infrastructure/jsonExtract';
 import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
+import { tierAllows } from '../turn/aiTier';
 
 const CALLBACK_REGEX = /\b(remember|earlier|back when|before|previously|that .*(we|i) (did|met|fought|saw|found|got))\b/i;
 
@@ -66,7 +67,7 @@ export async function gatherSemanticCandidates(
             archiveIndex.length > 0 ||
             loreChunks.length > 0 ||
             (state.context?.rulesChunks?.length ?? 0) > 0;
-        if ((isCallback || isShort) && hasRetrievableContent && utilityEndpoint?.endpoint) {
+        if ((isCallback || isShort) && hasRetrievableContent && utilityEndpoint?.endpoint && tierAllows(state.settings.aiTier, 'expandQuery')) {
             const expanded = await expandQuery(input, npcLedger, utilityEndpoint);
             queries = expanded;
             if (expanded.length > 1) {
@@ -112,7 +113,7 @@ export async function gatherSemanticCandidates(
         }
 
         // Rerank candidates via LLM if enough results and utility endpoint available
-        if (utilityEndpoint?.endpoint) {
+        if (utilityEndpoint?.endpoint && tierAllows(state.settings.aiTier, 'reranker')) {
             if (semanticArchiveIds && semanticArchiveIds.length >= 5) {
                 const sceneCandidates: RerankCandidate[] = semanticArchiveIds.map(id => {
                     const idxEntry = archiveIndex.find(e => e.sceneId === id);

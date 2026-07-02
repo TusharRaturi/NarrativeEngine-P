@@ -2,6 +2,7 @@ import type { ArchiveChapter } from '../../types';
 import type { TurnState } from '../turn/turnOrchestrator';
 import { deepArchiveScan } from '../archive-memory/deepArchiveSearch';
 import { queryFacts, formatFactsForContext } from '../retrieval/semanticMemory';
+import { tierAllows } from '../turn/aiTier';
 
 export type DeepSearchDeps = {
     deepSearchThisTurn: boolean;
@@ -16,6 +17,10 @@ export async function gatherDeepSearch(
     signal?: AbortSignal
 ): Promise<string | undefined> {
     if (!deps.deepSearchThisTurn || !state.activeCampaignId) {
+        return undefined;
+    }
+
+    if (!tierAllows(state.settings.aiTier, 'deepScan')) {
         return undefined;
     }
 

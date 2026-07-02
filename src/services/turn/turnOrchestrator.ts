@@ -10,6 +10,7 @@ import { sanitizePayloadForApi } from '../lib/payloadSanitizer';
 import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool, handleProposeInventoryTool, handleInitiateCombatTool } from './toolHandlers';
 import { gatherContext } from './contextGatherer';
 import { runPostTurnPipeline } from './postTurnPipeline';
+import { tierAllows } from './aiTier';
 
 export type TurnCallbacks = {
     onCheckingNotes: (checking: boolean) => void;
@@ -166,7 +167,7 @@ export async function runTurn(
         return;
     }
 
-    if (context.npcIntroEngineActive) {
+    if (context.npcIntroEngineActive && tierAllows(settings.aiTier, 'introEngine')) {
         const seenNpcNames = new Set((npcLedger ?? []).map((n: NPCEntry) => n.name.toLowerCase()));
         try {
             const auxProvider = useAppStore.getState().getActiveAuxiliaryEndpoint() ?? provider;

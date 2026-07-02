@@ -226,6 +226,8 @@ export type NPCEntry = {
      * always inject — preserving the backward-compatible default.
      */
     fieldTags?: Partial<Record<string, import('./archive').SceneEventType[]>>;
+    // ---- AI Tier gating: last scene this NPC received an LLM profile update ----
+    lastUpdateScene?: number;
 };
 
 // ---- NPC Agency (Phase 1: schema only — no dice/heat/karma/tick logic) ----

@@ -4,6 +4,7 @@ import { recallArchiveScenes, retrieveArchiveMemory, fetchArchiveScenes } from '
 import { rankChapters, recallWithChapterFunnel } from '../archive-memory/archiveChapterEngine';
 import { runArchivePlanner } from '../archive-memory/archivePlanner';
 import { getDivergenceSceneIds, EMPTY_REGISTER, buildSceneMap } from '../campaign-state/divergenceRegister';
+import { tierAllows } from '../turn/aiTier';
 import type { SemanticCandidates } from './semanticCandidates';
 
 export type ArchiveRecallDeps = {
@@ -15,7 +16,7 @@ export async function gatherPlannerSceneIds(
     signal?: AbortSignal
 ): Promise<string[] | undefined> {
     const plannerEndpoint = state.getUtilityEndpoint?.();
-    if (state.settings.enableArchivePlanner && plannerEndpoint?.endpoint) {
+    if (tierAllows(state.settings.aiTier, 'planner') && state.settings.enableArchivePlanner && plannerEndpoint?.endpoint) {
         try {
             return await runArchivePlanner(plannerEndpoint, state.input, state.archiveIndex, signal);
         } catch {
@@ -49,6 +50,19 @@ export async function gatherArchiveRecall(
     const hasSealedChapters = chapters.some(c => c.sealedAt && c.summary);
 
     if (!hasSealedChapters) {
+        return recallArchiveScenes(
+            activeCampaignId, archiveIndex, input, messages, 3000,
+            npcLedger, (state as any).semanticFacts,
+            undefined, semanticArchiveIds,
+            divergenceSceneIds,
+            excludeSceneIds,
+            plannerSceneIds,
+            archiveRecallDepth
+        );
+    }
+
+    // Lite tier: skip the chapter funnel (LLM-backed) — fall through to flat recall.
+    if (!tierAllows(state.settings.aiTier, 'archiveFunnel')) {
         return recallArchiveScenes(
             activeCampaignId, archiveIndex, input, messages, 3000,
             npcLedger, (state as any).semanticFacts,

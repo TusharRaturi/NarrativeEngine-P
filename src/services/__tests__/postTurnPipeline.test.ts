@@ -63,7 +63,7 @@ const baseContext = (): GameContext => ({
 const makeState = (overrides: Partial<TurnState> = {}): TurnState => ({
     input: 'attack the goblin',
     displayInput: 'attack the goblin',
-    settings: {} as any,
+    settings: { aiTier: 'max' } as any,
     context: baseContext(),
     messages: [],
     condenser: { condensedUpToIndex: -1 },

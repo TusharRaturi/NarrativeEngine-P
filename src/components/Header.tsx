@@ -1,4 +1,4 @@
-import { Settings, PanelLeftOpen, PanelLeftClose, LogOut, Users, Archive, Save, Pin } from 'lucide-react';
+import { Settings, PanelLeftOpen, PanelLeftClose, LogOut, Users, Archive, Save, Pin, Cpu } from 'lucide-react';
 import { createBackup } from '../store/campaignStore';
 import { flushAllPendingSaves } from '../store/slices/campaignSlice';
 import { toast } from './Toast';
@@ -6,6 +6,9 @@ import { useAppStore } from '../store/useAppStore';
 import { TokenGauge } from './TokenGauge';
 import { BackgroundControl } from './BackgroundControl';
 import { saveCampaignState } from '../store/campaignStore';
+import type { AiTier } from '../types/llm';
+
+const TIER_CYCLE: Record<AiTier, AiTier> = { lite: 'pro', pro: 'max', max: 'lite' };
 
 export function Header() {
     const {
@@ -21,9 +24,12 @@ export function Header() {
         messages,
         condenser,
         divergenceRegister,
+        settings,
+        updateSettings,
     } = useAppStore();
 
     const pinnedExcerpts = useAppStore(s => s.pinnedExcerpts);
+    const aiTier = (settings?.aiTier ?? 'pro') as AiTier;
 
     const handleExit = async () => {
         if (activeCampaignId) {
@@ -99,6 +105,16 @@ export function Header() {
                 >
                     <Users size={13} />
                     <span>NPC Ledger</span>
+                </button>
+
+                <button
+                    onClick={() => updateSettings({ aiTier: TIER_CYCLE[aiTier] })}
+                    className="flex items-center gap-1.5 h-8 px-2.5 rounded-sm border border-border/40 hover:border-terminal bg-void-lighter hover:bg-terminal/5 text-text-dim hover:text-terminal transition-colors shrink-0 cursor-pointer text-[10px] font-bold uppercase tracking-wider font-mono"
+                    title={`AI Tier: ${aiTier.toUpperCase()} (click to cycle Lite → Pro → Max)`}
+                    aria-label={`AI Tier: ${aiTier}, click to cycle`}
+                >
+                    <Cpu size={13} />
+                    <span className="hidden sm:inline">{aiTier}</span>
                 </button>
 
                 <button

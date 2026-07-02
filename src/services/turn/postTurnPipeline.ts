@@ -16,6 +16,7 @@ import { scanInventory } from '../inventoryParser';
 import { toast } from '../../components/Toast';
 import { mergeSealEntries, EMPTY_REGISTER } from '../campaign-state/divergenceRegister';
 import { saveDivergenceRegister } from '../../store/campaignStore';
+import { tierAllows, NPC_UPDATE_COOLDOWN } from './aiTier';
 
 const PRESENT_HEADER_RE = /👥\s*\[Present\]\s*(.+)/i;
 
@@ -99,7 +100,6 @@ export async function runPostTurnPipeline(
     try {
         const { runAgencyTick, bumpOnStageActivity } = await import('../npc/agency/agencyEngine');
         bumpOnStageActivity(state, callbacks, npcLedger);
-        const { tierAllows } = await import('./aiTier');
         if (tierAllows(state.settings.aiTier, 'heartbeatTick')) {
             runAgencyTick(state, callbacks, npcLedger, displayInput);
         }
@@ -138,7 +138,6 @@ export async function runPostTurnPipeline(
     // Gated by aiTier in Phase 4. Zero LLM (the only LLM call is the spawn, fired manually
     // via the ArcInjectorButton).
     try {
-        const { tierAllows } = await import('./aiTier');
         if (tierAllows(state.settings.aiTier, 'arcTick')) {
             const { runArcTick } = await import('../arc/arcEngine');
             runArcTick(state, callbacks, displayInput, lastAssistantContent);
@@ -185,7 +184,7 @@ async function runArchiveTrack(
 ): Promise<void> {
     let sceneImportance: number | undefined;
     const importanceProvider = state.getFreshProvider();
-    if (importanceProvider) {
+    if (importanceProvider && tierAllows(state.settings.aiTier, 'importanceRating')) {
         try {
             sceneImportance = await rateImportance(importanceProvider, displayInput, lastAssistantContent, allMsgs);
             console.log(`[ImportanceRater] Scene rated: ${sceneImportance}/5`);
@@ -245,7 +244,7 @@ async function runArchiveTrack(
             toast.info(`Chapter "${sealResult.sealedChapter.title}" auto-sealed (${CHAPTER_SCENE_SOFT_CAP} scenes)`);
 
             const sealProvider = state.getFreshProvider();
-            if (sealProvider) {
+            if (sealProvider && tierAllows(state.settings.aiTier, 'sealChapter')) {
                 await runCombinedSeal(
                     sealProvider,
                     sealResult.sealedChapter,
@@ -270,24 +269,26 @@ async function runArchiveTrack(
             const inventoryItems = state.getFreshContext().inventoryItems || [];
             const profileData = state.getFreshContext().characterProfileData || { name: '', race: '', class: '', level: 1, hp: { current: 20, max: 20 }, stats: {}, skills: [], abilities: [], traits: [], notes: '' };
 
-            backgroundQueue.push('Profile-Scan', async () => {
-                const newProfile = await scanCharacterProfile(bkProvider, state.getMessages(), profileData);
-                callbacks.updateContext({
-                    characterProfileData: newProfile,
-                    characterProfileLastScene: sceneId,
-                });
-                const s = useAppStore.getState();
-                if (s.activeCampaignId === activeCampaignId && 'setCharacterProfileData' in s) {
-                    (s as any).setCharacterProfileData(newProfile);
-                }
-                console.log(`[Auto Bookkeeping] Profile sheet updated at scene #${sceneId}`);
-            }).catch(err => console.warn('[Auto Bookkeeping] Profile scan failed:', err));
+            if (tierAllows(state.settings.aiTier, 'profileScan')) {
+                backgroundQueue.push('Profile-Scan', async () => {
+                    const newProfile = await scanCharacterProfile(bkProvider, state.getMessages(), profileData);
+                    callbacks.updateContext({
+                        characterProfileData: newProfile,
+                        characterProfileLastScene: sceneId,
+                    });
+                    const s = useAppStore.getState();
+                    if (s.activeCampaignId === activeCampaignId && 'setCharacterProfileData' in s) {
+                        (s as any).setCharacterProfileData(newProfile);
+                    }
+                    console.log(`[Auto Bookkeeping] Profile sheet updated at scene #${sceneId}`);
+                }).catch(err => console.warn('[Auto Bookkeeping] Profile scan failed:', err));
+            }
 
             // WO-G: structured trait scan (sibling of the sheet scan). Maintains the
             // CharacterProfileState (identity + bounded activeTraits with supersession).
             // WO-J (5be8695): gate on characterProfileActive — skip the LLM call when the
             // toggle is off, since the result is never injected.
-            if (state.getFreshContext().characterProfileActive) {
+            if (state.getFreshContext().characterProfileActive && tierAllows(state.settings.aiTier, 'profileScan')) {
                 const traitProfile = state.getFreshContext().characterProfile || { identity: {}, activeTraits: [] };
                 backgroundQueue.push('Trait-Scan', async () => {
                     const newTraits = await scanCharacterTraits(bkProvider, state.getMessages(), traitProfile);
@@ -298,19 +299,21 @@ async function runArchiveTrack(
                 }).catch(err => console.warn('[Auto Bookkeeping] Trait scan failed:', err));
             }
 
-            backgroundQueue.push('Inventory-Scan', async () => {
-                const newItems = await scanInventory(bkProvider, state.getMessages(), inventoryItems);
-                callbacks.updateContext({
-                    inventory: newItems.map(it => `- ${it.qty > 1 ? `${it.qty}x ` : ''}${it.name}`).join('\n'),
-                    inventoryItems: newItems,
-                    inventoryLastScene: sceneId,
-                });
-                const s = useAppStore.getState();
-                if (s.activeCampaignId === activeCampaignId && 'setInventoryItems' in s) {
-                    (s as any).setInventoryItems(newItems);
-                }
-                console.log(`[Auto Bookkeeping] Inventory updated at scene #${sceneId}`);
-            }).catch(err => console.warn('[Auto Bookkeeping] Inventory scan failed:', err));
+            if (tierAllows(state.settings.aiTier, 'inventoryScan')) {
+                backgroundQueue.push('Inventory-Scan', async () => {
+                    const newItems = await scanInventory(bkProvider, state.getMessages(), inventoryItems);
+                    callbacks.updateContext({
+                        inventory: newItems.map(it => `- ${it.qty > 1 ? `${it.qty}x ` : ''}${it.name}`).join('\n'),
+                        inventoryItems: newItems,
+                        inventoryLastScene: sceneId,
+                    });
+                    const s = useAppStore.getState();
+                    if (s.activeCampaignId === activeCampaignId && 'setInventoryItems' in s) {
+                        (s as any).setInventoryItems(newItems);
+                    }
+                    console.log(`[Auto Bookkeeping] Inventory updated at scene #${sceneId}`);
+                }).catch(err => console.warn('[Auto Bookkeeping] Inventory scan failed:', err));
+            }
         }
     }
 }
@@ -462,8 +465,9 @@ async function runNPCTrack(
     const extractedNames = extractNPCNames(lastAssistantContent, excludeNames);
     if (extractedNames.length === 0) return;
 
+    // Lite tier: skip NPC validation LLM call — surface raw extracted names as suggestions only.
     const freshProvider = state.getFreshProvider();
-    const validatedNames = freshProvider
+    const validatedNames = (freshProvider && tierAllows(state.settings.aiTier, 'npcValidate'))
         ? await validateNPCCandidates(freshProvider, extractedNames, lastAssistantContent)
         : extractedNames;
 
@@ -485,23 +489,43 @@ async function runNPCTrack(
         callbacks.addNpcSuggestions?.([potentialName], lastAssistantContent);
     }
 
-    if (existingNpcsToUpdate.length > 0) {
-        const updateProvider = state.getFreshProvider();
-        if (updateProvider) {
-            backgroundQueue.push(
-                `NPC-Update:${existingNpcsToUpdate.map(n => n.name).join(',')}`,
-                () => updateExistingNPCs(updateProvider, allMsgs, existingNpcsToUpdate, guardedUpdateNPC)
-            ).catch(err => console.warn('[NPC Update] Background update failed:', err));
+    if (existingNpcsToUpdate.length > 0 && tierAllows(state.settings.aiTier, 'npcUpdate')) {
+        const cooldown = NPC_UPDATE_COOLDOWN[state.settings.aiTier ?? 'pro'];
+        const archiveIndex = state.archiveIndex;
+        const sceneNow = archiveIndex.length > 0
+            ? parseInt(archiveIndex[archiveIndex.length - 1].sceneId, 10) || 0
+            : 0;
+        // Apply the tier cooldown (Infinity on Lite — but the npcUpdate gate above already
+        // blocks Lite entirely; this still matters for Pro's 5-scene cooldown).
+        const npcsDueForUpdate = existingNpcsToUpdate.filter(
+            npc => sceneNow - (npc.lastUpdateScene ?? -Infinity) >= cooldown
+        );
+
+        if (npcsDueForUpdate.length > 0) {
+            const updateProvider = state.getFreshProvider();
+            if (updateProvider) {
+                backgroundQueue.push(
+                    `NPC-Update:${npcsDueForUpdate.map(n => n.name).join(',')}`,
+                    () => updateExistingNPCs(updateProvider, allMsgs, npcsDueForUpdate, guardedUpdateNPC)
+                        .then(() => {
+                            for (const npc of npcsDueForUpdate) {
+                                guardedUpdateNPC(npc.id, { lastUpdateScene: sceneNow });
+                            }
+                        })
+                ).catch(err => console.warn('[NPC Update] Background update failed:', err));
+            }
         }
 
-        const npcsNeedingDrives = existingNpcsToUpdate.filter(n => !n.drives);
-        if (npcsNeedingDrives.length > 0) {
-            const backfillProvider = state.getFreshProvider();
-            if (backfillProvider) {
-                backgroundQueue.push(
-                    `NPC-Drives-Backfill:${npcsNeedingDrives.map(n => n.name).join(',')}`,
-                    () => backfillNPCDrives(backfillProvider, allMsgs, npcsNeedingDrives, guardedUpdateNPC)
-                ).catch(err => console.warn('[NPC Drives Backfill] Background backfill failed:', err));
+        if (tierAllows(state.settings.aiTier, 'drivesBackfill')) {
+            const npcsNeedingDrives = existingNpcsToUpdate.filter(n => !n.drives);
+            if (npcsNeedingDrives.length > 0) {
+                const backfillProvider = state.getFreshProvider();
+                if (backfillProvider) {
+                    backgroundQueue.push(
+                        `NPC-Drives-Backfill:${npcsNeedingDrives.map(n => n.name).join(',')}`,
+                        () => backfillNPCDrives(backfillProvider, allMsgs, npcsNeedingDrives, guardedUpdateNPC)
+                    ).catch(err => console.warn('[NPC Drives Backfill] Background backfill failed:', err));
+                }
             }
         }
     }
