@@ -28,6 +28,7 @@ import { normalizeEntityName } from '../lib/entityResolution.js';
 import { embedText, buildArchiveText, buildLoreText, warmup, embedBatch, getActiveDims, getActiveModelId, isModelReady } from '../lib/embedder.js';
 import { storeArchiveEmbedding, storeLoreEmbedding, searchArchive, searchLore, getEmbeddingStatus, EMBEDDING_VERSION, getDb, deleteArchiveEmbedding } from '../lib/vectorStore.js';
 import { isJobRunning } from '../lib/embedJobs.js';
+import { withCampaignLock } from '../lib/writeLock.js';
 import { wrapAsync } from '../lib/asyncHandler.js';
 import { serverError } from '../lib/serverError.js';
 
@@ -41,16 +42,25 @@ export function createArchiveRouter() {
         res.json({ sceneNumber: next, sceneId: padded });
     }));
 
-    // Append a scene (user + assistant exchange) — also writes index entry
+    // Append a scene (user + assistant exchange) — also writes index entry.
+    //
+    // Phase split (race-condition fix): the route responds immediately after the
+    // deterministic file writes (prose, index with heuristic witnesses, entities,
+    // chapters). LLM-driven witness + timeline extraction is deferred to a
+    // background `setImmediate` task that patches the index/timeline under the
+    // per-campaign write lock. This prevents the 12-20s UI freeze that would
+    // occur if the route awaited the LLM calls before responding, and the lock
+    // prevents lost updates between concurrent appends and deferred writes.
     router.post('/api/campaigns/:id/archive', wrapAsync(async (req, res) => {
         ensureDirs();
+        const campaignId = req.params.id;
         const { userContent, assistantContent, importance: clientImportance, utilityConfig } = req.body;
         if (typeof userContent !== 'string' || !userContent.trim() || typeof assistantContent !== 'string' || !assistantContent.trim()) {
             return res.status(400).json({ error: 'userContent and assistantContent are required non-empty strings' });
         }
-        const fp = archivePath(req.params.id);
-        const idxp = archiveIndexPath(req.params.id);
-        const sceneNum = getNextSceneNumber(req.params.id);
+        const fp = archivePath(campaignId);
+        const idxp = archiveIndexPath(campaignId);
+        const sceneNum = getNextSceneNumber(campaignId);
         const sceneId = String(sceneNum).padStart(3, '0');
         const timestamp = Date.now();
         const timestampStr = new Date(timestamp).toLocaleString();
@@ -75,11 +85,11 @@ export function createArchiveRouter() {
         const combinedText = `${userContent}\n${assistantContent}`;
         const keywords = extractIndexKeywords(combinedText);
         const npcNames = extractNPCNames(assistantContent);
-        let witnessResult = null;
-        if (utilityConfig?.endpoint && npcNames.length > 0) {
-            witnessResult = await extractWitnessesLLM(npcNames, userContent, assistantContent, utilityConfig);
-        }
-        const { witnesses, mentioned: npcOnlyMentioned } = witnessResult || extractWitnessesHeuristic(npcNames, userContent, assistantContent);
+
+        // Fast phase: use heuristic witnesses immediately (no LLM wait).
+        // The deferred LLM extraction (if utilityConfig is provided) patches
+        // these later via the PATCH /witnesses flow under the write lock.
+        const { witnesses, mentioned: npcOnlyMentioned } = extractWitnessesHeuristic(npcNames, userContent, assistantContent);
         const indexEntry = {
             sceneId,
             timestamp,
@@ -93,16 +103,21 @@ export function createArchiveRouter() {
                 : estimateImportance(combinedText),
             userSnippet: userContent.slice(0, 120),
         };
-        const existing = readJson(idxp, []);
-        existing.push(indexEntry);
-        writeJson(idxp, existing);
+
+        // Deterministic writes — serialized per campaign to prevent lost updates
+        // between concurrent appends (pre-existing race) and deferred LLM writes.
+        await withCampaignLock(campaignId, () => {
+            const existing = readJson(idxp, []);
+            existing.push(indexEntry);
+            writeJson(idxp, existing);
+        });
 
         embedText(buildArchiveText(indexEntry))
-            .then(embedding => storeArchiveEmbedding(req.params.id, sceneId, embedding))
+            .then(embedding => storeArchiveEmbedding(campaignId, sceneId, embedding))
             .catch(err => console.warn('[Archive] Embedding failed:', err.message));
 
-        // Extract timeline events (LLM with regex fallback) and append to timeline store
-        const entitiesFile = entitiesPath(req.params.id);
+        // Entity registry + chapter auto-lifecycle — also under the lock.
+        const entitiesFile = entitiesPath(campaignId);
         const knownEntities = readJson(entitiesFile, []);
         const allEntityNames = [
             ...npcNames,
@@ -113,82 +128,120 @@ export function createArchiveRouter() {
             .map(lower => allEntityNames.find(n => n.toLowerCase() === lower) || lower);
 
         // Determine which chapter this scene belongs to
-        const chaptersList = readJson(chaptersPath(req.params.id), []);
+        const chaptersList = readJson(chaptersPath(campaignId), []);
         const openChapterForTimeline = chaptersList.find(c => !c.sealedAt) || chaptersList[chaptersList.length - 1];
         const currentChapterId = openChapterForTimeline?.chapterId || 'CH01';
 
-        let newEvents = null;
-        if (utilityConfig?.endpoint && npcNames.length > 0) {
-            newEvents = await extractTimelineEventsLLM(uniqueEntityNames, combinedText, sceneId, currentChapterId, utilityConfig);
-        }
-
-        if (newEvents === null) {
-            newEvents = extractTimelineEventsRegex(npcNames, combinedText, sceneId, currentChapterId);
-        } else {
-            for (const ev of newEvents) {
-                ev.subject = normalizeEntityName(ev.subject, knownEntities);
-                ev.object = normalizeEntityName(ev.object, knownEntities);
+        await withCampaignLock(campaignId, () => {
+            // Update entity registry
+            const ents = readJson(entitiesFile, []);
+            const updatedEntities = [...ents];
+            for (const name of npcNames) {
+                const canonical = normalizeEntityName(name, updatedEntities);
+                if (canonical === name && !updatedEntities.some(e =>
+                    e.name.toLowerCase() === name.toLowerCase()
+                )) {
+                    updatedEntities.push({
+                        id: `ent_${String(updatedEntities.length + 1).padStart(4, '0')}`,
+                        name,
+                        type: 'npc',
+                        aliases: [],
+                        firstSeen: sceneId,
+                    });
+                }
             }
-        }
+            writeJson(entitiesFile, updatedEntities);
 
-        if (newEvents.length > 0) {
-            const tp = timelinePath(req.params.id);
-            const existingEvents = readJson(tp, []);
-            const maxId = existingEvents.reduce((max, e) => {
-                const num = parseInt(e.id.replace('tl_', ''), 10);
-                return num > max ? num : max;
-            }, 0);
-            let idCounter = maxId + 1;
-            for (const ev of newEvents) {
-                existingEvents.push({
-                    id: `tl_${String(idCounter++).padStart(4, '0')}`,
-                    ...ev,
-                });
+            // --- Chapter Auto-Lifecycle ---
+            const cp = chaptersPath(campaignId);
+            let chapters = readJson(cp, []);
+            let openChapter = chapters.find(c => !c.sealedAt);
+
+            if (!openChapter) {
+                // Create new open chapter if none exists
+                const nextNum = chapters.length + 1;
+                openChapter = createDefaultChapter(
+                    `CH${String(nextNum).padStart(2, '0')}`,
+                    `Chapter ${nextNum}`,
+                    sceneId,
+                    1,
+                );
+                chapters.push(openChapter);
+            } else {
+                // Update existing open chapter
+                openChapter.sceneRange[1] = sceneId;
+                openChapter.sceneCount++;
             }
-            writeJson(tp, existingEvents);
-        }
+            writeJson(cp, chapters);
+        });
 
-        // Update entity registry
-        const updatedEntities = [...knownEntities];
-        for (const name of npcNames) {
-            const canonical = normalizeEntityName(name, updatedEntities);
-            if (canonical === name && !updatedEntities.some(e =>
-                e.name.toLowerCase() === name.toLowerCase()
-            )) {
-                updatedEntities.push({
-                    id: `ent_${String(updatedEntities.length + 1).padStart(4, '0')}`,
-                    name,
-                    type: 'npc',
-                    aliases: [],
-                    firstSeen: sceneId,
-                });
-            }
-        }
-        writeJson(entitiesFile, updatedEntities);
-
-        // --- NEW: Chapter Auto-Lifecycle ---
-        const cp = chaptersPath(req.params.id);
-        let chapters = readJson(cp, []);
-        let openChapter = chapters.find(c => !c.sealedAt);
-
-        if (!openChapter) {
-            // Create new open chapter if none exists
-            const nextNum = chapters.length + 1;
-            openChapter = createDefaultChapter(
-                `CH${String(nextNum).padStart(2, '0')}`,
-                `Chapter ${nextNum}`,
-                sceneId,
-                1,
-            );
-            chapters.push(openChapter);
-        } else {
-            // Update existing open chapter
-            openChapter.sceneRange[1] = sceneId;
-            openChapter.sceneCount++;
-        }
-        writeJson(cp, chapters);
-
+        // Respond immediately — the client only needs { ok, sceneNumber, sceneId }.
+        // It re-fetches index/timeline/chapters after this returns; the deferred
+        // LLM results land on a later re-fetch (same UX model as embeddings).
         res.json({ ok: true, sceneNumber: sceneNum, sceneId });
+
+        // ── Deferred phase: LLM witness + timeline extraction ──
+        // Runs only when utilityConfig is provided (currently dormant — the
+        // client doesn't pass it, so this is forward-looking). Patched under the
+        // per-campaign lock so it can't clobber a concurrent append's writes.
+        if (utilityConfig?.endpoint && npcNames.length > 0) {
+            setImmediate(async () => {
+                try {
+                    // Witness extraction → patch the index entry's witnesses field
+                    const witnessResult = await extractWitnessesLLM(npcNames, userContent, assistantContent, utilityConfig);
+                    if (witnessResult && Array.isArray(witnessResult.witnesses)) {
+                        await withCampaignLock(campaignId, () => {
+                            const entries = readJson(idxp, []);
+                            const target = entries.find(e => e.sceneId === sceneId);
+                            if (target) {
+                                target.witnesses = witnessResult.witnesses;
+                                target.witnessSource = 'llm';
+                                if (Array.isArray(witnessResult.mentioned)) {
+                                    target.npcsMentioned = witnessResult.mentioned;
+                                }
+                            }
+                            writeJson(idxp, entries);
+                        });
+                        console.log(`[Archive] LLM witnesses patched for scene #${sceneId}`);
+                    }
+
+                    // Timeline event extraction → append to timeline store
+                    const newEventsRaw = await extractTimelineEventsLLM(uniqueEntityNames, combinedText, sceneId, currentChapterId, utilityConfig);
+                    let newEvents = null;
+                    if (newEventsRaw === null) {
+                        newEvents = extractTimelineEventsRegex(npcNames, combinedText, sceneId, currentChapterId);
+                    } else {
+                        newEvents = newEventsRaw;
+                        for (const ev of newEvents) {
+                            ev.subject = normalizeEntityName(ev.subject, knownEntities);
+                            ev.object = normalizeEntityName(ev.object, knownEntities);
+                        }
+                    }
+
+                    if (newEvents && newEvents.length > 0) {
+                        await withCampaignLock(campaignId, () => {
+                            const tp = timelinePath(campaignId);
+                            const existingEvents = readJson(tp, []);
+                            const maxId = existingEvents.reduce((max, e) => {
+                                const num = parseInt(e.id.replace('tl_', ''), 10);
+                                return num > max ? num : max;
+                            }, 0);
+                            let idCounter = maxId + 1;
+                            for (const ev of newEvents) {
+                                existingEvents.push({
+                                    id: `tl_${String(idCounter++).padStart(4, '0')}`,
+                                    ...ev,
+                                });
+                            }
+                            writeJson(tp, existingEvents);
+                        });
+                        console.log(`[Archive] LLM timeline events appended for scene #${sceneId} (${newEvents.length} events)`);
+                    }
+                } catch (err) {
+                    console.warn(`[Archive] Deferred LLM extraction failed for scene #${sceneId}:`, err.message);
+                }
+            });
+        }
     }));
 
     // Clear archive (.archive.md and .archive.index.json)

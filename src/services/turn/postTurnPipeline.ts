@@ -20,6 +20,49 @@ import { tierAllows, NPC_UPDATE_COOLDOWN } from './aiTier';
 
 const PRESENT_HEADER_RE = /👥\s*\[Present\]\s*(.+)/i;
 
+/**
+ * Campaign-id guard factory for background-task callbacks. Mirrors the
+ * established `guardedUpdateNPC` pattern (L478-485): reads the live
+ * `activeCampaignId` from the store and drops the call if the user has
+ * switched campaigns while the background task was in flight. The guard
+ * only suppresses stale writes — same-campaign calls pass through
+ * untouched, so synchronous UI handlers (which call the store directly,
+ * not via these wrappers) are unaffected.
+ *
+ * Used to close the race where a background scan (Profile/Trait/Inventory,
+ * Event-Extraction, Chapter-AutoSeal, Timeskip-Narration) completes after
+ * a campaign switch and would otherwise contaminate the new campaign's
+ * context via `callbacks.updateContext` (campaignSlice.ts:512 has no
+ * campaign-id check and merges the patch into whatever `s.context` is
+ * currently active).
+ */
+function makeGuarded<T extends (...args: any[]) => void>(
+    fn: T,
+    activeCampaignId: string,
+    label: string,
+): T {
+    return ((...args: Parameters<T>) => {
+        const currentId = useAppStore.getState().activeCampaignId;
+        if (currentId !== activeCampaignId) {
+            console.warn(`[PostTurn] Dropping ${label} — campaign switched (${activeCampaignId} → ${currentId})`);
+            return;
+        }
+        return fn(...args);
+    }) as T;
+}
+
+/** Drop the entire background closure if the campaign switched before it
+ *  starts running (cheap fast-fail). Re-check after each significant await
+ *  via `assertStillActive` for closures with multiple awaited steps. */
+function assertStillActive(activeCampaignId: string, label: string): boolean {
+    const currentId = useAppStore.getState().activeCampaignId;
+    if (currentId !== activeCampaignId) {
+        console.warn(`[PostTurn] Aborting ${label} — campaign switched (${activeCampaignId} → ${currentId})`);
+        return false;
+    }
+    return true;
+}
+
 function parsePresentHeader(content: string): string[] | null {
     const match = content.match(PRESENT_HEADER_RE);
     if (!match) return null;
@@ -101,7 +144,16 @@ export async function runPostTurnPipeline(
         const { runAgencyTick, bumpOnStageActivity } = await import('../npc/agency/agencyEngine');
         bumpOnStageActivity(state, callbacks, npcLedger);
         if (tierAllows(state.settings.aiTier, 'heartbeatTick')) {
-            runAgencyTick(state, callbacks, npcLedger, displayInput);
+            // Guard only addMessage — it's the only callback invoked from a
+            // backgroundQueue.push closure inside runAgencyTick (Timeskip-Narration,
+            // agencyEngine.ts:341). The synchronous updateContext/updateNPC calls in
+            // runAgencyTick run in the same microtask as this line, so they don't need
+            // guarding (same reasoning as the synchronous pipeline calls at L68/111).
+            const agencyCallbacks: TurnCallbacks = {
+                ...callbacks,
+                addMessage: makeGuarded(callbacks.addMessage, activeCampaignId, 'addMessage (Timeskip-Narration)'),
+            };
+            runAgencyTick(state, agencyCallbacks, npcLedger, displayInput);
         }
     } catch (err) {
         console.warn('[AgencyTick] Failed (non-fatal):', err);
@@ -222,12 +274,14 @@ async function runArchiveTrack(
     const bkProvider = state.getFreshProvider();
     if (entry && !entry.events && bkProvider) {
         const sceneText = `${displayInput}\n\n${lastAssistantContent}`;
+        const guardedSetArchiveIndex = makeGuarded(callbacks.setArchiveIndex, activeCampaignId, 'setArchiveIndex (Event-Extraction)');
         backgroundQueue.push(`Event-Extraction:${appendedSceneId}`, async () => {
+            if (!assertStillActive(activeCampaignId, 'Event-Extraction')) return;
             const events = await extractSceneEvents(bkProvider, sceneText);
             if (events && events.length > 0) {
                 await api.archive.patchEvents(activeCampaignId, [{ sceneId: entry.sceneId, events }]);
                 const updatedIndex = await api.archive.getIndex(activeCampaignId);
-                callbacks.setArchiveIndex(updatedIndex);
+                guardedSetArchiveIndex(updatedIndex);
                 console.log(`[Archive] Post-turn events extracted for scene #${entry.sceneId}`);
             }
         }).catch(err => console.warn('[PostTurn] Background event extraction failed:', err));
@@ -236,11 +290,22 @@ async function runArchiveTrack(
     const openChapter = freshChapters.find(c => !c.sealedAt);
     if (openChapter && openChapter.sceneCount >= CHAPTER_SCENE_SOFT_CAP) {
         console.log(`[Auto-Seal] Chapter "${openChapter.title}" hit ${openChapter.sceneCount} scenes — sealing...`);
+        const guardedSetChapters = makeGuarded(state.setChapters, activeCampaignId, 'setChapters (Auto-Seal)');
+        const guardedSealCallbacks: TurnCallbacks = {
+            ...callbacks,
+            setDivergenceRegister: callbacks.setDivergenceRegister
+                ? makeGuarded(callbacks.setDivergenceRegister, activeCampaignId, 'setDivergenceRegister (Auto-Seal)')
+                : undefined,
+            setArchiveIndex: makeGuarded(callbacks.setArchiveIndex, activeCampaignId, 'setArchiveIndex (Auto-Seal)'),
+        };
         backgroundQueue.push('Chapter-AutoSeal', async () => {
+            if (!assertStillActive(activeCampaignId, 'Chapter-AutoSeal')) return;
             const sealResult = await api.chapters.seal(activeCampaignId);
+            if (!assertStillActive(activeCampaignId, 'Chapter-AutoSeal')) return;
             if (!sealResult) return;
             const sealedChapters = await api.chapters.list(activeCampaignId);
-            state.setChapters(sealedChapters);
+            if (!assertStillActive(activeCampaignId, 'Chapter-AutoSeal')) return;
+            guardedSetChapters(sealedChapters);
             toast.info(`Chapter "${sealResult.sealedChapter.title}" auto-sealed (${CHAPTER_SCENE_SOFT_CAP} scenes)`);
 
             const sealProvider = state.getFreshProvider();
@@ -250,7 +315,7 @@ async function runArchiveTrack(
                     sealResult.sealedChapter,
                     activeCampaignId,
                     state,
-                    callbacks,
+                    guardedSealCallbacks,
                     true
                 );
             }
@@ -269,10 +334,14 @@ async function runArchiveTrack(
             const inventoryItems = state.getFreshContext().inventoryItems || [];
             const profileData = state.getFreshContext().characterProfileData || { name: '', race: '', class: '', level: 1, hp: { current: 20, max: 20 }, stats: {}, skills: [], abilities: [], traits: [], notes: '' };
 
+            const guardedUpdateContext = makeGuarded(callbacks.updateContext, activeCampaignId, 'updateContext (bookkeeping scan)');
+
             if (tierAllows(state.settings.aiTier, 'profileScan')) {
                 backgroundQueue.push('Profile-Scan', async () => {
+                    if (!assertStillActive(activeCampaignId, 'Profile-Scan')) return;
                     const newProfile = await scanCharacterProfile(bkProvider, state.getMessages(), profileData);
-                    callbacks.updateContext({
+                    if (!assertStillActive(activeCampaignId, 'Profile-Scan')) return;
+                    guardedUpdateContext({
                         characterProfileData: newProfile,
                         characterProfileLastScene: sceneId,
                     });
@@ -291,8 +360,10 @@ async function runArchiveTrack(
             if (state.getFreshContext().characterProfileActive && tierAllows(state.settings.aiTier, 'profileScan')) {
                 const traitProfile = state.getFreshContext().characterProfile || { identity: {}, activeTraits: [] };
                 backgroundQueue.push('Trait-Scan', async () => {
+                    if (!assertStillActive(activeCampaignId, 'Trait-Scan')) return;
                     const newTraits = await scanCharacterTraits(bkProvider, state.getMessages(), traitProfile);
-                    callbacks.updateContext({
+                    if (!assertStillActive(activeCampaignId, 'Trait-Scan')) return;
+                    guardedUpdateContext({
                         characterProfile: newTraits,
                     });
                     console.log(`[Auto Bookkeeping] Traits updated at scene #${sceneId} (${newTraits.activeTraits.filter(t => !t.superseded).length} active)`);
@@ -301,8 +372,10 @@ async function runArchiveTrack(
 
             if (tierAllows(state.settings.aiTier, 'inventoryScan')) {
                 backgroundQueue.push('Inventory-Scan', async () => {
+                    if (!assertStillActive(activeCampaignId, 'Inventory-Scan')) return;
                     const newItems = await scanInventory(bkProvider, state.getMessages(), inventoryItems);
-                    callbacks.updateContext({
+                    if (!assertStillActive(activeCampaignId, 'Inventory-Scan')) return;
+                    guardedUpdateContext({
                         inventory: newItems.map(it => `- ${it.qty > 1 ? `${it.qty}x ` : ''}${it.name}`).join('\n'),
                         inventoryItems: newItems,
                         inventoryLastScene: sceneId,
