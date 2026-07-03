@@ -21,11 +21,12 @@ type Props = {
     onDelete: (id: string, e: React.MouseEvent) => void;
     onAIUpdate: () => void;
     onGeneratePortrait: () => void;
+    onUploadPortrait: (file: File) => void;
 };
 
 export function NPCEditForm({
     form, setForm, selectedId, isEditing, isAIUpdating, isGeneratingImage,
-    onEdit, onSave, onCancel, onDelete, onAIUpdate, onGeneratePortrait,
+    onEdit, onSave, onCancel, onDelete, onAIUpdate, onGeneratePortrait, onUploadPortrait,
 }: Props) {
     const handleVisualProfileChange = (field: keyof NPCVisualProfile, value: string) => {
         setForm(prev => ({
@@ -752,6 +753,7 @@ export function NPCEditForm({
                         isEditing={isEditing}
                         isGeneratingImage={isGeneratingImage}
                         onGeneratePortrait={onGeneratePortrait}
+                        onUploadPortrait={onUploadPortrait}
                         onVisualProfileChange={handleVisualProfileChange}
                         appearance={form.appearance || ''}
                         onAppearanceChange={(v) => setForm(prev => ({ ...prev, appearance: v }))}

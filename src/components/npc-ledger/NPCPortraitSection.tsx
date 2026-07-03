@@ -1,5 +1,6 @@
-import { Loader2, Image as ImageIcon } from 'lucide-react';
+import { Loader2, Image as ImageIcon, Upload } from 'lucide-react';
 import type { NPCVisualProfile } from '../../types';
+import { useRef } from 'react';
 
 type Props = {
     portrait?: string;
@@ -8,6 +9,7 @@ type Props = {
     isEditing: boolean;
     isGeneratingImage: boolean;
     onGeneratePortrait: () => void;
+    onUploadPortrait: (file: File) => void;
     onVisualProfileChange: (field: keyof NPCVisualProfile, value: string) => void;
     appearance: string;
     onAppearanceChange: (value: string) => void;
@@ -15,8 +17,16 @@ type Props = {
 
 export function NPCPortraitSection({
     portrait, name, visualProfile, isEditing, isGeneratingImage,
-    onGeneratePortrait, onVisualProfileChange, appearance, onAppearanceChange,
+    onGeneratePortrait, onUploadPortrait, onVisualProfileChange, appearance, onAppearanceChange,
 }: Props) {
+    const fileInputRef = useRef<HTMLInputElement>(null);
+
+    const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (file) onUploadPortrait(file);
+        // Reset so the same file can be re-selected later.
+        e.target.value = '';
+    };
     return (
         <div className="bg-void-lighter p-4 rounded border border-border shadow-inner">
             {portrait ? (
@@ -44,6 +54,23 @@ export function NPCPortraitSection({
                 </div>
                 <div className="flex items-center gap-2">
                     <div className="text-[9px] uppercase tracking-wider text-text-dim hidden sm:block">Portrait Generation Data</div>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileChange}
+                        className="hidden"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        disabled={isGeneratingImage || !name}
+                        title="Upload a portrait image from your computer"
+                        className="flex items-center gap-1 px-2 py-1 border border-border hover:border-terminal text-terminal text-[9px] uppercase tracking-wider rounded transition-colors disabled:opacity-50"
+                    >
+                        <Upload size={10} />
+                        Upload
+                    </button>
                     <button
                         type="button"
                         onClick={onGeneratePortrait}

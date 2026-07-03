@@ -1,10 +1,11 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Edit2, RotateCcw, Trash2, Loader2, Check, X, Volume2, Square, RotateCw, Play, Pause } from 'lucide-react';
-import type { ChatMessage, DebugSection } from '../types';
+import type { ChatMessage, DebugSection, NPCEntry } from '../types';
 import { DebugPayloadView } from './DebugPayloadView';
 import { ToolCallChips } from './chat/ToolCallChips';
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useMemo } from 'react';
+import type { ReactNode } from 'react';
 import { useTtsStatus } from '../services/tts/useTtsStatus';
 import { generateTts, loadCachedTts, checkCachedChunks } from '../services/tts/ttsClient';
 import { proseForTTS, chunkSentencesForTTS, splitWords } from '../services/tts/proseStripper';
@@ -24,6 +25,71 @@ function inlineNameBrackets(text: string): string {
     return text.replace(NAME_BRACKET_RE, (full, inner: string) =>
         looksLikeSystemTag(inner) ? full : `**${inner.trim()}**`
     );
+}
+
+// ── NPC hover-thumbnail wiring ──────────────────────────────────────────────
+// Wrap known ledger NPC names (by name + alias, case-insensitive, whole-word) in
+// markdown link syntax `[Name](#npc-p-{id})` so react-markdown parses them. The
+// custom `a` renderer below turns those sentinel-href links into hover thumbnails
+// instead of real anchors. We split on code fences / inline code / existing links
+// to avoid mangling code or nested links.
+type NpcLookup = {
+    re: RegExp;
+    idToNpc: Map<string, { id: string; name: string; portrait: string }>;
+    nameToId: Map<string, string>;
+};
+
+function buildNpcLookup(ledger: NPCEntry[]): NpcLookup | null {
+    const withPortrait = ledger.filter(n => n.portrait && !n.archived);
+    if (withPortrait.length === 0) return null;
+
+    const idToNpc = new Map<string, { id: string; name: string; portrait: string }>();
+    const nameToId = new Map<string, string>();
+    for (const npc of withPortrait) {
+        idToNpc.set(npc.id, { id: npc.id, name: npc.name, portrait: npc.portrait! });
+        const explicitVariants = [npc.name, ...(npc.aliases ? npc.aliases.split(',').map(s => s.trim()).filter(Boolean) : [])];
+        // Auto-index the first token of multi-word names (e.g. "Rin" from "Rin Holmes")
+        // so recurring NPCs get highlighted by their first name in prose. Skip tokens
+        // shorter than 3 chars to limit false-positive common-word matches.
+        const firstName = npc.name.split(/\s+/)[0]?.trim();
+        const autoVariants = firstName && firstName.length >= 3 ? [firstName] : [];
+        const variants = [...explicitVariants, ...autoVariants];
+        for (const v of variants) {
+            const key = v.toLowerCase();
+            // Longer names win — only set if not already present (we sort names desc below).
+            if (v && !nameToId.has(key)) nameToId.set(key, npc.id);
+        }
+    }
+    // Sort names by length descending so "Captain Aldric" matches before "Aldric".
+    const names = [...nameToId.keys()].sort((a, b) => b.length - a.length);
+    if (names.length === 0) return null;
+    const escaped = names.map(n => n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'));
+    // Lookbehind/lookahead on a non-letter boundary. Chromium (Electron) supports lookbehind.
+    const re = new RegExp(`(?<![A-Za-z])(${escaped.join('|')})(?![A-Za-z])`, 'gi');
+    return { re, idToNpc, nameToId };
+}
+
+function wrapNpcNames(text: string, lookup: NpcLookup): string {
+    const replaceInSegment = (s: string) =>
+        s.replace(lookup.re, (_full, name: string) => {
+            const id = lookup.nameToId.get(name.toLowerCase());
+            if (!id) return name;
+            return `[${name}](#npc-p-${id})`;
+        });
+
+    // Split out fenced code blocks (```...```) — don't touch their contents.
+    return text.split(/(```[\s\S]*?```)/g).map((segment, i) => {
+        if (i % 2 === 1) return segment; // inside a code fence
+        // Split out inline code (`...`) — don't touch.
+        return segment.split(/(`[^`]+`)/g).map((seg2, j) => {
+            if (j % 2 === 1) return seg2; // inside inline code
+            // Split out existing markdown links [text](url) — don't touch.
+            return seg2.split(/(\[[^\]]*\]\([^)]*\))/g).map((seg3, k) => {
+                if (k % 2 === 1) return seg3; // inside an existing link
+                return replaceInSegment(seg3);
+            }).join('');
+        }).join('');
+    }).join('');
 }
 
 interface MessageBubbleProps {
@@ -490,6 +556,29 @@ export function MessageBubble({
 
     const isUser = msg.role === 'user';
 
+    // ── NPC hover thumbnail lookup (ledger-side, no prop threading needed) ──
+    const npcLedger = useAppStore(s => s.npcLedger);
+    const npcLookup = useMemo(() => buildNpcLookup(npcLedger), [npcLedger]);
+    const renderMarkdown = (raw: string) => {
+        let out = inlineNameBrackets(raw);
+        if (npcLookup) out = wrapNpcNames(out, npcLookup);
+        return out;
+    };
+
+    // react-markdown custom `a` renderer: sentinel-href NPC links become hover chips.
+    const mdComponents = useMemo(() => ({
+        a: ({ href, children }: { href?: string; children?: ReactNode }) => {
+            if (!href || !href.startsWith('#npc-p-')) {
+                // Default anchor rendering for real links.
+                return <a href={href} target="_blank" rel="noopener noreferrer">{children}</a>;
+            }
+            const id = href.slice('#npc-p-'.length);
+            const npc = npcLookup?.idToNpc.get(id);
+            if (!npc) return <>{children}</>;
+            return <NpcNameChip name={npc.name} portrait={npc.portrait}>{children}</NpcNameChip>;
+        },
+    }), [npcLookup]);
+
     const actionRail = (
         <div className="flex flex-col gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-void-darker border border-border p-1 rounded-md self-start sticky top-1/2 -translate-y-1/2 z-10">
             {isEditing ? (
@@ -686,7 +775,7 @@ export function MessageBubble({
                                     </div>
                                 </div>
                             )}
-                            <ReactMarkdown remarkPlugins={[remarkGfm]}>{inlineNameBrackets(markdownContent)}</ReactMarkdown>
+                            <ReactMarkdown remarkPlugins={[remarkGfm]} components={mdComponents}>{renderMarkdown(markdownContent)}</ReactMarkdown>
                         </>
                     )}
                     {hasSummary && (
@@ -770,5 +859,31 @@ function KaraokeText({
                 );
             })}
         </div>
+    );
+}
+
+/**
+ * Inline NPC-name chip that shows a reduced portrait thumbnail on hover.
+ * Renders as bold-styled text (matching the bracket→**bold** display transform);
+ * hovering reveals a small 96px portrait card. Purely display — the name stays
+ * in the document flow and is selectable.
+ */
+function NpcNameChip({ name, portrait, children }: { name: string; portrait: string; children: ReactNode }) {
+    return (
+        <span className="relative inline-block group/npc text-terminal font-bold cursor-help">
+            {children}
+            <span className="pointer-events-none absolute left-1/2 -translate-x-1/2 bottom-full mb-1 z-50 opacity-0 group-hover/npc:opacity-100 transition-opacity duration-150">
+                <span className="block bg-void-darker border border-terminal/40 rounded shadow-lg p-1 w-[96px]">
+                    <img
+                        src={portrait}
+                        alt={name}
+                        className="w-full aspect-[3/4] object-cover object-top rounded"
+                        loading="lazy"
+                        draggable={false}
+                    />
+                    <span className="block text-[9px] text-center text-text-dim uppercase tracking-wider truncate mt-0.5">{name}</span>
+                </span>
+            </span>
+        </span>
     );
 }

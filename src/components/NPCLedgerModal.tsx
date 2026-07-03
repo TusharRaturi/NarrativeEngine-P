@@ -3,7 +3,7 @@ import { X, Plus, Users, LayoutGrid, List, CheckSquare, Upload, Download, BookOp
 import { useAppStore } from '../store/useAppStore';
 import { generateNPCPortrait, updateExistingNPCs } from '../services/chatEngine';
 import { parseNPCsFromLore } from '../services/lore/loreNPCParser';
-import { downloadImageToLocal } from '../services/infrastructure/assetService';
+import { downloadImageToLocal, uploadImageToLocal } from '../services/infrastructure/assetService';
 import type { NPCEntry, NPCVisualProfile } from '../types';
 import { DEFAULT_VISUAL_PROFILE } from '../types';
 import { toast } from './Toast';
@@ -238,6 +238,22 @@ export function NPCLedgerModal() {
         } catch (error: any) {
             console.error(error);
             toast.error(`Portrait generation failed: ${error.message}`);
+        } finally {
+            setIsGeneratingImage(false);
+        }
+    };
+
+    // ── Manual portrait upload (user-selected image from disk) ──
+    const handleUploadPortrait = async (file: File) => {
+        setIsGeneratingImage(true);
+        try {
+            const localPath = await uploadImageToLocal(file, form.name || 'Unknown');
+            setForm(prev => ({ ...prev, portrait: localPath }));
+            if (!isEditing && form.id) updateNPC(form.id, { portrait: localPath });
+            toast.success('Portrait uploaded');
+        } catch (error: any) {
+            console.error(error);
+            toast.error(`Portrait upload failed: ${error.message}`);
         } finally {
             setIsGeneratingImage(false);
         }
@@ -556,6 +572,7 @@ export function NPCLedgerModal() {
                         onDelete={handleDelete}
                         onAIUpdate={handleAIUpdate}
                         onGeneratePortrait={handleGeneratePortrait}
+                        onUploadPortrait={handleUploadPortrait}
                     />
                 </div>
             </div>
