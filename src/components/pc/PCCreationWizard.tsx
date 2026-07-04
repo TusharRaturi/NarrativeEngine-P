@@ -134,7 +134,8 @@ export function PCCreationWizard({ onComplete, onCancel }: {
     }, [auxProvider, loreChunks, answers]);
 
     const handleCommit = useCallback(async () => {
-        if (!selectedArchetype) return;
+        const archetype = selectedArchetype ?? (answers.archetype as Archetype | undefined);
+        if (!archetype) return;
         setIsGenerating(true);
         try {
             const combatTier = getPCTier(isOP);
@@ -175,14 +176,14 @@ export function PCCreationWizard({ onComplete, onCancel }: {
                 voice: answers.voice,
                 drives: answers.drives,
                 stats: allocation.stats,
-                archetype: selectedArchetype,
+                archetype,
                 isOP,
             });
 
             const profileData = buildCharacterProfileData({
                 name: pcEntry.name,
                 stats: allocation.stats,
-                archetype: selectedArchetype,
+                archetype,
                 isOP,
                 concept: answers.concept,
             });
@@ -206,7 +207,7 @@ export function PCCreationWizard({ onComplete, onCancel }: {
                 identity: {
                     name: pcEntry.name,
                     class: answers.archetype || undefined,
-                    archetype: selectedArchetype || undefined,
+                    archetype: archetype || undefined,
                 },
                 stats: allocation.stats,
                 activeTraits: seedTraits,
@@ -223,7 +224,7 @@ export function PCCreationWizard({ onComplete, onCancel }: {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (pcEntry as any).combatTier = combatTier;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            (pcEntry as any).archetype = selectedArchetype;
+            (pcEntry as any).archetype = archetype;
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             (pcEntry as any).stats = allocation.stats;
 
