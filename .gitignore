@@ -76,3 +76,7 @@ server/scripts/migrateEmbeddings.js
 
 # Debug / stabilization config
 stabs.json
+
+# Local trash folder
+TRASH/
+
