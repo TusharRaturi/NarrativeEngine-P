@@ -43,6 +43,23 @@ That's it. Create a campaign, write your world lore, and start playing.
 
 ---
 
+## Troubleshooting
+
+**"Node.js is not installed"** when running the start script
+Install the LTS version from https://nodejs.org/ and run the script again.
+
+**"needs Node 20 or newer"** when running the start script
+Your Node.js is too old. Upgrade to the LTS version at https://nodejs.org/.
+
+**"NODE_MODULE_VERSION mismatch"** error after upgrading Node
+Your database module was built for the old Node version. Run the repair script to rebuild it for your current Node:
+- **Windows** — double-click `Repair_Narrative_Engine.bat`
+- **Linux / macOS** — run `./Repair_Narrative_Engine.sh`
+
+If the repair fails on Windows with a C++ build tools error, install the [Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (select "Desktop development with C++") and run the repair again.
+
+---
+
 ## Setting Up Your First Campaign
 
 The `Example_Setup/` folder contains ready-to-play campaigns across multiple genres — including a gritty survival fantasy (*Spirit Card World*), a *Naruto*-inspired setting, and more. Each comes with a world bible, a GM ruleset, and an opening prompt.
