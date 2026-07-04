@@ -43,6 +43,32 @@ That's it. Create a campaign, write your world lore, and start playing.
 
 ---
 
+## Updating to the Latest Version
+
+When a new version comes out, you can update your local copy without losing your campaigns or settings.
+
+**Windows** — double-click `Update_Narrative_Engine.bat`
+
+It will:
+- Download the newest app files from GitHub (`git pull`)
+- Run `npm install` to keep dependencies in sync
+- Leave your saved campaigns, lore, and API keys untouched (the `data/` folder is not tracked by Git)
+
+**Manual:**
+```bash
+git pull
+npm install
+```
+
+**Notes**
+- Close the app completely before updating (close any terminal windows titled "Narrative Engine").
+- If you downloaded the app as a ZIP instead of cloning it, the updater won't work — download the newest ZIP from GitHub instead.
+- If you edited any app files directly, the update may ask before overwriting them. Edits inside `data/` are never touched.
+
+After updating, start the app the same way as before (`Start_Narrative_Engine.bat` / `start.sh` / `npm run dev`).
+
+---
+
 ## Troubleshooting
 
 **"Node.js is not installed"** when running the start script
@@ -326,6 +352,8 @@ Works with Ollama for fully local play — no internet required after setup.
 |---|---|
 | Install & run (Windows) | Double-click `Start_Narrative_Engine.bat` |
 | Install & run (Linux) | Run `start.sh` |
+| Update to latest (Windows) | Double-click `Update_Narrative_Engine.bat` |
+| Update to latest (manual) | `git pull` then `npm install` |
 | Install manually | `npm install` |
 | Start the app | `npm run dev` |
 | Run tests | `npm run test` |
