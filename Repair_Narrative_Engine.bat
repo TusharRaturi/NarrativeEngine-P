@@ -30,18 +30,32 @@ echo.
 
 REM ===== Pre-flight: Node must be installed and new enough =====
 where node >nul 2>nul
-if errorlevel 1 (
-    echo [STOP] Node.js is not installed on this computer.
-    echo.
-    echo To fix this:
-    echo   1. Open your web browser and go to https://nodejs.org/
-    echo   2. Download the "LTS" version (the green button)
-    echo   3. Run the installer - just click Next through all the steps
-    echo   4. Come back and double-click this file again
-    echo.
-    pause
-    exit /b 1
-)
+if not errorlevel 1 goto :repair_node_found
+
+REM Fallback: Explorer sometimes spawns cmd with a stale PATH that
+REM predates the Node.js install. Try the default install locations.
+if exist "C:\Program Files\nodejs\node.exe" set "PATH=%PATH%;C:\Program Files\nodejs\"
+
+where node >nul 2>nul
+if not errorlevel 1 goto :repair_node_found
+
+if exist "C:\Program Files (x86)\nodejs\node.exe" set "PATH=%PATH%;C:\Program Files (x86)\nodejs\"
+
+where node >nul 2>nul
+if not errorlevel 1 goto :repair_node_found
+
+echo [STOP] Node.js is not installed on this computer.
+echo.
+echo To fix this:
+echo   1. Open your web browser and go to https://nodejs.org/
+echo   2. Download the "LTS" version (the green button)
+echo   3. Run the installer - just click Next through all the steps
+echo   4. Come back and double-click this file again
+echo.
+pause
+exit /b 1
+
+:repair_node_found
 
 for /f "delims=" %%v in ('node -p "process.versions.node" 2^>nul') do set "NODE_VERSION=%%v"
 for /f "tokens=1,2 delims=." %%a in ("%NODE_VERSION%") do (

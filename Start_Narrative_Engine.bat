@@ -4,21 +4,34 @@ cd /d "%~dp0"
 
 REM ===== Pre-flight checks =====
 where node >nul 2>nul
-if errorlevel 1 (
-    echo.
-    echo [STOP] Node.js is not installed on this computer.
-    echo.
-    echo This app needs Node.js to run. To install it:
-    echo   1. Open your web browser and go to https://nodejs.org/
-    echo   2. Download the "LTS" version (the green button)
-    echo   3. Run the installer - just click Next through all the steps
-    echo   4. Close this window and double-click
-    echo      Start_Narrative_Engine.bat again
-    echo.
-    pause
-    exit /b 1
-)
+if not errorlevel 1 goto :node_found
 
+REM Fallback: Explorer sometimes spawns cmd with a stale PATH that
+REM predates the Node.js install. Try the default install locations.
+if exist "C:\Program Files\nodejs\node.exe" set "PATH=%PATH%;C:\Program Files\nodejs\"
+
+where node >nul 2>nul
+if not errorlevel 1 goto :node_found
+
+if exist "C:\Program Files (x86)\nodejs\node.exe" set "PATH=%PATH%;C:\Program Files (x86)\nodejs\"
+
+where node >nul 2>nul
+if not errorlevel 1 goto :node_found
+
+echo.
+echo [STOP] Node.js is not installed on this computer.
+echo.
+echo This app needs Node.js to run. To install it:
+echo   1. Open your web browser and go to https://nodejs.org/
+echo   2. Download the "LTS" version (the green button)
+echo   3. Run the installer - just click Next through all the steps
+echo   4. Close this window and double-click
+echo      Start_Narrative_Engine.bat again
+echo.
+pause
+exit /b 1
+
+:node_found
 REM Get clean Node version string (e.g. 22.14.0)
 for /f "delims=" %%v in ('node -p "process.versions.node" 2^>nul') do set "NODE_VERSION=%%v"
 
@@ -77,7 +90,7 @@ exit /b 1
 echo Node %NODE_VERSION% detected - OK.
 echo.
 
-REM ===== Main flow (unchanged) =====
+REM ===== Main flow =====
 echo Installing dependencies...
 call npm install
 echo Starting the application...

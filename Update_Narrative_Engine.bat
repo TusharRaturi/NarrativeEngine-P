@@ -59,28 +59,42 @@ echo.
 
 REM ===== Pre-flight: git must be installed =====
 where git >nul 2>nul
-if errorlevel 1 (
-    echo [STOP] Git is not installed on this computer.
-    echo.
-    echo This updater needs Git to download updates.
-    echo Most users already have it from when they
-    echo first installed the app. If you do not:
-    echo.
-    echo   1. Open your web browser and go to
-    echo      https://git-scm.com/download/win
-    echo   2. Download and run the installer
-    echo      (just click Next through all steps)
-    echo   3. Close this window and double-click
-    echo      this file again
-    echo.
-    echo If you downloaded the app as a ZIP file
-    echo instead of cloning it, this updater will
-    echo not work - you will need to download the
-    echo newest ZIP from GitHub instead.
-    echo.
-    pause
-    exit /b 1
-)
+if not errorlevel 1 goto :git_found
+
+REM Fallback: Explorer sometimes spawns cmd with a stale PATH that
+REM predates the Git install. Try the default install locations.
+if exist "C:\Program Files\Git\cmd\git.exe" set "PATH=%PATH%;C:\Program Files\Git\cmd"
+
+where git >nul 2>nul
+if not errorlevel 1 goto :git_found
+
+if exist "C:\Program Files (x86)\Git\cmd\git.exe" set "PATH=%PATH%;C:\Program Files (x86)\Git\cmd"
+
+where git >nul 2>nul
+if not errorlevel 1 goto :git_found
+
+echo [STOP] Git is not installed on this computer.
+echo.
+echo This updater needs Git to download updates.
+echo Most users already have it from when they
+echo first installed the app. If you do not:
+echo.
+echo   1. Open your web browser and go to
+echo      https://git-scm.com/download/win
+echo   2. Download and run the installer
+echo      (just click Next through all steps)
+echo   3. Close this window and double-click
+echo      this file again
+echo.
+echo If you downloaded the app as a ZIP file
+echo instead of cloning it, this updater will
+echo not work - you will need to download the
+echo newest ZIP from GitHub instead.
+echo.
+pause
+exit /b 1
+
+:git_found
 
 REM ===== Pre-flight: this folder must be a git repo =====
 if not exist ".git" (
