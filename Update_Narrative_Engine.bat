@@ -1,6 +1,27 @@
 @echo off
 title Narrative Engine - Update
-cd /d "%~dp0"
+
+REM ============================================================
+REM Self-copy guard: git pull can overwrite THIS .bat file while
+REM it is running. When that happens, cmd loses its place in the
+REM file and the window closes silently (pause never runs).
+REM To prevent that, we copy this script to a temp file and run
+REM from there, passing the real app folder as an argument.
+REM ============================================================
+if "%~1"=="__tempcopy__" (
+    set "APP_DIR=%~2"
+    goto :begin
+)
+set "TEMP_BAT=%TEMP%\narrative_engine_updater_tmp.bat"
+copy /y "%~f0" "%TEMP_BAT%" >nul 2>nul
+if exist "%TEMP_BAT%" (
+    "%TEMP_BAT%" __tempcopy__ "%~dp0"
+    exit /b %errorlevel%
+)
+
+:begin
+if not defined APP_DIR set "APP_DIR=%~dp0"
+cd /d "%APP_DIR%"
 
 echo ============================================
 echo   Narrative Engine - Update Tool
@@ -269,6 +290,22 @@ echo You can run this file again any time.
 echo.
 pause
 exit /b 0
+
+REM ===== Safety net: if execution ever falls through
+REM      to here (should not happen), still pause so the
+REM      user can read the output before the window
+REM      closes.
+REM =====
+echo.
+echo ============================================
+echo   Script ended unexpectedly.
+echo ============================================
+echo.
+echo Please take a screenshot of this window and
+echo report it, then close this window.
+echo.
+pause
+exit /b 1
 
 REM ===== Subroutine: mark the first Sagesheep remote as the pull source =====
 :check_remote
