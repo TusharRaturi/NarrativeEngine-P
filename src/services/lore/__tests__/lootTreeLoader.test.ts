@@ -123,8 +123,8 @@ describe('Loot Tree Loader (loadLootTree)', () => {
         expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('has invalid shape'));
     });
 
-    it('should load and validate the real Tenebria loot.json database', () => {
-        const jsonPath = path.resolve(__dirname, '../../../../Example_Setup/World_compendium/Tenebria/loot.json');
+    it('should load and validate the real Class Scroll World loot.json database', () => {
+        const jsonPath = path.resolve(__dirname, '../../../../Example_Setup/World_compendium/Class Scroll World/loot.json');
         const rawJson = JSON.parse(fs.readFileSync(jsonPath, 'utf8'));
 
         const result = loadLootTree(rawJson);

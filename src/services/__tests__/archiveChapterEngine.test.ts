@@ -793,7 +793,10 @@ describe('iterativeChapterFilter', () => {
         // Verify fetch was called with expected structure
         expect(mockFetch).toHaveBeenCalled();
         const callArgs = mockFetch.mock.calls[0];
-        const requestBody = JSON.parse(callArgs[1].body);
+        // llmFetch wraps the original request in a proxy body:
+        // { target, method, headers, body: <stringified original body> }
+        const proxyBody = JSON.parse(callArgs[1].body);
+        const requestBody = JSON.parse(proxyBody.body);
         
         // max_tokens should be 10 for minimal output
         expect(requestBody.max_tokens).toBe(10);

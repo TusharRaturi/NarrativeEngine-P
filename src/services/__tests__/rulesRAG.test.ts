@@ -222,12 +222,14 @@ describe('Payload Builder Integration', () => {
             '[Available rule sections not loaded this turn]\n## Stealth\n[End section list]'
         );
         
-        const systemMessage = payload.messages.find(m => m.role === 'system');
-        expect(systemMessage).toBeDefined();
-        expect(systemMessage!.content).toContain('## RULES');
-        expect(systemMessage!.content).toContain('Attack Actions');
-        expect(systemMessage!.content).toContain('Difficulty Check');
-        expect(systemMessage!.content).toContain('Stealth'); // Manifest contains unretrieved rules list
+        // RAG-retrieved rules ride in the volatile block folded into the final user message
+        // (only the verbatim full-rules fallback stays in the system message)
+        const userMessage = payload.messages.find(m => m.role === 'user');
+        expect(userMessage).toBeDefined();
+        expect(userMessage!.content).toContain('## RULES');
+        expect(userMessage!.content).toContain('Attack Actions');
+        expect(userMessage!.content).toContain('Difficulty Check');
+        expect(userMessage!.content).toContain('Stealth'); // Manifest contains unretrieved rules list
     });
 
     it('limits RAG rules injection when they exceed the rules budget', () => {
@@ -270,7 +272,7 @@ describe('Payload Builder Integration', () => {
             ''
         );
         
-        const systemMessage = payload.messages.find(m => m.role === 'system');
+        const systemMessage = payload.messages.find(m => m.role === 'user');
         expect(systemMessage).toBeDefined();
         expect(systemMessage!.content).toContain('Attack Actions');
         expect(systemMessage!.content).not.toContain('Difficulty Check'); // Exceeded budget

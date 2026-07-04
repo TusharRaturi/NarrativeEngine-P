@@ -229,7 +229,10 @@ describe('ChatArea', () => {
         render(<ChatArea />);
         const editBtn = screen.getByTitle('Edit');
         await user.click(editBtn);
-        expect(screen.getByText('Editing Message')).toBeInTheDocument();
+        // Edit mode renders a textarea with placeholder "Edit message..."
+        // and a Save button with title "Save edit (Enter)"
+        expect(screen.getByPlaceholderText('Edit message...')).toBeInTheDocument();
+        expect(screen.getByTitle('Save edit (Enter)')).toBeInTheDocument();
     });
 
     it('shows streaming indicator when isStreaming is true', () => {
