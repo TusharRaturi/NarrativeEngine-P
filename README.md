@@ -52,11 +52,16 @@ Install the LTS version from https://nodejs.org/ and run the script again.
 Your Node.js is too old. Upgrade to the LTS version at https://nodejs.org/.
 
 **"NODE_MODULE_VERSION mismatch"** error after upgrading Node
-Your database module was built for the old Node version. Run the repair script to rebuild it for your current Node:
+Your database module was built for the old Node version. Run the repair script and choose **option 1 (Quick fix)**:
 - **Windows** — double-click `Repair_Narrative_Engine.bat`
 - **Linux / macOS** — run `./Repair_Narrative_Engine.sh`
 
-If the repair fails on Windows with a C++ build tools error, install the [Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (select "Desktop development with C++") and run the repair again.
+If the repair fails on Windows with a C++ build tools error, install the [Visual C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) (select "Desktop development with C++") and run the repair again. Alternatively, run the repair script and choose **option 2 (Full clean reinstall)** — it may succeed without needing the C++ build tools.
+
+**"Cannot find native binding" / "rolldown" / "is not a valid Win32 application"** when starting the app
+Your dependency install was incomplete (a known [npm bug](https://github.com/npm/cli/issues/4828) with optional dependencies). Run the repair script and choose **option 2 (Full clean reinstall)**:
+- **Windows** — double-click `Repair_Narrative_Engine.bat`
+- **Linux / macOS** — run `./Repair_Narrative_Engine.sh`
 
 ---
 
