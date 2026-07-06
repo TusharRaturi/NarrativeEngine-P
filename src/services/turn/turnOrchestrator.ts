@@ -1,6 +1,5 @@
-import { shouldCondense, computeTrimIndex, getCondenseBudgetRatio } from '../archive-memory/condenser';
 import { useAppStore } from '../../store/useAppStore';
-import type { AppSettings, GameContext, ChatMessage, NPCEntry, LoreChunk, CondenserState, ArchiveIndexEntry, TimelineEvent, EndpointConfig, ProviderConfig, ArchiveChapter, SamplingConfig, PipelinePhase, DivergenceRegister, ThinkingEffort, InventoryProposal, PayloadTrace } from '../../types';
+import type { AppSettings, GameContext, ChatMessage, NPCEntry, LoreChunk, CondenserState, ArchiveIndexEntry, TimelineEvent, EndpointConfig, ProviderConfig, ArchiveChapter, SamplingConfig, PipelinePhase, DivergenceRegister, ThinkingEffort, InventoryProposal, PayloadTrace, SwipeVariant } from '../../types';
 import { uid } from '../../utils/uid';
 import { buildPayload, sendMessage } from '../chatEngine';
 import { rollEngines, rollDiceFairness, resolveManualRoll } from '../engine/engineRolls';
@@ -9,8 +8,9 @@ import { toast } from '../../components/Toast';
 import { sanitizePayloadForApi } from '../lib/payloadSanitizer';
 import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool, handleProposeInventoryTool, handleInitiateCombatTool } from './toolHandlers';
 import { gatherContext } from './contextGatherer';
-import { runPostTurnPipeline } from './postTurnPipeline';
 import { tierAllows } from './aiTier';
+import { extractAndStripSceneStakes } from './sceneStakesTag';
+import { capturePendingTurnSnapshot } from './pendingCommit';
 
 const MAX_TOOL_CALLS_PER_TURN = 5;
 
@@ -81,7 +81,7 @@ export async function runTurn(
     callbacks: TurnCallbacks,
     abortController: AbortController
 ): Promise<void> {
-    const { input, displayInput, settings, context, messages, condenser, loreChunks, npcLedger, archiveIndex, activeCampaignId, provider } = state;
+    const { input, displayInput, settings, context, messages, condenser, loreChunks, npcLedger, archiveIndex, provider } = state;
 
     if (!provider) return;
 
@@ -569,7 +569,17 @@ export async function runTurn(
                 const engineText = accumulatedContent
                     ? `${accumulatedContent}\n\n${stripLLMSceneHeader(finalText)}`
                     : baseText;
-                callbacks.updateLastAssistant(engineText);
+
+                // ── Swipe Generation v1 (per-variant scene-stakes strip) ──
+                // mainApp accumulates tool-call preamble into engineText (unlike mobile,
+                // which creates a new message per tool call). Strip the [[SCENE_STAKES]]
+                // tag from the display text now and store the parsed stakes on the
+                // SwipeVariant. The tag is removed from the bubble; classifySceneStakes
+                // (LLM fallback) runs later at commit only when the variant had no tag.
+                const { displayText: stakesStrippedText, stakes: parsedStakes } = extractAndStripSceneStakes(engineText);
+                const tagPresent = engineText !== stakesStrippedText || parsedStakes !== 'calm';
+
+                callbacks.updateLastAssistant(stakesStrippedText);
                 // Only store reasoning_content when this is the FIRST (and only) response for this
                 // assistant message — i.e. not a post-tool-call continuation. If accumulatedContent
                 // is non-empty it means a tool call already ran and reasoning_content was already
@@ -578,33 +588,28 @@ export async function runTurn(
                 if (reasoningContent && !accumulatedContent) {
                     callbacks.updateLastMessage({ reasoning_content: reasoningContent });
                 }
-                
-                const allMsgs = state.getMessages();
-                const userIdx = allMsgs.findIndex(m => m.id === userMsgId);
-                // Guard: if userMsgId not found (state reset / condenser ran during generation),
-                // slice(0) would return ALL messages — fall back to engineText only.
-                const combinedContent = userIdx === -1
-                    ? engineText
-                    : allMsgs.slice(userIdx + 1)
-                        .filter(m => m.role === 'assistant' && m.content)
-                        .map(m => m.content)
-                        .join('\n\n');
 
-                if (combinedContent && activeCampaignId) {
-                    await runPostTurnPipeline(state, callbacks, combinedContent, allMsgs);
-                }
+                // ── Swipe Generation v1: stamp the swipe set + pendingCommit on the
+                // latest GM message and capture the snapshot for lazy swipes + late commit.
+                // runPostTurnPipeline + auto-condense are DEFERRED to commitPendingTurn
+                // (called by the next send / Arc Injector / campaign switch).
+                const variant: SwipeVariant = {
+                    id: uid(),
+                    text: stakesStrippedText,
+                    reasoningContent: reasoningContent || undefined,
+                    sceneStakes: parsedStakes,
+                    tagPresent,
+                };
+                callbacks.updateLastMessage({
+                    swipeSet: [variant],
+                    pendingCommit: true,
+                    swipeActiveIndex: 0,
+                });
 
-                const allMsgs2 = state.getMessages();
-                const liveStore = useAppStore.getState();
-                const liveSettings = liveStore.settings;
-                const liveCondenser = liveStore.condenser;
-                if (liveSettings.autoCondenseEnabled && shouldCondense(allMsgs2, liveSettings.contextLimit,
-                    liveCondenser.condensedUpToIndex, getCondenseBudgetRatio(liveSettings.condenseAggressiveness ?? 'smart'))) {
-                    const newIndex = computeTrimIndex(allMsgs2, liveCondenser.condensedUpToIndex);
-                    if (newIndex !== liveCondenser.condensedUpToIndex) {
-                        callbacks.setCondensed(newIndex);
-                    }
-                }
+                // Capture the snapshot for lazy swipes (cached payload with tool history)
+                // and for the late-commit path (frozen messages window for the importance
+                // rater — it must read the snapshot, never live getMessages()).
+                capturePendingTurnSnapshot(state, currentPayload, state.displayInput);
 
                 callbacks.setPipelinePhase?.('idle');
                 abortController.signal.removeEventListener('abort', abortListener);

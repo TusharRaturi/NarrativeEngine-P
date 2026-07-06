@@ -17,7 +17,9 @@ export function buildPayload(
     relevantLore?: LoreChunk[],
     npcLedger?: NPCEntry[],
     archiveRecall?: ArchiveScene[],
-    sceneNumber?: string,
+    /** @deprecated scene # handling moved to volatile (commit 21977e2). Kept for
+     *  call-site signature stability; the value is no longer read here. */
+    _sceneNumber?: string,
     recommendedNPCNames?: string[],
     semanticFactText?: string,
     archiveIndex?: ArchiveIndexEntry[],

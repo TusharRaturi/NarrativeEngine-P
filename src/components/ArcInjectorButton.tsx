@@ -48,6 +48,13 @@ export function ArcInjectorButton({ onDone }: { onDone?: () => void } = {}) {
         inFlight.current = true;
         setPhase('loading');
         try {
+            // Swipe Generation v1 — commit any pending turn before injecting an
+            // arc. The arc tick reads engine state (relation meters, witness
+            // capture, arc/agency ticks) that the commit derives, so a deferred
+            // commit must fire first or the arc would seed against stale state.
+            const { commitPendingTurn } = await import('../services/turn/pendingCommit');
+            await commitPendingTurn().catch(e => console.warn('[ArcInjector] commit failed:', e));
+
             const sealedChapters = (state.chapters ?? []).filter(c => c.sealedAt != null && !c.invalidated);
             const openThreads = computeOpenThreads(sealedChapters);
             const archiveIndex = state.archiveIndex ?? [];

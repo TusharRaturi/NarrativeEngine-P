@@ -1,9 +1,13 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Send, Save, Loader2, Zap, Scroll, Edit2, X, Square, Search, Check, Package, BookCheck, Pin, Replace, UserPlus, Dices, ChevronUp, ArrowDown } from 'lucide-react';
+import { Send, Save, Loader2, Zap, Scroll, X, Square, Search, Check, Package, BookCheck, Pin, Replace, UserPlus, Dices, ChevronUp, ArrowDown } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { runTurn } from '../services/turn/turnOrchestrator';
+import { commitPendingTurn } from '../services/turn/pendingCommit';
+import { findPendingCommitMessage } from '../services/turn/pendingCommit';
 import { LootRollModal } from './chat/LootRollModal';
+import { RegenerateSheet } from './chat/RegenerateSheet';
+import { useSwipeVariants } from './hooks/useSwipeVariants';
 import { uid } from '../utils/uid';
 import type { InventoryProposal, InventoryItem, InventoryItemCategory, ManualRollMode } from '../types';
 import { set } from 'idb-keyval';
@@ -85,6 +89,18 @@ export function ChatArea() {
         }
         return map;
     }, [messages]);
+
+    // ── Swipe Generation v1 ──
+    // The latest assistant message with pendingCommit=true, or null. Drives the
+    // single useSwipeVariants hook instance owned by ChatArea. Scanning the tail
+    // keeps this cheap and avoids re-subscribing on every keystroke.
+    const pendingMessageId = useMemo(() => {
+        const found = findPendingCommitMessage(messages);
+        return found?.id ?? null;
+    }, [messages]);
+
+    const swipe = useSwipeVariants(pendingMessageId);
+    const [swipeSheetMessageId, setSwipeSheetMessageId] = useState<string | null>(null);
 
     const deepArmed = useAppStore(s => s.deepArmed);
 
@@ -349,6 +365,14 @@ export function ChatArea() {
 
         const storeSnapshot = useAppStore.getState();
 
+        // Swipe Generation v1 — commit any pending turn BEFORE the next turn's
+        // gatherContext. The previous turn's post-turn work (archive append,
+        // agency tick, arc tick, witness capture) must fire on the variant the
+        // user is keeping, before the next turn re-gathers context. A late
+        // swipe result still streaming in the background finishes and fills its
+        // slot (the onDone guard drops it silently once commit fired).
+        await commitPendingTurn().catch(e => console.warn('[ChatArea] commit failed:', e));
+
         await runTurn({
             input: textToUse,
             displayInput: textToUse,
@@ -598,6 +622,12 @@ export function ChatArea() {
                         onInlineDraftChange={setInlineDraft}
                         onInlineSubmit={handleEditSubmit}
                         onInlineCancel={cancelEditing}
+                        onOpenSwipeSheet={(id) => setSwipeSheetMessageId(id)}
+                        onSwipeNavigate={(id, dir) => {
+                            if (id !== pendingMessageId) return;
+                            if (dir === 'prev') swipe.prevSwipe();
+                            else swipe.nextSwipe();
+                        }}
                     />
                 ))}
 
@@ -850,6 +880,17 @@ export function ChatArea() {
             )}
 
             <LootRollModal />
+            <RegenerateSheet
+                messageId={swipeSheetMessageId}
+                onClose={() => setSwipeSheetMessageId(null)}
+                swipeGenLoading={swipe.swipeGenLoading}
+                generateSwipe={swipe.generateSwipe}
+                nextSwipe={swipe.nextSwipe}
+                prevSwipe={swipe.prevSwipe}
+                getSessionOffset={swipe.getSessionOffset}
+                setSessionOffset={swipe.setSessionOffset}
+                getSwipeTemperature={swipe.getSwipeTemperature}
+            />
         </div>
     );
 }

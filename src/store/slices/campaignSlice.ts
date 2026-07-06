@@ -329,7 +329,25 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
 
     return {
     activeCampaignId: null,
-    setActiveCampaign: (id) => {
+    setActiveCampaign: async (id) => {
+        // Swipe Generation v1 — commit any pending turn for the CURRENT campaign
+        // before switching. The arc/agency ticks + archive append derived at
+        // commit read the OLD campaign's state, so a deferred commit must fire
+        // before the state is overwritten by the new campaign's hydration.
+        // Awaiting here is safe: an async body is assignable to the `(id) => void`
+        // type (the returned Promise is ignored by sync callers). The await
+        // happens BEFORE the `set` below, so commitPendingTurn still reads the
+        // OLD campaign's state from the live store.
+        const currentId = get().activeCampaignId;
+        if (id !== currentId) {
+            try {
+                const { commitPendingTurn } = await import('../../services/turn/pendingCommit');
+                await commitPendingTurn();
+            } catch (e) {
+                console.warn('[CampaignSwitch] commit failed:', e);
+            }
+        }
+
         // Flush any pending campaign state save for the OLD campaign before switching.
         // Without this, the timer fires after state is overwritten by the new campaign's
         // data and writes the new campaign's state into the old campaign's save slot.

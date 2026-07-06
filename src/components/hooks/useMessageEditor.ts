@@ -2,6 +2,9 @@ import { useState } from 'react';
 import type { ChatMessage } from '../../types';
 import { api } from '../../services/llm/apiClient';
 import type { ArchiveManagerDeps } from '../../services/archive-memory/archiveManager';
+import { findPendingCommitMessage, clearPendingTurnSnapshot } from '../../services/turn/pendingCommit';
+import { useAppStore } from '../../store/useAppStore';
+import { debouncedSaveCampaignState } from '../../store/slices/campaignSlice';
 
 interface UseMessageEditorDeps {
     messages: ChatMessage[];
@@ -80,6 +83,29 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
             setTimeout(() => {
                 deps.onAfterEdit(trimmed);
             }, 50);
+        } else if (msg.pendingCommit && msg.swipeSet) {
+            // Swipe Generation v1 — pre-commit edit of the visible variant only.
+            // Update the variant's text in swipeSet (so commit reads the edited
+            // text) and the message content/displayContent (so the bubble renders
+            // it). No archive-sync needed: a pending turn has no sceneId yet.
+            const activeIdx = msg.swipeActiveIndex ?? 0;
+            const updatedSwipeSet = msg.swipeSet.map((v, i) =>
+                i === activeIdx ? { ...v, text: trimmed } : v
+            );
+            const idx = deps.messages.findIndex(m => m.id === editingMessageId);
+            if (idx !== -1) {
+                const updated = [...deps.messages];
+                updated[idx] = {
+                    ...msg,
+                    content: trimmed,
+                    displayContent: trimmed,
+                    swipeSet: updatedSwipeSet,
+                };
+                useAppStore.setState({ messages: updated });
+                debouncedSaveCampaignState();
+            }
+            setEditingMessageId(null);
+            setInlineDraft('');
         } else {
             deps.updateMessageContent(msg.id, trimmed);
             // WO-F — sync the edited GM text into long-term memory so the AI stops recalling the
@@ -94,6 +120,16 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
         const msgs = deps.messages;
         const idx = msgs.findIndex(m => m.id === id);
         if (idx === -1) return;
+
+        // Swipe Generation v1 — if the pending message is at or after the
+        // rewind target, discard the pending snapshot so nothing commits.
+        const pendingMsg = findPendingCommitMessage(msgs);
+        if (pendingMsg) {
+            const pendingIdx = msgs.findIndex(m => m.id === pendingMsg.id);
+            if (pendingIdx !== -1 && pendingIdx >= idx) {
+                clearPendingTurnSnapshot();
+            }
+        }
 
         const prevMsgs = msgs.slice(0, idx);
         const lastUser = [...prevMsgs].reverse().find(m => m.role === 'user');
@@ -115,6 +151,13 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
     // recalling deleted text. Falls back to a plain on-screen delete when the message has no
     // sceneId (un-archived turn / pre-WO-F save).
     const handleDeleteOutput = async (id: string) => {
+        // Swipe Generation v1 — if the deleted message IS the pending-commit
+        // message, discard the snapshot so nothing commits. No sceneId exists
+        // for a pending turn, so skip the archive delete below.
+        const pendingMsg = findPendingCommitMessage(deps.messages);
+        if (pendingMsg?.id === id) {
+            clearPendingTurnSnapshot();
+        }
         deps.deleteMessage(id);
         const sceneId = findSceneIdForMessage(deps.messages, id);
         if (!sceneId || !deps.activeCampaignId) return;

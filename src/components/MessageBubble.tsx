@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Edit2, RotateCcw, Trash2, Loader2, Check, X, Volume2, Square, RotateCw, Play, Pause } from 'lucide-react';
+import { Edit2, Trash2, Loader2, Check, X, Volume2, Square, RotateCw, Play, Pause, RefreshCw, Rewind, ChevronLeft, ChevronRight } from 'lucide-react';
 import type { ChatMessage, DebugSection, NPCEntry } from '../types';
 import { DebugPayloadView } from './DebugPayloadView';
 import { ToolCallChips } from './chat/ToolCallChips';
@@ -10,6 +10,8 @@ import { useTtsStatus } from '../services/tts/useTtsStatus';
 import { generateTts, loadCachedTts, checkCachedChunks } from '../services/tts/ttsClient';
 import { proseForTTS, chunkSentencesForTTS, splitWords } from '../services/tts/proseStripper';
 import { useAppStore } from '../store/useAppStore';
+import { hasSwipeSet } from '../services/turn/pendingCommit';
+import { MAX_SWIPES } from '../services/turn/swipeGeneration';
 
 // WO-J: NPC names arrive wrapped in [Name] / [**Name**] brackets so the ledger detector
 // can read them out of the raw content. Render them as inline **bold** markdown instead of
@@ -109,6 +111,57 @@ interface MessageBubbleProps {
     onInlineDraftChange?: (v: string) => void;
     onInlineSubmit?: () => void;
     onInlineCancel?: () => void;
+    /** Swipe Generation v1: called when the user taps 🔄 on the latest GM bubble. */
+    onOpenSwipeSheet?: (messageId: string) => void;
+    /** Swipe Generation v1: called when the user swipes left/right on the bubble. */
+    onSwipeNavigate?: (messageId: string, direction: 'prev' | 'next') => void;
+}
+
+/**
+ * SwipeIndicator — shows "2/5" position and prev/next chevrons for the
+ * latest GM message's swipe set. Touch-swipe left/right on the bubble
+ * navigates; the chevrons are tap targets for desktop / accessibility.
+ */
+function SwipeIndicator({
+    msg,
+    onPrev,
+    onNext,
+}: {
+    msg: ChatMessage;
+    onPrev: () => void;
+    onNext: () => void;
+}) {
+    const swipeSet = msg.swipeSet;
+    if (!swipeSet) return null;
+    const current = (msg.swipeActiveIndex ?? 0) + 1;
+    const total = Math.max(swipeSet.length, MAX_SWIPES);
+    const atFirst = (msg.swipeActiveIndex ?? 0) === 0;
+    const atLast = (msg.swipeActiveIndex ?? 0) >= swipeSet.length - 1 && swipeSet.length >= MAX_SWIPES;
+    const isStreaming = swipeSet[msg.swipeActiveIndex ?? 0]?.streaming === true;
+
+    return (
+        <div className="mt-2 flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest text-text-dim select-none">
+            <button
+                onClick={onPrev}
+                disabled={atFirst}
+                className="p-0.5 rounded text-text-dim hover:text-ice disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                title="Previous variant"
+            >
+                <ChevronLeft size={12} />
+            </button>
+            <span className="font-mono text-text-dim/80">
+                {isStreaming ? '…' : current}/{total}
+            </span>
+            <button
+                onClick={onNext}
+                disabled={atLast}
+                className="p-0.5 rounded text-text-dim hover:text-ice disabled:opacity-30 disabled:pointer-events-none transition-colors"
+                title="Next variant"
+            >
+                <ChevronRight size={12} />
+            </button>
+        </div>
+    );
 }
 
 export function MessageBubble({
@@ -126,6 +179,8 @@ export function MessageBubble({
     onInlineDraftChange,
     onInlineSubmit,
     onInlineCancel,
+    onOpenSwipeSheet,
+    onSwipeNavigate,
 }: MessageBubbleProps) {
     let markdownContent: string = typeof msg.displayContent === 'string'
         ? msg.displayContent
@@ -556,6 +611,37 @@ export function MessageBubble({
 
     const isUser = msg.role === 'user';
 
+    // ── Swipe Generation v1: touch-swipe gesture handling ──
+    // Only the latest GM message (with a swipe set) responds to horizontal
+    // swipes. A swipe left → next variant, right → previous. The threshold
+    // is generous so a normal vertical scroll never triggers a swipe.
+    const touchStartX = useRef<number | null>(null);
+    const touchStartY = useRef<number | null>(null);
+    const SWIPE_THRESHOLD = 50;  // px horizontal travel before it counts as a swipe
+
+    const handleTouchStart = (e: React.TouchEvent) => {
+        if (!hasSwipeSet(msg)) return;
+        const t = e.touches[0];
+        touchStartX.current = t.clientX;
+        touchStartY.current = t.clientY;
+    };
+
+    const handleTouchEnd = (e: React.TouchEvent) => {
+        if (!hasSwipeSet(msg) || touchStartX.current === null || touchStartY.current === null) return;
+        const t = e.changedTouches[0];
+        const dx = t.clientX - touchStartX.current;
+        const dy = t.clientY - touchStartY.current;
+        touchStartX.current = null;
+        touchStartY.current = null;
+        // Only trigger on predominantly horizontal swipes
+        if (Math.abs(dx) < SWIPE_THRESHOLD || Math.abs(dy) > Math.abs(dx)) return;
+        if (dx < 0) {
+            onSwipeNavigate?.(msg.id, 'next');
+        } else {
+            onSwipeNavigate?.(msg.id, 'prev');
+        }
+    };
+
     // ── NPC hover thumbnail lookup (ledger-side, no prop threading needed) ──
     const npcLedger = useAppStore(s => s.npcLedger);
     const npcLookup = useMemo(() => buildNpcLookup(npcLedger), [npcLedger]);
@@ -597,9 +683,26 @@ export function MessageBubble({
                             <Edit2 size={14} />
                         </button>
                     )}
-                    {msg.role === 'assistant' && (
-                        <button title="Regenerate" onClick={() => onRegenerate(msg.id)} className="text-text-dim hover:text-terminal p-1.5 bg-void-lighter rounded">
-                            <RotateCcw size={14} />
+                    {msg.role === 'assistant' && hasSwipeSet(msg) && onOpenSwipeSheet && (
+                        <button
+                            title="Browse variants (swipe)"
+                            onClick={() => onOpenSwipeSheet(msg.id)}
+                            className="text-text-dim hover:text-terminal p-1.5 bg-void-lighter rounded"
+                        >
+                            <RefreshCw size={14} />
+                        </button>
+                    )}
+                    {msg.role === 'assistant' && !hasSwipeSet(msg) && (
+                        <button
+                            title="Rewind to here (destructive — regenerates from this point)"
+                            onClick={() => {
+                                if (window.confirm('Rewind to this message? This regenerates the turn from here — the current GM reply and everything after it is discarded.')) {
+                                    onRegenerate(msg.id);
+                                }
+                            }}
+                            className="text-text-dim hover:text-amber-400 p-1.5 bg-void-lighter rounded"
+                        >
+                            <Rewind size={14} />
                         </button>
                     )}
                     {canSpeak && (
@@ -636,6 +739,8 @@ export function MessageBubble({
             {isUser && !isEditing && actionRail}
             <div
                 {...(msg.role === 'assistant' ? { 'data-lore-checkable': 'true', 'data-message-id': msg.id } : {})}
+                onTouchStart={handleTouchStart}
+                onTouchEnd={handleTouchEnd}
                 className={`chat-bubble-base ${isEditing ? 'w-full max-w-full' : 'max-w-[95%] md:max-w-[75%]'} px-3 md:px-4 py-2 md:py-3 text-sm font-mono leading-relaxed relative ${isUser
                     ? 'bg-terminal/8 border-l-2 border-terminal text-text-primary'
                     : msg.role === 'system'
@@ -789,6 +894,14 @@ export function MessageBubble({
                         </div>
                     )}
                 </div>
+
+                {hasSwipeSet(msg) && (
+                    <SwipeIndicator
+                        msg={msg}
+                        onPrev={() => onSwipeNavigate?.(msg.id, 'prev')}
+                        onNext={() => onSwipeNavigate?.(msg.id, 'next')}
+                    />
+                )}
 
                 {hasDebug && (
                     <DebugPayloadView debugPayload={msg.debugPayload as { sections?: DebugSection[]; raw?: unknown }} />
