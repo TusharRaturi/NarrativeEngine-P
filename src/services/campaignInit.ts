@@ -13,6 +13,7 @@ import {
 } from '../store/slices/settingsSlice';
 import { dedupeNPCLedger } from '../store/slices/campaignSlice';
 import { loadLootTree } from './lore/lootTreeLoader';
+import { buildDefaultDiceSystem } from '../types';
 
 
 export const DEFAULT_CONTEXT = {
@@ -26,6 +27,7 @@ export const DEFAULT_CONTEXT = {
     continuePromptActive: false, inventoryActive: false, characterProfileActive: false,
     surpriseEngineActive: false, encounterEngineActive: true, worldEngineActive: true,
     diceFairnessActive: true, sceneNote: '', sceneNoteActive: false, sceneNoteDepth: 3,
+    diceSystem: buildDefaultDiceSystem(),
     worldVibe: '',
     worldEventConfig: { initialDC: 498, dcReduction: 2, who: [] as string[], where: [] as string[], why: [] as string[], what: [] as string[] },
     notebook: [],

@@ -70,8 +70,9 @@ export type TurnState = {
     deepSearchThisTurn?: boolean;
     divergenceRegister?: DivergenceRegister;
     pinnedExcerpts?: import('../../types').PinnedExcerpt[];
-    // Player-called dice ("dice me"): armed mode resolved at send time (WO-H).
-    armedRoll?: import('../../types').ManualRollMode | null;
+    // Player-called dice ("dice me"): armed roll resolved at send time (WO-H).
+    // Accepts the new ManualRollRequest shape OR the legacy '1d20'|'adv'|'disadv' string.
+    armedRoll?: import('../../types').ManualRollRequest | string | null;
     armedLoot?: import('../../types').ArmedLoot | null;
 };
 
@@ -107,11 +108,12 @@ export async function runTurn(
     // dice tool for this turn so the model gets exactly one signal it cannot cherry-pick.
     const armed = state.armedRoll;
     if (armed) {
-        const r = resolveManualRoll(armed, context.diceConfig);
+        const r = resolveManualRoll(armed, context.diceSystem);
         const rollsLabel = r.rolls.length > 1 ? ` (rolled ${r.rolls.join(', ')})` : '';
-        finalInput += `\n[RESOLVED ROLL — ${r.detail} → ${r.tier} (${r.faceValue})${rollsLabel}. This HAPPENED. The outcome is fixed — do not re-roll, do not alter the tier, do not skip the roll. Narrate the consequence.]`;
+        const tierLabel = r.tier ?? 'Unmapped';
+        finalInput += `\n[RESOLVED ROLL — ${r.detail} → ${tierLabel} (${r.faceValue})${rollsLabel}. This HAPPENED. The outcome is fixed — do not re-roll, do not alter the tier, do not skip the roll. Narrate the consequence.]`;
         // Player-facing reveal — shows on their own turn bubble.
-        displayInputFinal += `\n\n🎲 ${r.detail} → ${r.tier} (${r.faceValue})`;
+        displayInputFinal += `\n\n🎲 ${r.detail} → ${tierLabel} (${r.faceValue})`;
     } else {
         finalInput += rollDiceFairness(context);
     }
@@ -266,8 +268,12 @@ export async function runTurn(
         const allowTools = toolCallCount < MAX_TOOL_CALLS_PER_TURN && apiRetryCount < 2;
         const requestPayload = sanitizePayloadForApi(currentPayload, allowTools, provider?.modelName);
 
-        // Suppress the dice tool when the player armed a manual roll (WO-H) — the resolved
-        // fact is already in the payload; offering the tool too would let the model double-roll.
+        // Dice tool availability is decoupled from pool mode (diceFairnessActive).
+        // Pool mode = pre-rolled numbers injected; tool mode = AI calls roll_dice on demand.
+        // They are mutually exclusive: tool is available only when pool mode is OFF
+        // (diceFairnessActive === false) and the player hasn't manually armed a roll.
+        // When the player armed a manual roll, the resolved fact is already in the payload;
+        // offering the tool too would let the model double-roll (WO-H).
         const allowDiceTool = context.diceFairnessActive === false && !armed;
         const tools = allowTools ? getToolDefinitions({ allowDiceTool, combatModeActive: context.combatModeActive }) : undefined;
 
@@ -421,7 +427,7 @@ export async function runTurn(
                         tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
                     } as unknown as import('../chatEngine').OpenAIMessage);
 
-                    const { toolResult: diceResult } = handleDiceTool(toolCall.arguments, { diceConfig: context.diceConfig });
+                    const { toolResult: diceResult } = handleDiceTool(toolCall.arguments, { diceSystem: context.diceSystem });
                     pushToolTrace(toolCall.name, toolCall.arguments, diceResult);
 
                     const toolMsgId = uid();

@@ -3,36 +3,6 @@ import { countTokens } from '../infrastructure/tokenizer';
 import { DEFAULT_RULES } from '../rules/defaultRules';
 import type { TraceCollector } from './traceCollector';
 
-const TOOL_MODE_ACTION_RESOLUTION = `### ACTION RESOLUTION
-
-Trigger: Player attempts an action with an uncertain outcome — combat hits, skill checks, saves, contested actions.
-
-1. Identify core intent of the player's action.
-2. If the outcome depends on chance, CALL the \`roll_dice\` tool BEFORE narrating. Do NOT narrate the outcome first.
-   - \`dice\`: typically \`1d20\` for skill checks/attacks; use \`NdM\` form for damage or special rolls
-   - \`reason\`: short label (e.g. "Stealth check vs guard", "Longsword attack")
-   - \`category\`: one of Combat / Stealth / Social / Perception / Movement / Knowledge / Mundane (for d20 only)
-3. Use the returned \`tier\` (Catastrophe / Failure / Success / Triumph / Narrative Boon) to shape the narrative — same outcome semantics as pool mode.
-4. Do NOT call \`roll_dice\` for descriptive moments, dialogue, or trivial actions. Mundane actions resolve as plain success without a roll.
-
-**Advantage selection (tool mode):** if the player explicitly leverages a known weakness or superior tool, call \`roll_dice\` twice and use the higher result. If explicitly impaired (blinded, wounded, overwhelmed), call twice and use the lower. Otherwise, single roll.
-
-**Outcomes:**
-- Catastrophe: severe unexpected failure, consequences beyond simple loss.
-- Failure: fails. Damage, setback, or resource loss.
-- Success: succeeds exactly as intended.
-- Triumph: succeeds with an unexpected additional benefit.
-- Narrative Boon: flawless. Massive strategic or narrative advantage.`;
-
-function swapActionResolutionForToolMode(rules: string): string {
-    const marker = '### Action Resolution';
-    const idx = rules.indexOf(marker);
-    if (idx === -1) return rules;
-    const nextSectionMatch = rules.substring(idx + marker.length).match(/\n### /);
-    const endIdx = nextSectionMatch ? idx + marker.length + nextSectionMatch.index! : rules.length;
-    return rules.substring(0, idx) + TOOL_MODE_ACTION_RESOLUTION + rules.substring(endIdx);
-}
-
 export function buildStable(opts: {
     settings: AppSettings;
     context: GameContext;
@@ -52,10 +22,11 @@ export function buildStable(opts: {
     // so they MUST ride in the volatile block below the cache boundary — putting them in
     // stable busts the prefix cache every turn. Only the verbatim full-rules fallback is
     // stable (it's byte-identical across turns). Mirrors mobileApp payloadStableContent.ts.
+    //
+    // The user's custom Action Resolution rules are NEVER overwritten — die-type guidance
+    // lives in the roll_dice tool description (toolHandlers.ts). This fixes the issue where
+    // enabling the dice tool silently nuked non-d20 campaign rules.
     const effectiveRules = context.rulesRaw || DEFAULT_RULES;
-    const rulesWithMode = context.diceFairnessActive === false
-        ? swapActionResolutionForToolMode(effectiveRules)
-        : effectiveRules;
 
     const hasRulesRAG = (context.rulesChunks?.length ?? 0) > 0;
     if (hasRulesRAG && relevantRules && relevantRules.length > 0) {
@@ -75,7 +46,7 @@ export function buildStable(opts: {
         retrievedRulesContent = ragText;
         collector.addTrace({ source: 'RAG Rules', classification: 'volatile_state', tokens: rulesTokens, reason: `RAG injected (${acceptedChunks.length} chunks) — volatile (per-turn selection)`, included: true, position: 'system_dynamic' });
     } else {
-        const rulesText = rulesWithMode;
+        const rulesText = effectiveRules;
         stableParts.push(rulesText);
         collector.addTrace({ source: 'Raw Rules', classification: 'stable_truth', tokens: countTokens(rulesText), reason: 'Complete rules list (RAG not loaded or below threshold)', included: true, position: 'system_static' });
     }

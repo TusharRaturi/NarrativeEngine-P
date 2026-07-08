@@ -746,29 +746,36 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
         expect(firstSystem.content as string).toContain('thinking');
     });
 
-    it('tool-mode swaps ACTION RESOLUTION to use roll_dice tool wording when diceFairnessActive is false', () => {
+    it('tool-mode (diceFairnessActive false) preserves user Action Resolution rules — no swap', () => {
+        const customRules = '### Action Resolution\n\nRoll 2d6. 7 is mixed, 12 is crit, 2 is fumble.';
         const ctx = {
             ...baseContext(),
             diceFairnessActive: false,
-            rulesRaw: DEFAULT_RULES,
+            rulesRaw: customRules,
         } as GameContext;
 
         const result = buildPayload(baseSettings(), ctx, [], 'I attack the guard');
         const firstSystem = result.messages[0];
-        expect(firstSystem.content as string).toContain('roll_dice');
+        // User's custom Action Resolution rules must be preserved (not swapped for d20 template)
+        expect(firstSystem.content as string).toContain('Roll 2d6');
+        expect(firstSystem.content as string).toContain('7 is mixed');
+        // Must NOT contain the old hardcoded tool-mode template text
+        expect(firstSystem.content as string).not.toContain('CALL the `roll_dice` tool BEFORE narrating');
     });
 
-    it('default (pool) mode does NOT inject roll_dice tool wording when diceFairnessActive is true', () => {
+    it('default (pool) mode preserves user Action Resolution rules too', () => {
+        const customRules = '### Action Resolution\n\nRoll 2d6. 7 is mixed, 12 is crit, 2 is fumble.';
         const ctx = {
             ...baseContext(),
             diceFairnessActive: true,
-            rulesRaw: DEFAULT_RULES,
+            rulesRaw: customRules,
         } as GameContext;
 
         const result = buildPayload(baseSettings(), ctx, [], 'I attack the guard');
         const firstSystem = result.messages[0];
-        // The original ACTION RESOLUTION section should NOT contain the CALL the `roll_dice` tool phrasing
-        // (that's the tool-mode specific text)
+        expect(firstSystem.content as string).toContain('Roll 2d6');
+        expect(firstSystem.content as string).toContain('7 is mixed');
+        // The original ACTION RESOLUTION section should NOT contain the tool-mode specific text
         expect(firstSystem.content as string).not.toContain('CALL the `roll_dice` tool BEFORE narrating');
     });
 });

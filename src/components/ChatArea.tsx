@@ -6,10 +6,11 @@ import { runTurn } from '../services/turn/turnOrchestrator';
 import { commitPendingTurn } from '../services/turn/pendingCommit';
 import { findPendingCommitMessage } from '../services/turn/pendingCommit';
 import { LootRollModal } from './chat/LootRollModal';
+import { DiceRollModal } from './chat/DiceRollModal';
 import { RegenerateSheet } from './chat/RegenerateSheet';
 import { useSwipeVariants } from './hooks/useSwipeVariants';
 import { uid } from '../utils/uid';
-import type { InventoryProposal, InventoryItem, InventoryItemCategory, ManualRollMode } from '../types';
+import type { InventoryProposal, InventoryItem, InventoryItemCategory } from '../types';
 import { set } from 'idb-keyval';
 import { toast } from './Toast';
 import { debouncedSaveCampaignState } from '../store/slices/campaignSlice';
@@ -141,6 +142,7 @@ export function ChatArea() {
     const openRenameModal = useAppStore(s => s.openRenameModal);
     const armedRoll = useAppStore(s => s.armedRoll);
     const setArmedRoll = useAppStore(s => s.setArmedRoll);
+    const openDiceRollModal = useAppStore(s => s.openDiceRollModal);
     const armedLoot = useAppStore(s => s.armedLoot);
     const openLootRollModal = useAppStore(s => s.openLootRollModal);
 
@@ -251,11 +253,6 @@ export function ChatArea() {
         }
     };
 
-    const DICE_LABELS: Record<ManualRollMode, string> = {
-        '1d20': 'Roll (1d20)',
-        adv: 'Advantage (2d20 ↑)',
-        disadv: 'Disadvantage (2d20 ↓)',
-    };
     const setDeepArmed = useAppStore(s => s.setDeepArmed);
     const composerInjection = useAppStore(s => s.composerInjection);
     const consumeComposerInjection = useAppStore(s => s.consumeComposerInjection);
@@ -676,22 +673,27 @@ export function ChatArea() {
                     </button>
                 )}
 
-                {/* Dice Me dropup using a native select to prevent overflow clipping */}
-                <div className="relative shrink-0 flex items-center bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider h-[32px] rounded-sm transition-all hover:bg-terminal/5 whitespace-nowrap border-terminal/30 text-terminal w-[100px]">
-                    <Dices size={13} className="absolute left-2.5 pointer-events-none" />
-                    <select
-                        value={armedRoll || ''}
-                        onChange={(e) => setArmedRoll(e.target.value ? e.target.value as ManualRollMode : null)}
-                        className="bg-transparent pl-7 pr-6 h-full w-full outline-none cursor-pointer appearance-none text-[10px] sm:text-[11px] uppercase font-bold tracking-wider text-terminal"
-                        title={armedRoll ? `Dice armed (${DICE_LABELS[armedRoll]})` : 'Dice me'}
-                    >
-                        <option value="" className="bg-surface text-text-dim">DICE ME</option>
-                        <option value="1d20" className="bg-surface text-text-primary">Roll (1d20)</option>
-                        <option value="adv" className="bg-surface text-text-primary">Advantage (2d20 ↑)</option>
-                        <option value="disadv" className="bg-surface text-text-primary">Disadvantage (2d20 ↓)</option>
-                    </select>
-                    <svg className="absolute right-1.5 top-1/2 -translate-y-1/2 w-2.5 h-2.5 text-terminal pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                </div>
+                {/* Dice Me — opens 3-gate roll configurator modal */}
+                <button
+                    onClick={() => {
+                        if (armedRoll) {
+                            setArmedRoll(null);
+                        } else {
+                            openDiceRollModal();
+                        }
+                    }}
+                    disabled={isStreaming || !activeCampaignId}
+                    className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed whitespace-nowrap ${
+                        armedRoll
+                            ? 'border-amber-500 text-amber-500 bg-amber-500/10 hover:bg-amber-500/20 animate-pulse'
+                            : 'border-terminal/30 text-terminal hover:bg-terminal/5'
+                    }`}
+                    title={armedRoll ? 'Dice armed — click to disarm, or send to roll' : 'Open dice roll configurator'}
+                >
+                    <Dices size={13} />
+                    <span className="hidden xs:inline">{armedRoll ? 'DICE ARMED' : 'Dice Me'}</span>
+                    <span className="inline xs:hidden">{armedRoll ? 'ARMED' : 'Dice'}</span>
+                </button>
 
                 {/* Loot Engine WO-05: manual loot drop trigger. Mirrors the dice button. */}
                 {context?.lootTree && (
@@ -880,6 +882,7 @@ export function ChatArea() {
             )}
 
             <LootRollModal />
+            <DiceRollModal />
             <RegenerateSheet
                 messageId={swipeSheetMessageId}
                 onClose={() => setSwipeSheetMessageId(null)}

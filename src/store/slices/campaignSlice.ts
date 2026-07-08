@@ -1,6 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { ArchiveChapter, ChatMessage, CondenserState, GameContext, LoreChunk, ArchiveIndexEntry, NPCEntry, NpcSuggestion, SemanticFact, EntityEntry, TimelineEvent, InventoryItem, CharacterProfile, PinnedExcerpt } from '../../types';
-import { DEFAULT_CHARACTER_PROFILE, DEFAULT_INVENTORY, migrateLegacyContext } from '../../types';
+import { DEFAULT_CHARACTER_PROFILE, DEFAULT_INVENTORY, migrateLegacyContext, buildDefaultDiceSystem } from '../../types';
 import { toast } from '../../components/Toast';
 import { debouncedSaveSettings } from './settingsSlice';
 import {
@@ -219,13 +219,7 @@ export const defaultContext: GameContext = {
     sceneNote: '',
     sceneNoteActive: false,
     sceneNoteDepth: 3,
-    diceConfig: {
-        catastrophe: 2,
-        failure: 6,
-        success: 15,
-        triumph: 19,
-        crit: 20
-    },
+    diceSystem: buildDefaultDiceSystem(),
     surpriseConfig: {
         initialDC: 95,
         dcReduction: 3,

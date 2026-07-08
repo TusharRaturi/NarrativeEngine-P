@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { PayloadTrace, PipelinePhase, StreamingStats, LoreCheckResult, LoreCheckSelection, ManualRollMode, ArmedLoot } from '../../types';
+import type { PayloadTrace, PipelinePhase, StreamingStats, LoreCheckResult, LoreCheckSelection, ArmedLoot } from '../../types';
 
 
 
@@ -36,9 +36,14 @@ export type UISlice = {
     deepArmed: boolean;
     setDeepArmed: (v: boolean) => void;
     toggleDeepArmed: () => void;
-    // Player-called dice ("dice me"): the armed MODE, resolved at send time. null = not armed.
-    armedRoll: ManualRollMode | null;
-    setArmedRoll: (mode: ManualRollMode | null) => void;
+    // Player-called dice ("dice me"): the armed roll request, resolved at send time. null = not armed.
+    // Accepts the new ManualRollRequest shape OR legacy '1d20'|'adv'|'disadv' string.
+    armedRoll: import('../../types').ManualRollRequest | string | null;
+    setArmedRoll: (mode: import('../../types').ManualRollRequest | string | null) => void;
+    // Dice roll modal (3-gate configurator)
+    diceRollModalOpen: boolean;
+    openDiceRollModal: () => void;
+    closeDiceRollModal: () => void;
     // Loot Engine WO-05: armed loot drop config, resolved at send time. Mirrors armedRoll.
     armedLoot: ArmedLoot | null;
     armLoot: (payload: ArmedLoot) => void;
@@ -94,6 +99,9 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     toggleDeepArmed: () => set((s) => ({ deepArmed: !s.deepArmed })),
     armedRoll: null,
     setArmedRoll: (mode) => set({ armedRoll: mode }),
+    diceRollModalOpen: false,
+    openDiceRollModal: () => set({ diceRollModalOpen: true }),
+    closeDiceRollModal: () => set({ diceRollModalOpen: false }),
     armedLoot: null,
     armLoot: (payload) => set({ armedLoot: payload }),
     clearArmedLoot: () => set({ armedLoot: null }),
