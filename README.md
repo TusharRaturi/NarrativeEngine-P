@@ -11,7 +11,7 @@ No cloud. No subscription. Your campaigns stay on your machine.
 
 > 📱 **Android client available:** [NarrativeEngine-M](https://github.com/Sagesheep/NarrativeEngine-M/releases/tag/v1.6.20)
 > 
-> 💬 **Join our community:** [Discord Server](https://discord.gg/gf3Ntw6pUY)
+> 💬 **Join our community:** [Discord Server](https://discord.gg/Qp2y7s3X6T)
 
 ---
 
