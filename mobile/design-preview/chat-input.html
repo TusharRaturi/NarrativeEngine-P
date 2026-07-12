@@ -1,0 +1,142 @@
+<!-- @dsCard group="Chat UI Mockup" -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0A0A0A;font-family:'JetBrains Mono','Cascadia Code','Fira Code',monospace;padding:16px 12px;color:#FAFAFA}
+.section-label{font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:.18em;color:#60A5FA;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #262626}
+.divider{height:1px;background:#1e1e1e;margin:20px 0}
+
+/* ── SHARED progress bar ── */
+.progress-bar{padding:4px 8px;font-size:10px;text-align:center;background:rgba(96,165,250,.08);border-bottom:1px solid rgba(96,165,250,.15);color:#93C5FD;letter-spacing:.1em;text-transform:uppercase}
+
+/* ── CURRENT input wrapper ── */
+.input-wrapper-current{background:#0A0A0A;border-top:1px solid #262626;padding:4px 8px 4px 8px}
+.input-row-current{display:flex;gap:4px;border:1px solid #262626;background:#0A0A0A;border-radius:2px;align-items:center;padding:4px}
+
+.preset-current{
+  height:32px;min-width:60px;max-width:100px;
+  background:#111111;border:1px solid #262626;
+  color:#A3A3A3;font-family:inherit;font-size:10px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.05em;
+  padding:0 20px 0 8px;
+  border-radius:3px;appearance:none;position:relative;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  flex-shrink:0;
+}
+.preset-wrap{position:relative;flex-shrink:0}
+.preset-wrap svg{position:absolute;right:5px;top:50%;transform:translateY(-50%);width:10px;height:10px;stroke:#A3A3A3;fill:none;stroke-width:2;pointer-events:none}
+
+.textarea-current{
+  flex:1;background:transparent;border:none;outline:none;
+  color:#FAFAFA;font-family:inherit;font-size:16px;
+  resize:none;min-height:40px;line-height:1.25;padding:4px 8px;
+}
+.textarea-current::placeholder{color:rgba(163,163,163,.4)}
+
+.send-btn-current{
+  height:32px;width:40px;border-radius:4px;
+  background:transparent;border:none;
+  display:flex;align-items:center;justify-content:center;
+  color:#60A5FA;flex-shrink:0;cursor:pointer;
+}
+.send-btn-current svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── PROPOSED input wrapper ── */
+.input-wrapper-proposed{background:#0A0A0A;border-top:1px solid #262626;padding:8px 12px}
+.input-row-proposed{display:flex;gap:8px;border:1px solid #262626;background:#0A0A0A;border-radius:12px;align-items:center;padding:6px}
+.input-row-proposed:focus-within{border-color:#60A5FA}
+
+.preset-proposed{
+  height:38px;min-width:80px;max-width:130px;
+  background:#111111;border:1px solid #333;
+  color:#A3A3A3;font-family:inherit;font-size:11px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.05em;
+  padding:0 22px 0 10px;
+  border-radius:6px;appearance:none;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  flex-shrink:0;
+  transition:border-color .15s;
+}
+.preset-wrap-p{position:relative;flex-shrink:0}
+.preset-wrap-p svg{position:absolute;right:6px;top:50%;transform:translateY(-50%);width:10px;height:10px;stroke:#A3A3A3;fill:none;stroke-width:2;pointer-events:none}
+
+/* divider between preset and textarea */
+.input-divider{width:1px;height:28px;background:#262626;flex-shrink:0;align-self:center}
+
+.textarea-proposed{
+  flex:1;background:transparent;border:none;outline:none;
+  color:#FAFAFA;font-family:inherit;font-size:16px;
+  resize:none;min-height:40px;line-height:1.25;padding:2px 8px;
+}
+.textarea-proposed::placeholder{color:rgba(163,163,163,.4)}
+
+.send-btn-proposed{
+  height:40px;width:44px;border-radius:8px;
+  background:rgba(96,165,250,.12);border:1px solid rgba(96,165,250,.2);
+  display:flex;align-items:center;justify-content:center;
+  color:#60A5FA;flex-shrink:0;cursor:pointer;
+  transition:background .15s;
+}
+.send-btn-proposed svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* callout arrows */
+.callout{font-size:8px;color:#60A5FA;opacity:.65;display:flex;align-items:center;gap:4px;margin-top:4px;letter-spacing:.06em}
+.callout-row{display:flex;justify-content:space-between;padding:0 2px}
+</style>
+</head>
+<body>
+
+<!-- ══ CURRENT ══ -->
+<div class="section-label">▸ Current — rounded-sm · h-32 controls · max-w-100 preset · gap-1</div>
+
+<div style="border:1px solid #1e1e1e;border-radius:4px;overflow:hidden">
+  <div class="progress-bar">Embedding progress 42/120</div>
+  <div class="input-wrapper-current">
+    <div class="input-row-current">
+      <div class="preset-wrap">
+        <select class="preset-current"><option>Default</option></select>
+        <svg viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <textarea class="textarea-current" placeholder="What do you do?" rows="1"></textarea>
+      <button class="send-btn-current">
+        <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="callout-row">
+  <span class="callout">↑ h-32px, max-w-100px, rounded-sm</span>
+  <span class="callout">send h-32 w-40 ↑</span>
+</div>
+
+<div class="divider"></div>
+
+<!-- ══ PROPOSED ══ -->
+<div class="section-label">▸ Proposed — rounded-xl · h-38/40 controls · max-w-130 preset · gap-8 · divider · solid send hover</div>
+
+<div style="border:1px solid #1e1e1e;border-radius:4px;overflow:hidden">
+  <div class="progress-bar">Embedding progress 42/120</div>
+  <div class="input-wrapper-proposed">
+    <div class="input-row-proposed">
+      <div class="preset-wrap-p">
+        <select class="preset-proposed"><option>Default</option></select>
+        <svg viewBox="0 0 24 24"><path d="M19 9l-7 7-7-7"/></svg>
+      </div>
+      <div class="input-divider"></div>
+      <textarea class="textarea-proposed" placeholder="What do you do?" rows="1"></textarea>
+      <button class="send-btn-proposed">
+        <svg viewBox="0 0 24 24"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+</div>
+<div class="callout-row">
+  <span class="callout">↑ h-38px, max-w-130px, rounded-xl, soft divider</span>
+  <span class="callout">send h-40 w-44 filled ↑</span>
+</div>
+
+</body>
+</html>

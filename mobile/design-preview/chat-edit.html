@@ -1,0 +1,121 @@
+<!-- @dsCard group="Chat UI Mockup" -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0A0A0A;font-family:'JetBrains Mono','Cascadia Code','Fira Code',monospace;padding:16px 12px;color:#FAFAFA}
+.section-label{font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:.18em;color:#60A5FA;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #262626}
+.divider{height:1px;background:#1e1e1e;margin:20px 0}
+
+/* Bubble wrapper */
+.bubble-wrap{display:flex;justify-content:flex-end}
+.bubble-edit{width:100%;max-width:95%;padding:10px 12px;border-left:2px solid #60A5FA;background:rgba(96,165,250,.05)}
+
+/* ── Header row ── */
+.edit-header{display:flex;align-items:center;justify-content:space-between;padding-bottom:8px;border-bottom:1px solid rgba(255,255,255,.07);margin-bottom:8px}
+.edit-label-sm{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.2em;color:#60A5FA}
+.edit-label-lg{font-size:11px;font-weight:900;text-transform:uppercase;letter-spacing:.2em;color:#60A5FA}
+.edit-btns{display:flex;align-items:center;gap:8px}
+
+/* Cancel button */
+.btn-cancel{
+  width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+  background:#0A0A0A;border:1px solid #262626;border-radius:6px;color:#A3A3A3;cursor:pointer;
+}
+.btn-cancel svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round}
+
+/* Save button */
+.btn-save-user{
+  width:40px;height:40px;display:flex;align-items:center;justify-content:center;
+  background:rgba(96,165,250,.15);border:1px solid rgba(96,165,250,.35);border-radius:6px;color:#60A5FA;cursor:pointer;
+}
+.btn-save-user svg{width:16px;height:16px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* ── Textarea ── */
+.edit-textarea-current{
+  width:100%;min-height:90px;background:#0D0D0D;padding:10px;
+  border:1px solid rgba(96,165,250,.25);border-radius:2px;
+  color:#FAFAFA;font-family:inherit;font-size:14px;line-height:1.6;
+  resize:none;outline:none;
+}
+.edit-textarea-proposed{
+  width:100%;min-height:90px;background:#0D0D0D;padding:10px;
+  border:1px solid rgba(96,165,250,.25);border-radius:6px;
+  color:#FAFAFA;font-family:inherit;font-size:14px;line-height:1.6;
+  resize:none;outline:none;
+}
+.edit-textarea-current:focus,.edit-textarea-proposed:focus{border-color:#60A5FA;box-shadow:0 0 0 1px rgba(96,165,250,.2)}
+
+/* ── Hint row CURRENT — hidden on mobile ── */
+.hint-current{
+  display:flex;justify-content:space-between;
+  font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:rgba(163,163,163,.4);
+  padding:0 2px;margin-top:4px;
+}
+.hint-mobile-hidden{font-size:8px;color:rgba(239,68,68,.5);letter-spacing:.1em;text-transform:uppercase;margin-top:3px}
+
+/* ── Hint row PROPOSED — always visible ── */
+.hint-proposed{
+  display:flex;justify-content:space-between;
+  font-size:9px;text-transform:uppercase;letter-spacing:.12em;color:rgba(163,163,163,.45);
+  padding:0 2px;margin-top:4px;
+}
+.hint-mobile-ok{font-size:8px;color:rgba(96,165,250,.45);letter-spacing:.1em;text-transform:uppercase;margin-top:3px}
+</style>
+</head>
+<body>
+
+<!-- ══ CURRENT ══ -->
+<div class="section-label">▸ Current edit mode — label text-[10px] · textarea rounded-sm · hint hidden on mobile</div>
+<div class="bubble-wrap">
+  <div class="bubble-edit">
+    <div class="edit-header">
+      <span class="edit-label-sm">► EDITING YOU</span>
+      <div class="edit-btns">
+        <button class="btn-cancel">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <button class="btn-save-user">
+          <svg viewBox="0 0 24 24"><polyline points="13 2 13 9 20 9"/><path d="M22 2l-9 9M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/></svg>
+        </button>
+      </div>
+    </div>
+    <textarea class="edit-textarea-current">I hold up my torch and listen carefully at the top of the stairs.</textarea>
+    <div class="hint-current">
+      <span>Resubmitting rolls back session</span>
+      <span>Ctrl+Enter to save · Esc to cancel</span>
+    </div>
+    <div class="hint-mobile-hidden">⚠ hint row hidden on mobile (hidden md:flex)</div>
+  </div>
+</div>
+
+<div class="divider"></div>
+
+<!-- ══ PROPOSED ══ -->
+<div class="section-label">▸ Proposed edit mode — label text-[11px] · textarea rounded-md · hint always visible</div>
+<div class="bubble-wrap">
+  <div class="bubble-edit">
+    <div class="edit-header">
+      <span class="edit-label-lg">► EDITING YOU</span>
+      <div class="edit-btns">
+        <button class="btn-cancel">
+          <svg viewBox="0 0 24 24"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+        <button class="btn-save-user">
+          <svg viewBox="0 0 24 24"><polyline points="13 2 13 9 20 9"/><path d="M22 2l-9 9M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/></svg>
+        </button>
+      </div>
+    </div>
+    <textarea class="edit-textarea-proposed">I hold up my torch and listen carefully at the top of the stairs.</textarea>
+    <div class="hint-proposed">
+      <span>Resubmitting rolls back session</span>
+      <span>Ctrl+Enter to save · Esc to cancel</span>
+    </div>
+    <div class="hint-mobile-ok">✓ hint visible on all screen sizes</div>
+  </div>
+</div>
+
+</body>
+</html>

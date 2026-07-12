@@ -1,0 +1,634 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-void: #FFFFFF;
+  --color-void-light: #F9FAFB;
+  --color-void-lighter: #F3F4F6;
+  --color-void-darker: #E5E7EB;
+
+  --color-terminal: #3B82F6;
+  --color-terminal-dim: #2563EB;
+
+  --color-ember: #6B7280;
+  --color-ember-dim: #4B5563;
+
+  --color-ice: #111827;
+  --color-ice-dim: #374151;
+
+  --color-danger: #EF4444;
+
+  --color-surface: #FFFFFF;
+  --color-border: #E5E7EB;
+
+  --color-text-primary: #111827;
+  --color-text-dim: #6B7280;
+
+  --color-overlay: rgba(0, 0, 0, 0.30);
+  --color-grain: transparent;
+
+  /* Trailing emoji/symbol families are GLYPH fallbacks: Android's generic
+     `monospace` doesn't chain into the system emoji/symbol fonts, so without
+     these any emoji or special symbol the GM emits renders as a tofu box
+     (the "?0?" / ◊◊ artifact). Order matters — mono first for Latin, emoji
+     + symbols last to catch only what mono lacks. */
+  --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace,
+    'Noto Color Emoji', 'Noto Sans Symbols2', 'Segoe UI Emoji', sans-serif;
+}
+
+[data-theme="dark"] {
+  --color-void: #0A0A0A;
+  --color-void-light: #111111;
+  --color-void-lighter: #1A1A1A;
+  --color-void-darker: #262626;
+
+  --color-terminal: #60A5FA;
+  --color-terminal-dim: #93C5FD;
+
+  --color-ember: #A3A3A3;
+  --color-ember-dim: #D4D4D4;
+
+  --color-ice: #FAFAFA;
+  --color-ice-dim: #D4D4D4;
+
+  --color-danger: #F87171;
+
+  --color-surface: #111111;
+  --color-border: #262626;
+
+  --color-text-primary: #FAFAFA;
+  --color-text-dim: #A3A3A3;
+
+  --color-overlay: rgba(0, 0, 0, 0.60);
+  --color-grain: transparent;
+}
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    font-family: var(--font-mono);
+    background: var(--color-void);
+    color: var(--color-text-primary);
+    /* Zoom-corrected viewport units. html { zoom: var(--ui-scale) } scales raw
+       vh/vw/dvh, so anything sized against the REAL viewport (full-screen
+       overlays, modal max-heights, image lightboxes) must use these instead —
+       e.g. max-h-[calc(85*var(--app-vh))]. Without it, vh-based modals overflow
+       the screen at scale >1 and shrink at scale <1. */
+    --app-vh: calc(1vh / var(--ui-scale, 1));
+    --app-vw: calc(1vw / var(--ui-scale, 1));
+    --app-dvh: calc(1dvh / var(--ui-scale, 1));
+
+    /* Safe-area insets. On Android the WebView's env(safe-area-inset-*) only
+       reflects the display CUTOUT, never the status/navigation bars, and on some
+       OEM WebViews it reports 0 outright — so an edge-to-edge Capacitor app that
+       relies on env() alone renders under the status bar (reported on Pixel 9a).
+       MainActivity reads the real WindowInsets natively and injects them as
+       --android-safe-*; we take max() so whichever source is populated wins
+       (env() on iOS / Samsung, the native var on Pixels/older WebViews). */
+    --safe-top-inset: max(env(safe-area-inset-top, 0px), var(--android-safe-top, 0px));
+    --safe-bottom-inset: max(env(safe-area-inset-bottom, 0px), var(--android-safe-bottom, 0px));
+  }
+
+  body {
+    margin: 0;
+    /* Initial fallback height. App.tsx overrides #root's height live from
+       window.visualViewport so it shrinks when the soft keyboard opens
+       (100vh/100dvh are the *large* viewport and never shrink on Android,
+       where Capacitor Keyboard `resize` is a no-op). vh is fine as a static
+       fallback before visualViewport fires. */
+    min-height: calc(100vh / var(--ui-scale, 1));
+    overflow: hidden;
+  }
+
+  #root {
+    height: calc(100vh / var(--ui-scale, 1));
+    display: flex;
+    flex-direction: column;
+  }
+
+  #root::after {
+    display: none;
+  }
+
+  /* Scrollbar styling */
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: var(--color-void);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: var(--color-void-darker);
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: var(--color-terminal);
+  }
+
+  /* Wider scrollbar on touch devices for easier grabbing */
+  @media (pointer: coarse) {
+    ::-webkit-scrollbar {
+      width: 10px;
+    }
+  }
+
+  textarea:focus,
+  input:focus {
+    outline: 1px solid var(--color-terminal);
+    outline-offset: -1px;
+  }
+}
+
+@layer utilities {
+  .glow-green {
+    text-shadow: 0 0 6px rgba(59, 130, 246, 0.30);
+  }
+
+  .glow-border {
+    box-shadow: 0 0 6px rgba(59, 130, 246, 0.10), inset 0 0 6px rgba(59, 130, 246, 0.03);
+  }
+
+  .animate-pulse-slow {
+    animation: pulse-slow 3s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  }
+
+  @keyframes pulse-slow {
+    0%, 100% { opacity: 1; filter: brightness(1.2); }
+    50% { opacity: 0.8; filter: brightness(1); }
+  }
+
+  @keyframes toast-in {
+    from {
+      opacity: 0;
+      transform: translateX(20px) scale(0.95);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+    }
+  }
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes slide-in-right {
+    from {
+      transform: translateX(100%);
+    }
+
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes slide-in-left {
+    from {
+      transform: translateX(-100%);
+    }
+
+    to {
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes msg-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+}
+
+/* ─── Prose overrides for readable AI output ─── */
+.gm-prose {
+  line-height: 1.75;
+  color: var(--color-text-primary);
+}
+
+.gm-prose p {
+  margin-top: 0.75em;
+  margin-bottom: 0.75em;
+}
+
+.gm-prose p:first-child {
+  margin-top: 0;
+}
+
+.gm-prose h1,
+.gm-prose h2,
+.gm-prose h3,
+.gm-prose h4 {
+  color: var(--color-ice);
+  font-weight: 700;
+  margin-top: 1.25em;
+  margin-bottom: 0.5em;
+  letter-spacing: 0.02em;
+}
+
+.gm-prose h1 {
+  font-size: 1.25em;
+}
+
+.gm-prose h2 {
+  font-size: 1.1em;
+}
+
+.gm-prose h3 {
+  font-size: 1em;
+}
+
+.gm-prose ul,
+.gm-prose ol {
+  padding-left: 1.5em;
+  margin-top: 0.5em;
+  margin-bottom: 0.5em;
+}
+
+.gm-prose li {
+  margin-top: 0.25em;
+  margin-bottom: 0.25em;
+}
+
+.gm-prose li::marker {
+  color: var(--color-terminal);
+}
+
+.gm-prose strong {
+  color: var(--color-ice);
+  font-weight: 700;
+}
+
+.gm-prose em {
+  color: var(--color-ember);
+  font-style: italic;
+}
+
+.gm-prose blockquote {
+  border-left: 3px solid var(--color-terminal);
+  padding-left: 1em;
+  margin: 0.75em 0;
+  color: var(--color-text-dim);
+  font-style: italic;
+}
+
+.gm-prose hr {
+  border: none;
+  border-top: 1px solid var(--color-border);
+  margin: 1em 0;
+}
+
+.gm-prose pre {
+  background: var(--color-void-lighter);
+  border: 1px solid var(--color-border);
+  padding: 0.75em 1em;
+  overflow-x: auto;
+  margin: 0.75em 0;
+  font-size: 0.85em;
+}
+
+.gm-prose code {
+  color: var(--color-terminal);
+  font-size: 0.85em;
+}
+
+.gm-prose pre code {
+  color: var(--color-text-primary);
+}
+
+.gm-prose a {
+  color: var(--color-terminal);
+  text-decoration: underline;
+}
+
+.gm-prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.75em 0;
+  font-size: 0.9em;
+}
+
+.gm-prose th,
+.gm-prose td {
+  border: 1px solid var(--color-border);
+  padding: 0.4em 0.6em;
+  text-align: left;
+}
+
+.gm-prose th {
+  background: var(--color-void-lighter);
+  color: var(--color-ice);
+  font-weight: 600;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   MOBILE UI SYSTEM — Samsung S25 Ultra (412px viewport)
+   ══════════════════════════════════════════════════════════════════════ */
+
+/* ── Safe Areas ── */
+.safe-top {
+  padding-top: var(--safe-top-inset);
+}
+
+@media (max-width: 767px) {
+  .safe-top {
+    padding-top: calc(var(--safe-top-inset) / var(--ui-scale, 1));
+  }
+  .safe-bottom {
+    padding-bottom: calc(var(--safe-bottom-inset) / var(--ui-scale, 1));
+  }
+  /* Lifts the chat input bar above the fixed MobileNavBar */
+  .nav-input-clearance {
+    padding-bottom: calc(44px + var(--safe-bottom-inset) / var(--ui-scale, 1));
+  }
+}
+
+/* `top` offset for absolutely-positioned corner buttons (e.g. CampaignHub's
+   settings/import buttons) that sit outside any safe-top-padded container
+   and would otherwise render under the status bar on taller-inset devices. */
+.safe-top-abs {
+  top: calc(1rem + var(--safe-top-inset));
+}
+
+@media (min-width: 640px) {
+  .safe-top-abs {
+    top: calc(2rem + var(--safe-top-inset));
+  }
+}
+
+@media (max-width: 767px) {
+  .safe-top-abs {
+    top: calc(1rem + var(--safe-top-inset) / var(--ui-scale, 1));
+  }
+}
+
+@media (min-width: 640px) and (max-width: 767px) {
+  .safe-top-abs {
+    top: calc(2rem + var(--safe-top-inset) / var(--ui-scale, 1));
+  }
+}
+
+/* ── Bottom Sheet ── */
+.bottom-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 109;
+  background: rgba(0, 0, 0, 0.5);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+}
+
+.bottom-sheet-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.bottom-sheet {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 110;
+  background: var(--color-surface);
+  border-top: 1px solid var(--color-border);
+  border-radius: 16px 16px 0 0;
+  /* Counter the html { zoom: var(--ui-scale) } so the sheet fills the real
+     viewport instead of being shrunk to ui-scale% and pinned to the bottom
+     (which left a dead gap up top). Mirrors #root's height compensation. */
+  height: calc(100dvh / var(--ui-scale, 1));
+  padding-top: calc(var(--safe-top-inset) / var(--ui-scale, 1));
+  padding-bottom: calc(var(--safe-bottom-inset) / var(--ui-scale, 1));
+  transform: translateY(100%);
+  transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.bottom-sheet.open {
+  transform: translateY(0);
+}
+
+.bottom-sheet-handle {
+  width: 40px;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--color-text-dim);
+  opacity: 0.3;
+  margin: 10px auto 6px;
+  flex-shrink: 0;
+}
+
+/* ── Full-Screen Page (slides from right) ── */
+.mobile-page {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  background: var(--color-surface);
+  transform: translateX(100%);
+  transition: transform 0.35s cubic-bezier(0.32, 0.72, 0, 1);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.mobile-page.open {
+  transform: translateX(0);
+}
+
+/* ── Mobile Page Header Bar ── */
+.mobile-page-header {
+  display: flex;
+  align-items: center;
+  min-height: 56px;
+  padding: 0 16px;
+  /* Bake the status-bar inset into the header itself. As an unlayered rule this
+     outranks Tailwind's utilities layer (py-3) and the earlier .safe-top helper,
+     both of which the `padding` shorthand above would otherwise reset to 0 —
+     leaving the back button/title drawn under the status bar on taller-inset
+     devices (reported on Pixel 9a). min-height lets the inset grow the bar
+     instead of squeezing the 48px content. */
+  padding-top: var(--safe-top-inset);
+  border-bottom: 1px solid var(--color-border);
+  background: var(--color-void);
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+@media (max-width: 767px) {
+  .mobile-page-header {
+    /* Counter the html { zoom: var(--ui-scale) } so the inset stays true-size. */
+    padding-top: calc(var(--safe-top-inset) / var(--ui-scale, 1));
+  }
+}
+
+.mobile-page-header .back-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  color: var(--color-terminal);
+  border: none;
+  background: none;
+  cursor: pointer;
+}
+
+.mobile-page-header .page-title {
+  flex: 1;
+  font-size: 14px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-text-primary);
+}
+
+.mobile-nav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  background: color-mix(in srgb, var(--color-void), transparent 5%);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-top: 1px solid var(--color-border);
+  border-radius: 0;
+  display: flex;
+  min-height: calc(44px + var(--safe-bottom-inset) / var(--ui-scale, 1));
+  padding: 0 12px calc(var(--safe-bottom-inset) / var(--ui-scale, 1)) 12px;
+  align-items: center;
+  box-shadow: 0 -1px 12px rgba(0, 0, 0, 0.08);
+}
+
+.mobile-nav-item {
+  flex: 1;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--color-text-dim);
+  font-size: 10px;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+  transition: color 0.15s ease;
+  border: none;
+  background: none;
+  -webkit-tap-highlight-color: transparent;
+  min-height: 44px;
+}
+
+.mobile-nav-item.active {
+  color: var(--color-terminal);
+  font-weight: 900;
+}
+
+.mobile-nav-item.active::after {
+  content: '';
+  position: absolute;
+  bottom: 4px;
+  width: 5px;
+  height: 2px;
+  background: var(--color-terminal);
+  border-radius: 1px;
+}
+
+.mobile-nav-item:active {
+  transform: scale(0.9);
+  transition: transform 0.1s ease;
+}
+
+/* ── Touch Targets ── */
+@media (max-width: 767px) {
+
+  /* Ensure all interactive elements have minimum 48px tap area */
+  .touch-btn {
+    min-height: 48px;
+    min-width: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  /* Prevent WebView auto-zoom on input focus */
+  input[type="text"],
+  input[type="number"],
+  input[type="password"],
+  input[type="url"],
+  textarea,
+  select {
+    font-size: 16px !important;
+  }
+
+  /* Add bottom padding for content behind the floating nav bar */
+  .nav-clearance {
+    padding-bottom: calc(64px + (var(--safe-bottom-inset) / var(--ui-scale, 1)));
+  }
+
+  /* Tap feedback for buttons */
+  button:active {
+    transform: scale(0.97);
+    transition: transform 0.08s ease;
+  }
+
+  /* Bottom sheet content scroll */
+  .bottom-sheet-content {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-bottom: calc(64px + var(--safe-bottom-inset));
+  }
+}
+
+/* ── NPC Ledger scroll container ── */
+.npc-ledger-scroll {
+  min-height: 0;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
+
+/* ── NPC Detail Push Animation ── */
+.npc-detail-push {
+  animation: slide-in-right 0.3s cubic-bezier(0.32, 0.72, 0, 1) forwards;
+}
+
+/* ── Mobile Toggle (larger for thumb) ── */
+@media (max-width: 767px) {
+  .mobile-toggle {
+    width: 48px !important;
+    height: 26px !important;
+  }
+
+  .mobile-toggle>div {
+    height: 22px !important;
+    width: 22px !important;
+  }
+}
+
+:root {
+  --color-terminal-raw: 59, 130, 246;
+}

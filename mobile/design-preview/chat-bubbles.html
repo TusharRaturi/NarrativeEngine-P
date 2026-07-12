@@ -1,0 +1,165 @@
+<!-- @dsCard group="Chat UI Mockup" -->
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#0A0A0A;font-family:'JetBrains Mono','Cascadia Code','Fira Code',monospace;padding:16px;color:#FAFAFA}
+.section-label{font-size:8px;font-weight:900;text-transform:uppercase;letter-spacing:.18em;color:#60A5FA;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid #262626}
+.divider{height:1px;background:#1e1e1e;margin:20px 0}
+.bubbles{display:flex;flex-direction:column}
+.msg-row{display:flex;margin-bottom:0}
+.msg-row.user{justify-content:flex-end}
+.msg-row.assistant{justify-content:flex-start}
+
+/* ── CURRENT bubbles ── */
+.bubbles-current .msg-row{margin-bottom:12px}
+.bubble-current{position:relative;max-width:88%;padding:8px 12px;font-size:12px;line-height:1.65;border-left:2px solid}
+.bubble-current.gm{background:#1A1A1A;border-left-color:#262626}
+.bubble-current.user{background:rgba(96,165,250,.08);border-left-color:#60A5FA}
+
+/* ── PROPOSED bubbles ── */
+.bubbles-proposed .msg-row{margin-bottom:16px}
+.bubble-proposed{position:relative;max-width:88%;padding:10px 14px;font-size:12px;line-height:1.65;border-left:2px solid;border-radius:6px}
+.bubble-proposed.gm{background:#1A1A1A;border-left-color:#3a3a3a}
+.bubble-proposed.user{background:rgba(96,165,250,.08);border-left-color:#60A5FA}
+
+/* Role row */
+.role-row{display:flex;align-items:center;gap:8px;margin-bottom:5px}
+.role{font-size:10px;font-weight:900;text-transform:uppercase;letter-spacing:.2em}
+.role.gm{color:#FAFAFA}
+.role.user{color:#60A5FA}
+.ts{font-size:9px;color:#A3A3A3}
+
+/* Content */
+.prose{color:#F0F0F0;font-size:12px;line-height:1.7}
+.prose strong{color:#FAFAFA;font-weight:700}
+.prose em{color:#A3A3A3;font-style:italic}
+
+/* ── Action bar CURRENT — tiny, floating above ── */
+.action-bar-current{position:absolute;top:-13px;right:6px;display:flex;gap:2px;background:#1f1f1f;border:1px solid #333;padding:2px;border-radius:3px;z-index:10}
+.btn-current{display:flex;align-items:center;justify-content:center;width:18px;height:18px;background:#1A1A1A;border-radius:3px;color:#A3A3A3}
+.btn-current svg{width:10px;height:10px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+
+/* user bubble action bar sits left */
+.action-bar-current.left-side{right:auto;left:6px}
+
+/* ── Action bar PROPOSED — bigger, floating above ── */
+.action-bar-proposed{position:absolute;top:-15px;right:6px;display:flex;gap:2px;background:#1f1f1f;border:1px solid #333;padding:2px;border-radius:4px;z-index:10}
+.btn-proposed{display:flex;align-items:center;justify-content:center;width:26px;height:26px;background:#1A1A1A;border-radius:3px;color:#A3A3A3}
+.btn-proposed svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.action-bar-proposed.left-side{right:auto;left:6px}
+
+/* Size callout labels */
+.size-note{font-size:8px;color:#60A5FA;opacity:.7;position:absolute;right:-2px;bottom:-14px;white-space:nowrap;letter-spacing:.05em}
+.size-note.left{right:auto;left:-2px}
+</style>
+</head>
+<body>
+
+<!-- ══ CURRENT ══ -->
+<div class="section-label">▸ Current — icon size 10px · p-1 · no radius · space-y-3</div>
+<div class="bubbles bubbles-current">
+
+  <div class="msg-row assistant">
+    <div class="bubble-current gm">
+      <div class="action-bar-current">
+        <div class="btn-current" title="Edit">
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4z"/></svg>
+        </div>
+        <div class="btn-current" title="Regenerate">
+          <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+        </div>
+        <div class="btn-current" title="Illustrate">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        </div>
+        <div class="btn-current" title="Pin">
+          <svg viewBox="0 0 24 24"><path d="M12 2L8 6H3v4l4 2v6l5 4 5-4v-6l4-2V6h-5z"/></svg>
+        </div>
+        <div class="btn-current" title="Delete" style="color:#6b7280">
+          <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        </div>
+        <span class="size-note">~18px tap target</span>
+      </div>
+      <div class="role-row"><span class="role gm">◇ GM</span><span class="ts">12:04 PM</span></div>
+      <div class="prose">The chamber door groans open. <strong>Torchlight flickers</strong> across <em>ancient stone</em>, revealing a passage leading downward into darkness.</div>
+    </div>
+  </div>
+
+  <div class="msg-row user">
+    <div class="bubble-current user">
+      <div class="action-bar-current left-side">
+        <div class="btn-current" title="Edit">
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4z"/></svg>
+        </div>
+        <div class="btn-current" title="Pin">
+          <svg viewBox="0 0 24 24"><path d="M12 2L8 6H3v4l4 2v6l5 4 5-4v-6l4-2V6h-5z"/></svg>
+        </div>
+        <div class="btn-current" title="Delete" style="color:#6b7280">
+          <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        </div>
+        <span class="size-note left">~18px tap</span>
+      </div>
+      <div class="role-row"><span class="role user">► YOU</span><span class="ts">12:05 PM</span></div>
+      <div class="prose">I hold up my torch and listen carefully at the top of the stairs.</div>
+    </div>
+  </div>
+
+</div>
+
+<div class="divider"></div>
+
+<!-- ══ PROPOSED ══ -->
+<div class="section-label">▸ Proposed — icon size 12px · p-1.5 · rounded-md · space-y-4</div>
+<div class="bubbles bubbles-proposed">
+
+  <div class="msg-row assistant">
+    <div class="bubble-proposed gm">
+      <div class="action-bar-proposed">
+        <div class="btn-proposed" title="Edit">
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4z"/></svg>
+        </div>
+        <div class="btn-proposed" title="Regenerate">
+          <svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 102.13-9.36L1 10"/></svg>
+        </div>
+        <div class="btn-proposed" title="Illustrate">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+        </div>
+        <div class="btn-proposed" title="Pin">
+          <svg viewBox="0 0 24 24"><path d="M12 2L8 6H3v4l4 2v6l5 4 5-4v-6l4-2V6h-5z"/></svg>
+        </div>
+        <div class="btn-proposed" title="Delete" style="color:#6b7280">
+          <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        </div>
+        <span class="size-note">~30px tap target</span>
+      </div>
+      <div class="role-row"><span class="role gm">◇ GM</span><span class="ts">12:04 PM</span></div>
+      <div class="prose">The chamber door groans open. <strong>Torchlight flickers</strong> across <em>ancient stone</em>, revealing a passage leading downward into darkness.</div>
+    </div>
+  </div>
+
+  <div class="msg-row user">
+    <div class="bubble-proposed user">
+      <div class="action-bar-proposed left-side">
+        <div class="btn-proposed" title="Edit">
+          <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4z"/></svg>
+        </div>
+        <div class="btn-proposed" title="Pin">
+          <svg viewBox="0 0 24 24"><path d="M12 2L8 6H3v4l4 2v6l5 4 5-4v-6l4-2V6h-5z"/></svg>
+        </div>
+        <div class="btn-proposed" title="Delete" style="color:#6b7280">
+          <svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a1 1 0 011-1h4a1 1 0 011 1v2"/></svg>
+        </div>
+        <span class="size-note left">~30px tap</span>
+      </div>
+      <div class="role-row"><span class="role user">► YOU</span><span class="ts">12:05 PM</span></div>
+      <div class="prose">I hold up my torch and listen carefully at the top of the stairs.</div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
