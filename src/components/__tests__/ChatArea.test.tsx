@@ -90,6 +90,8 @@ vi.mock('../../store/useAppStore', () => {
         armedLoot: null,
         clearArmedLoot: vi.fn(),
         armLoot: vi.fn(),
+        armedOneShot: null,
+        setArmedOneShot: vi.fn(),
     };
     const subscribe = vi.fn(() => vi.fn());
     const getState = vi.fn(() => state);

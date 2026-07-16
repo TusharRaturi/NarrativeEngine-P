@@ -24,6 +24,7 @@ import { UtilityCallStrip } from './UtilityCallStrip';
 import { IndexingBanner } from './IndexingBanner';
 import { CreateTroubleButton } from './CreateTroubleButton';
 import { ArcInjectorButton } from './ArcInjectorButton';
+import { OneShotInjectorButton } from './OneShotInjectorButton';
 import { PCCreationWizard } from './pc/PCCreationWizard';
 import { addNpcFromSelection } from '../services/npc/manualAdd';
 
@@ -353,6 +354,12 @@ export function ChatArea() {
         const useArmedLoot = useAppStore.getState().armedLoot;
         useAppStore.getState().clearArmedLoot();
 
+        // One-Shot Event Injector v1: capture then clear, exactly like the
+        // dice/loot arming above. Cleared BEFORE runTurn so it fires exactly
+        // once even if the turn errors mid-stream (mirrors armedRoll/armedLoot).
+        const useArmedOneShot = useAppStore.getState().armedOneShot;
+        useAppStore.getState().setArmedOneShot(null);
+
         if (!overrideText) {
             setInput('');
             resetTextareaHeight();
@@ -401,6 +408,7 @@ export function ChatArea() {
             pinnedExcerpts: storeSnapshot.pinnedExcerpts,
             armedRoll: useArmedRoll,
             armedLoot: useArmedLoot,
+            armedOneShot: useArmedOneShot,
             getFreshAuxiliaryProvider: () => {
                 const aux = useAppStore.getState().getActiveAuxiliaryEndpoint();
                 return aux?.modelName ? aux : useAppStore.getState().getActiveStoryEndpoint();
@@ -768,6 +776,9 @@ export function ChatArea() {
                 )}
                 {activeCampaignId && (
                     <ArcInjectorButton />
+                )}
+                {activeCampaignId && (
+                    <OneShotInjectorButton />
                 )}
                 <button
                     onClick={handleOpenArchive}

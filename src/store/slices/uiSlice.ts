@@ -1,5 +1,6 @@
 import type { StateCreator } from 'zustand';
 import type { PayloadTrace, PipelinePhase, StreamingStats, LoreCheckResult, LoreCheckSelection, ArmedLoot } from '../../types';
+import type { OneShotEventId } from '../../services/oneshot/oneShotEvents';
 
 
 
@@ -51,6 +52,11 @@ export type UISlice = {
     lootRollModalOpen: boolean;
     openLootRollModal: () => void;
     closeLootRollModal: () => void;
+    // One-Shot Event Injector v1: armed event id, appended to the next turn's
+    // LLM input (after historyInput capture) and cleared by the caller. Mirrors
+    // armedRoll/armedLoot — fires once, never persists in chat history.
+    armedOneShot: OneShotEventId | null;
+    setArmedOneShot: (id: OneShotEventId | null) => void;
     troubleModalOpen: boolean;
     troubleLoading: boolean;
     troubleOptions: string[];
@@ -108,6 +114,8 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     lootRollModalOpen: false,
     openLootRollModal: () => set({ lootRollModalOpen: true }),
     closeLootRollModal: () => set({ lootRollModalOpen: false }),
+    armedOneShot: null,
+    setArmedOneShot: (id) => set({ armedOneShot: id }),
     troubleModalOpen: false,
     troubleLoading: false,
     troubleOptions: [],

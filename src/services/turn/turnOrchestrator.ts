@@ -4,6 +4,8 @@ import { uid } from '../../utils/uid';
 import { buildPayload, sendMessage } from '../chatEngine';
 import { rollEngines, rollDiceFairness, resolveManualRoll } from '../engine/engineRolls';
 import { resolveLootDrop } from '../engine/lootEngine';
+import { buildOneShotDirective } from '../oneshot/oneShotEvents';
+import type { OneShotEventId } from '../oneshot/oneShotEvents';
 import { toast } from '../../components/Toast';
 import { sanitizePayloadForApi } from '../lib/payloadSanitizer';
 import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool, handleProposeInventoryTool, handleInitiateCombatTool } from './toolHandlers';
@@ -74,6 +76,7 @@ export type TurnState = {
     // Accepts the new ManualRollRequest shape OR the legacy '1d20'|'adv'|'disadv' string.
     armedRoll?: import('../../types').ManualRollRequest | string | null;
     armedLoot?: import('../../types').ArmedLoot | null;
+    armedOneShot?: OneShotEventId | null;
 };
 
 
@@ -139,6 +142,18 @@ export async function runTurn(
                 `do NOT change its identity, inflate it, or add items beyond this list.]`;
             // Player-facing reveal — shows the drop on their own turn bubble.
             displayInputFinal += `\n\n💰 Loot drop armed (${armedLoot.rolls})`;
+        }
+    }
+
+    // One-Shot Event Injector v1: player-armed event directive. Mirrors the dice/loot
+    // blocks above — appended AFTER the historyInput capture, so it steers THIS turn's
+    // generation but never enters durable chat history. Fires once; caller clears it.
+    const armedOneShot = state.armedOneShot;
+    if (armedOneShot) {
+        const directive = buildOneShotDirective(armedOneShot);
+        if (directive) {
+            finalInput += directive;
+            displayInputFinal += `\n\n⚡ Event injected (${armedOneShot})`;
         }
     }
 
