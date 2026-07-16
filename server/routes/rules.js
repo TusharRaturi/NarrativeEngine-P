@@ -120,8 +120,7 @@ export function createRulesRouter() {
         }
 
         const chunks = chunkRulesServer(rulesRaw);
-        
-        deleteRulesEmbedding(campaignId, '%');
+
         try {
             const { getDb } = await import('../lib/vectorStore.js');
             const sqliteDb = getDb();

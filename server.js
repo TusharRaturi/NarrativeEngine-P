@@ -47,7 +47,20 @@ if (!vault.isUnlocked()) {
 }
 
 // ─── Middleware ───
-app.use(cors());
+// Restrict CORS to the only two legitimate origins:
+//   - 'null'       → Electron production loads the frontend via file:// (origin "null")
+//   - Vite dev URL → local development via http://localhost:5173
+// Any other origin (e.g. a malicious website in the user's browser) is rejected,
+// preventing cross-origin reads of /api/vault/keys and other sensitive endpoints.
+const ALLOWED_ORIGINS = new Set(['null', 'http://localhost:5173']);
+app.use(cors({
+    origin(origin, cb) {
+        // Allow same-origin requests (no Origin header) and allowlisted origins.
+        if (!origin || ALLOWED_ORIGINS.has(origin)) return cb(null, true);
+        return cb(null, false);
+    },
+    credentials: false,
+}));
 app.use(express.json({ limit: '500mb' }));
 app.use('/assets/portraits', express.static(PUBLIC_ASSETS_DIR));
 

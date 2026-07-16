@@ -460,4 +460,20 @@ describe('extractTimelineEventsRegex', () => {
         const events = extractTimelineEventsRegex(['Roderick Vaul'], text, '001', 'CH01');
         expect(events).toEqual([]);
     });
+
+    it('handles names containing regex metacharacters (e.g. ".", "(", "-)", without throwing or mis-matching', () => {
+        // Names with regex metacharacters must be escaped before building patterns.
+        // Without escaping, "Dr. Moriarty" would match any "Dr<任意字符> Moriarty".
+        const text = 'Dr. Moriarty entered the Crypt';
+        const events = extractTimelineEventsRegex(['Dr. Moriarty'], text, '001', 'CH01');
+        expect(events.some(e => e.subject === 'Dr. Moriarty' && e.predicate === 'located_in')).toBe(true);
+    });
+
+    it('does not treat a name with a metachar as a wildcard that matches unrelated text', () => {
+        // Without escaping, "Kor'vak" containing no metachar is fine, but "Kor(vak)"
+        // would treat "(" as a group start and throw or mis-match.
+        const text = 'Kor(vak) died in the arena';
+        const events = extractTimelineEventsRegex(['Kor(vak)'], text, '001', 'CH01');
+        expect(events.some(e => e.subject === 'Kor(vak)' && e.predicate === 'status' && e.object === 'dead')).toBe(true);
+    });
 });

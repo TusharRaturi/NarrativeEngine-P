@@ -292,10 +292,13 @@ export function extractWitnessesHeuristic(npcNames, userContent, assistantConten
 
 export function extractTimelineEventsRegex(npcNames, text, sceneId, chapterId) {
     const events = [];
+    const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     for (const name of npcNames) {
+        const pat = escapeRegex(name);
+
         // killed_by: "Name was killed/slain/defeated by X"
-        const killAsObject = new RegExp('([A-Z][A-Za-z\\s]{1,30})\\s+(killed|slain|defeated|destroyed|murdered)\\s+' + name, 'i');
+        const killAsObject = new RegExp('([A-Z][A-Za-z\\s]{1,30})\\s+(killed|slain|defeated|destroyed|murdered)\\s+' + pat, 'i');
         const killMatch = text.match(killAsObject);
         if (killMatch) {
             events.push({
@@ -307,7 +310,7 @@ export function extractTimelineEventsRegex(npcNames, text, sceneId, chapterId) {
         }
 
         // status: "Name was found dead / died"
-        const deathSelf = new RegExp(name + '\\s+(was\\s+)?(died|found dead|perished|collapsed)', 'i');
+        const deathSelf = new RegExp(pat + '\\s+(was\\s+)?(died|found dead|perished|collapsed)', 'i');
         if (deathSelf.test(text)) {
             events.push({
                 sceneId, chapterId, subject: name, predicate: 'status',
@@ -318,7 +321,7 @@ export function extractTimelineEventsRegex(npcNames, text, sceneId, chapterId) {
         }
 
         // located_in: "Name entered/arrived at/fled to X"
-        const locPattern = new RegExp(name + '\\s+(entered|arrived at|found in|returned to|fled to)\\s+(?:the\\s+)?([A-Z][A-Za-z\\s]{2,40})', 'i');
+        const locPattern = new RegExp(pat + '\\s+(entered|arrived at|found in|returned to|fled to)\\s+(?:the\\s+)?([A-Z][A-Za-z\\s]{2,40})', 'i');
         const locMatch = text.match(locPattern);
         if (locMatch) {
             events.push({
@@ -330,7 +333,7 @@ export function extractTimelineEventsRegex(npcNames, text, sceneId, chapterId) {
         }
 
         // holds: "Name, King/Queen/Lord/... of X"
-        const titlePattern = new RegExp(name + ',\\s+((?:King|Queen|Lord|Lady|Duke|Prince|Princess|General|Commander|Archmage|Champion)(?:\\s+of\\s+[A-Za-z\\s]+)?)', 'i');
+        const titlePattern = new RegExp(pat + ',\\s+((?:King|Queen|Lord|Lady|Duke|Prince|Princess|General|Commander|Archmage|Champion)(?:\\s+of\\s+[A-Za-z\\s]+)?)', 'i');
         const titleMatch = text.match(titlePattern);
         if (titleMatch) {
             events.push({
@@ -342,7 +345,7 @@ export function extractTimelineEventsRegex(npcNames, text, sceneId, chapterId) {
         }
 
         // allied_with: "Name, leader/member of X"
-        const factionPattern = new RegExp(name + '[\\s,]+(?:leader\\s+of|member\\s+of|of)\\s+(?:the\\s+)?([A-Z][A-Za-z\\s]{2,30})', 'i');
+        const factionPattern = new RegExp(pat + '[\\s,]+(?:leader\\s+of|member\\s+of|of)\\s+(?:the\\s+)?([A-Z][A-Za-z\\s]{2,30})', 'i');
         const factionMatch = text.match(factionPattern);
         if (factionMatch) {
             events.push({
