@@ -7,6 +7,7 @@ import { TokenGauge } from './TokenGauge';
 import { BackgroundControl } from './BackgroundControl';
 import { saveCampaignState } from '../store/campaignStore';
 import type { AiTier } from '../types/llm';
+import { APP_VERSION } from '../version';
 
 const TIER_CYCLE: Record<AiTier, AiTier> = { lite: 'pro', pro: 'max', max: 'lite' };
 
@@ -58,6 +59,9 @@ export function Header() {
             <h1 className="hidden md:block text-terminal text-sm font-bold tracking-[0.3em] uppercase glow-green shrink-0">
                 Narrative Engine
             </h1>
+            <span className="hidden md:inline text-[9px] font-mono text-text-dim shrink-0" title={`Narrative Engine version ${APP_VERSION}`}>
+                v{APP_VERSION}
+            </span>
 
             <div className="hidden md:flex flex-1 items-center gap-4">
                 <TokenGauge />

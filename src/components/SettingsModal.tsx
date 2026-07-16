@@ -6,6 +6,7 @@ import { PresetsTab } from './settings-modal/PresetsTab';
 import { GlobalSettingsTab } from './settings-modal/GlobalSettingsTab';
 import { AdvancedTab } from './settings-modal/AdvancedTab';
 import { DebugTab } from './settings-modal/DebugTab';
+import { APP_VERSION } from '../version';
 
 type TabKey = 'providers' | 'presets' | 'global' | 'advanced' | 'debug';
 
@@ -35,9 +36,14 @@ export function SettingsModal() {
           <h2 className="text-terminal text-sm font-bold tracking-[0.2em] uppercase glow-green">
             ⚙ SETTINGS
           </h2>
-          <button onClick={toggleSettings} className="text-text-dim hover:text-danger transition-colors">
-            <X size={18} />
-          </button>
+          <div className="flex items-center gap-4">
+            <span className="text-[10px] font-mono text-text-dim" title="Installed Narrative Engine version">
+              v{APP_VERSION}
+            </span>
+            <button onClick={toggleSettings} className="text-text-dim hover:text-danger transition-colors" aria-label="Close settings">
+              <X size={18} />
+            </button>
+          </div>
         </div>
 
         {/* Tabs */}
