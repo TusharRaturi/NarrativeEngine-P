@@ -13,6 +13,8 @@ import { scanPressure, buildPressurePatch, shouldArchiveNPC, findArchivedToResto
 import { scanCharacterProfile } from '../characterProfileParser';
 import { scanCharacterTraits } from '../characterTraitParser';
 import { scanInventory } from '../inventoryParser';
+import { mergeLocationScanLedger, scanLocation } from '../locationParser';
+import { resolveLocationHeader } from '../locationHeader';
 import { toast } from '../../components/Toast';
 import { mergeSealEntries, EMPTY_REGISTER } from '../campaign-state/divergenceRegister';
 import { saveDivergenceRegister } from '../../store/campaignStore';
@@ -126,6 +128,41 @@ export async function runPostTurnPipeline(
         ? resolveNPCIds(presentNames, npcLedger)
         : [];
     callbacks.setOnStageNpcIds?.(onStageIds);
+
+    // ── Location Header Tracking (hot path) ──
+    // Sibling of the 👥 [Present] parse above: the GM's 📍 [Location] header is the
+    // authoritative per-turn location self-report (requested by defaultRules.ts:51).
+    // Engine regex, zero LLM, every tier. The interval-gated scanLocation call in
+    // runArchiveTrack stays the cold path (features/connections enrichment). Header
+    // absent or unusable → no-op; the last known pointer stands. Unknown places are
+    // suggested, never auto-added (same trust model as NPC suggestions).
+    try {
+        const sNow = useAppStore.getState();
+        if (sNow.activeCampaignId === activeCampaignId) {
+            const outcome = resolveLocationHeader(
+                lastAssistantContent,
+                sNow.locationLedger ?? [],
+                sNow.context.currentPlaceId ?? null,
+            );
+            if (outcome.kind === 'resolved') {
+                callbacks.updateContext({ currentPlaceId: outcome.placeId, currentFeature: outcome.feature });
+                if (outcome.appendFeature && outcome.feature) {
+                    const entry = sNow.locationLedger.find(l => l.id === outcome.placeId);
+                    if (entry) sNow.updateLocation(outcome.placeId, { features: [...entry.features, outcome.feature], lastSeenScene: String(Date.now()) });
+                }
+            } else if (outcome.kind === 'feature-only') {
+                callbacks.updateContext({ currentFeature: outcome.feature });
+                if (outcome.appendFeature && sNow.context.currentPlaceId) {
+                    const entry = sNow.locationLedger.find(l => l.id === sNow.context.currentPlaceId);
+                    if (entry) sNow.updateLocation(entry.id, { features: [...entry.features, outcome.feature] });
+                }
+            } else if (outcome.kind === 'unknown') {
+                sNow.addLocationSuggestions([outcome.suggestion]);
+            }
+        }
+    } catch (err) {
+        console.warn('[LocationHeader] Parse failed (non-fatal):', err);
+    }
 
     for (const r of results) {
         if (r.status === 'rejected') {
@@ -386,6 +423,47 @@ async function runArchiveTrack(
                     }
                     console.log(`[Auto Bookkeeping] Inventory updated at scene #${sceneId}`);
                 }).catch(err => console.warn('[Auto Bookkeeping] Inventory scan failed:', err));
+            }
+
+            // WO-Location: structured location estimator — the place-analogue of the
+            // inventory scan. Sibling block, same background queue + guards + tier gate
+            // class as inventoryScan. Resolves the PC's current place + merges features/
+            // connections into existing ledger entries + emits new-place suggestions for
+            // player review. Never auto-adds entries. Pointer rides callbacks.updateContext
+            // (currentPlaceId/currentFeature); ledger + suggestions ride the store setters.
+            if (tierAllows(state.settings.aiTier, 'locationScan')) {
+                backgroundQueue.push('Location-Scan', async () => {
+                    if (!assertStillActive(activeCampaignId, 'Location-Scan')) return;
+                    const before = useAppStore.getState();
+                    const baselineLedger = before.locationLedger ?? [];
+                    const baselinePlaceId = before.context.currentPlaceId ?? null;
+                    const baselineFeature = before.context.currentFeature ?? null;
+                    const scan = await scanLocation(
+                        bkProvider,
+                        state.getMessages(),
+                        baselineLedger,
+                        baselinePlaceId,
+                        baselineFeature,
+                    );
+                    if (!assertStillActive(activeCampaignId, 'Location-Scan')) return;
+                    const s = useAppStore.getState();
+                    if (s.activeCampaignId !== activeCampaignId) return;
+
+                    // A manual/header pointer change made while the LLM was in flight wins.
+                    if (s.context.currentPlaceId === baselinePlaceId && (s.context.currentFeature ?? null) === baselineFeature
+                        && (scan.currentPlaceId !== baselinePlaceId || scan.currentFeature !== baselineFeature)) {
+                        guardedUpdateContext({ currentPlaceId: scan.currentPlaceId, currentFeature: scan.currentFeature });
+                    }
+
+                    const mergedLedger = mergeLocationScanLedger(baselineLedger, scan.ledger, s.locationLedger ?? []);
+                    if (mergedLedger !== s.locationLedger && s.activeCampaignId === activeCampaignId) {
+                        s.setLocationLedger(mergedLedger);
+                    }
+                    if (scan.suggestions.length > 0 && s.activeCampaignId === activeCampaignId) {
+                        s.addLocationSuggestions(scan.suggestions);
+                    }
+                    console.log(`[Auto Bookkeeping] Location scan at scene #${sceneId}: current=${scan.currentPlaceId ?? '(unclear)'}, suggestions=${scan.suggestions.length}`);
+                }).catch(err => console.warn('[Auto Bookkeeping] Location scan failed:', err));
             }
         }
     }

@@ -214,6 +214,11 @@ export type GameContext = {
     statLabelMap?: Record<string, string>;
     lootTree?: LootTree;
     activeLootProfileId?: string;
+    // ── Location Ledger (v1) — current-place pointer (engine-owned writer;
+    //    LLM only proposes, player can always override). Lazy migration:
+    //    absent on existing campaigns → undefined → "no current place".
+    currentPlaceId?: string | null;
+    currentFeature?: string | null;   // free-string feature within the current place
 };
 
 export type OpenAITool = {

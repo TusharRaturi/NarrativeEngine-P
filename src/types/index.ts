@@ -11,4 +11,5 @@ export * from './map';
 export * from './gamecontext';
 export * from './arc';
 export * from './loot';
+export * from './location';
 

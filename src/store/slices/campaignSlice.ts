@@ -1,5 +1,5 @@
 import type { StateCreator } from 'zustand';
-import type { ArchiveChapter, ChatMessage, CondenserState, GameContext, LoreChunk, ArchiveIndexEntry, NPCEntry, NpcSuggestion, SemanticFact, EntityEntry, TimelineEvent, InventoryItem, CharacterProfile, PinnedExcerpt } from '../../types';
+import type { ArchiveChapter, ChatMessage, CondenserState, GameContext, LoreChunk, ArchiveIndexEntry, NPCEntry, NpcSuggestion, SemanticFact, EntityEntry, TimelineEvent, InventoryItem, CharacterProfile, PinnedExcerpt, LocationEntry, LocationSuggestion } from '../../types';
 import { DEFAULT_CHARACTER_PROFILE, DEFAULT_INVENTORY, migrateLegacyContext, buildDefaultDiceSystem } from '../../types';
 import { toast } from '../../components/Toast';
 import { debouncedSaveSettings } from './settingsSlice';
@@ -27,9 +27,9 @@ function preOpBackup(campaignId: string | null, trigger: string) {
 // Getter registered by the slice creator so we always read fresh state at fire time.
 // This prevents stale-snapshot race conditions where two rapid updates within the 1s
 // debounce window would cause the first update's changes to be overwritten.
-let _getStateForSave: (() => { activeCampaignId: string | null; context: GameContext; messages: ChatMessage[]; condenser: CondenserState; loreChunks: LoreChunk[]; npcLedger: NPCEntry[]; pinnedExcerpts: PinnedExcerpt[] }) | null = null;
+let _getStateForSave: (() => { activeCampaignId: string | null; context: GameContext; messages: ChatMessage[]; condenser: CondenserState; loreChunks: LoreChunk[]; npcLedger: NPCEntry[]; locationLedger: LocationEntry[]; pinnedExcerpts: PinnedExcerpt[] }) | null = null;
 export function _registerCampaignStateGetter(
-    getter: () => { activeCampaignId: string | null; context: GameContext; messages: ChatMessage[]; condenser: CondenserState; loreChunks: LoreChunk[]; npcLedger: NPCEntry[]; pinnedExcerpts: PinnedExcerpt[] }
+    getter: () => { activeCampaignId: string | null; context: GameContext; messages: ChatMessage[]; condenser: CondenserState; loreChunks: LoreChunk[]; npcLedger: NPCEntry[]; locationLedger: LocationEntry[]; pinnedExcerpts: PinnedExcerpt[] }
 ) {
     _getStateForSave = getter;
 }
@@ -40,13 +40,14 @@ export function cancelPendingSaves() {
     if (stateTimer) { clearTimeout(stateTimer); stateTimer = null; }
     if (loreTimer)  { clearTimeout(loreTimer);  loreTimer  = null; }
     if (npcTimer)   { clearTimeout(npcTimer);   npcTimer   = null; }
+    if (locationTimer) { clearTimeout(locationTimer); locationTimer = null; }
 }
 
 /** Immediately fires any pending debounced saves so the latest in-memory state is on
  *  disk before a backup is created. Awaiting this guarantees the backup reads current data. */
 export async function flushAllPendingSaves(): Promise<void> {
     if (!_getStateForSave) return;
-    const { activeCampaignId, context, messages, condenser, loreChunks, npcLedger, pinnedExcerpts } = _getStateForSave();
+    const { activeCampaignId, context, messages, condenser, loreChunks, npcLedger, locationLedger, pinnedExcerpts } = _getStateForSave();
     if (!activeCampaignId) return;
 
     const saves: Promise<unknown>[] = [];
@@ -84,6 +85,18 @@ export async function flushAllPendingSaves(): Promise<void> {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(npcLedger),
             }).catch(e => console.error('[FlushSave] npcs failed:', e))
+        );
+    }
+
+    if (locationTimer) {
+        clearTimeout(locationTimer);
+        locationTimer = null;
+        saves.push(
+            fetch(`${API}/campaigns/${activeCampaignId}/locations`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(locationLedger),
+            }).catch(e => console.error('[FlushSave] locations failed:', e))
         );
     }
 
@@ -127,6 +140,19 @@ export function debouncedSaveNPCLedger(campaignId: string | null, npcs: NPCEntry
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(npcs),
         }).catch((e) => { console.error(e); toast.error('Failed to save NPC ledger'); });
+    }, 1000);
+}
+
+let locationTimer: ReturnType<typeof setTimeout> | null = null;
+export function debouncedSaveLocationLedger(campaignId: string | null, locations: LocationEntry[]) {
+    if (!campaignId) return;
+    if (locationTimer) clearTimeout(locationTimer);
+    locationTimer = setTimeout(() => {
+        fetch(`${API}/campaigns/${campaignId}/locations`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(locations),
+        }).catch((e) => { console.error(e); toast.error('Failed to save location ledger'); });
     }, 1000);
 }
 
@@ -273,6 +299,16 @@ export type CampaignSlice = {
     addNpcSuggestions: (names: string[], context?: string) => void;
     dismissNpcSuggestion: (name: string) => void;
     clearNpcSuggestions: () => void;
+    // ── Location Ledger (v1) — structured places + auto-detected suggestions ──
+    locationLedger: LocationEntry[];
+    setLocationLedger: (locations: LocationEntry[]) => void;
+    addLocation: (loc: LocationEntry) => void;
+    updateLocation: (id: string, patch: Partial<LocationEntry>) => void;
+    removeLocation: (id: string) => void;
+    locationSuggestions: LocationSuggestion[];
+    addLocationSuggestions: (suggestions: LocationSuggestion[]) => void;
+    dismissLocationSuggestion: (name: string) => void;
+    clearLocationSuggestions: () => void;
     semanticFacts: SemanticFact[];
     setSemanticFacts: (facts: SemanticFact[]) => void;
     timeline: TimelineEvent[];
@@ -318,7 +354,7 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
     // not a stale closure snapshot from the time the action was called.
     _registerCampaignStateGetter(() => {
         const s = get();
-        return { activeCampaignId: s.activeCampaignId, context: s.context, messages: s.messages, condenser: s.condenser, loreChunks: s.loreChunks, npcLedger: s.npcLedger, pinnedExcerpts: s.pinnedExcerpts };
+        return { activeCampaignId: s.activeCampaignId, context: s.context, messages: s.messages, condenser: s.condenser, loreChunks: s.loreChunks, npcLedger: s.npcLedger, locationLedger: s.locationLedger, pinnedExcerpts: s.pinnedExcerpts };
     });
 
     return {
@@ -505,6 +541,63 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
         npcSuggestions: s.npcSuggestions.filter(x => x.name.toLowerCase() !== name.toLowerCase()),
     }) as Partial<CampaignDeps>),
     clearNpcSuggestions: () => set({ npcSuggestions: [] } as Partial<CampaignDeps>),
+    // ── Location Ledger (v1) ──
+    locationLedger: [],
+    setLocationLedger: (locations) => set((s) => {
+        debouncedSaveLocationLedger(s.activeCampaignId, locations);
+        return { locationLedger: locations } as Partial<CampaignDeps>;
+    }),
+    addLocation: (loc) => set((s) => {
+        const withNew = [...s.locationLedger, loc];
+        debouncedSaveLocationLedger(s.activeCampaignId, withNew);
+        return { locationLedger: withNew } as Partial<CampaignDeps>;
+    }),
+    updateLocation: (id, patch) => set((s) => {
+        const newLedger = s.locationLedger.map(l => l.id === id ? { ...l, ...patch } : l);
+        debouncedSaveLocationLedger(s.activeCampaignId, newLedger);
+        return { locationLedger: newLedger } as Partial<CampaignDeps>;
+    }),
+    removeLocation: (id) => set((s) => {
+        preOpBackup(s.activeCampaignId, 'pre-delete-location');
+        const newLedger = s.locationLedger.filter(l => l.id !== id);
+        debouncedSaveLocationLedger(s.activeCampaignId, newLedger);
+        // If the deleted entry was the current place, clear the pointer (do NOT silently
+        // redirect — the player should re-anchor).
+        const ctx = s.context;
+        let contextPatch: Partial<GameContext> | undefined;
+        if (ctx.currentPlaceId === id) {
+            contextPatch = { currentPlaceId: null, currentFeature: null };
+        }
+        if (contextPatch) {
+            const newContext = migrateLegacyContext({ ...ctx, ...contextPatch });
+            debouncedSaveCampaignState();
+            return { locationLedger: newLedger, context: newContext } as Partial<CampaignDeps>;
+        }
+        return { locationLedger: newLedger } as Partial<CampaignDeps>;
+    }),
+    locationSuggestions: [],
+    addLocationSuggestions: (suggestions) => set((s) => {
+        if (!suggestions || suggestions.length === 0) return {};
+        const existing = new Set(s.locationSuggestions.map(x => x.name.toLowerCase()));
+        const ledgerNames = new Set(
+            s.locationLedger.flatMap(l => [l.name.toLowerCase(), ...l.aliases.split(',').map(a => a.trim().toLowerCase()).filter(Boolean)])
+        );
+        const fresh: LocationSuggestion[] = [];
+        for (const sug of suggestions) {
+            const name = sug.name.trim();
+            if (!name) continue;
+            const key = name.toLowerCase();
+            if (existing.has(key) || ledgerNames.has(key)) continue;
+            existing.add(key);
+            fresh.push({ ...sug, name });
+        }
+        if (fresh.length === 0) return {};
+        return { locationSuggestions: [...s.locationSuggestions, ...fresh] } as Partial<CampaignDeps>;
+    }),
+    dismissLocationSuggestion: (name) => set((s) => ({
+        locationSuggestions: s.locationSuggestions.filter(x => x.name.toLowerCase() !== name.toLowerCase()),
+    }) as Partial<CampaignDeps>),
+    clearLocationSuggestions: () => set({ locationSuggestions: [] } as Partial<CampaignDeps>),
     semanticFacts: [],
     setSemanticFacts: (facts) => set({ semanticFacts: facts } as Partial<CampaignDeps>),
     timeline: [],

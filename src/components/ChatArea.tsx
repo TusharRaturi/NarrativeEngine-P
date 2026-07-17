@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { Send, Save, Loader2, Zap, Scroll, X, Square, Search, Check, Package, BookCheck, Pin, Replace, UserPlus, Dices, ChevronUp, ArrowDown } from 'lucide-react';
+import { Send, Save, Loader2, Zap, Scroll, X, Square, Search, Check, Package, BookCheck, Pin, Replace, UserPlus, MapPin, Dices, ChevronUp, ArrowDown } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import { runTurn } from '../services/turn/turnOrchestrator';
 import { commitPendingTurn } from '../services/turn/pendingCommit';
@@ -27,6 +27,8 @@ import { ArcInjectorButton } from './ArcInjectorButton';
 import { OneShotInjectorButton } from './OneShotInjectorButton';
 import { PCCreationWizard } from './pc/PCCreationWizard';
 import { addNpcFromSelection } from '../services/npc/manualAdd';
+import { isLikelyFeatureLabel, parseLocationHeader, resolveLocationHeader } from '../services/locationHeader';
+import { queueLocationEnrichment } from '../services/locationEnrich';
 
 export function ChatArea() {
     const messages = useAppStore(s => s.messages);
@@ -252,6 +254,107 @@ export function ChatArea() {
         } finally {
             setNpcAdding(false);
         }
+    };
+
+    // Add Place — the manual fallback for rulesets that don't emit the 📍 [Location]
+    // scene header. Selection-based like Add NPC, but zero LLM: known place → just set
+    // the pointer; unknown → create a manual entry and set it current. The engine stays
+    // the sole writer of the ledger; this button is the player's high-trust proposal path.
+    const handleAddPlace = (e: React.MouseEvent | React.TouchEvent) => {
+        e.preventDefault();
+        const snap = captureFromBubble('[data-lore-checkable="true"]') ?? npcSel;
+        if (!snap) {
+            toast.info('Highlight a place name in a GM message first to add it.');
+            return;
+        }
+        const state = useAppStore.getState();
+        if (!state.activeCampaignId) { toast.warning('No active campaign.'); return; }
+
+        window.getSelection()?.removeAllRanges();
+        setNpcSel(null);
+        setLoreSel(null);
+        setPinSel(null);
+        const cleanName = stripMarkdown(snap.text).trim();
+        if (!cleanName || cleanName.length > 80) {
+            toast.info('Couldn’t read a place name from the selection.');
+            return;
+        }
+        const ledger = state.locationLedger ?? [];
+        let anchorId = state.context.currentPlaceId ?? null;
+
+        // Recover from older manual-add mistakes that stored an entire location
+        // header (for example "📍 Town — Tower Top") as a duplicate place name.
+        const currentEntry = anchorId ? ledger.find(l => l.id === anchorId) : undefined;
+        if (currentEntry) {
+            const canonical = resolveLocationHeader(
+                currentEntry.name,
+                ledger.filter(l => l.id !== currentEntry.id),
+                null,
+            );
+            if (canonical.kind === 'resolved') anchorId = canonical.placeId;
+        }
+
+        const manualHeader = cleanName.includes('📍') ? cleanName : `📍 ${cleanName}`;
+        const outcome = resolveLocationHeader(manualHeader, ledger, anchorId);
+        const now = String(Date.now());
+
+        if (outcome.kind === 'resolved') {
+            const place = ledger.find(l => l.id === outcome.placeId);
+            if (!place) return;
+            if (outcome.appendFeature && outcome.feature) {
+                state.updateLocation(place.id, {
+                    features: [...place.features, outcome.feature],
+                    lastSeenScene: now,
+                });
+            }
+            state.updateContext({ currentPlaceId: place.id, currentFeature: outcome.feature });
+            toast.success(outcome.feature
+                ? `Current place: ${place.name} — ${outcome.feature}`
+                : `Current place set: ${place.name}`);
+            return;
+        }
+
+        if (outcome.kind === 'feature-only' && anchorId) {
+            const place = ledger.find(l => l.id === anchorId);
+            if (!place) return;
+            if (outcome.appendFeature) {
+                state.updateLocation(place.id, {
+                    features: [...place.features, outcome.feature],
+                    lastSeenScene: now,
+                });
+            }
+            state.updateContext({ currentPlaceId: place.id, currentFeature: outcome.feature });
+            toast.success(`${outcome.appendFeature ? 'Added' : 'Selected'} feature "${outcome.feature}" in ${place.name}.`);
+            return;
+        }
+
+        const newName = outcome.kind === 'unknown' ? outcome.suggestion.name : cleanName;
+        const rawManual = parseLocationHeader(manualHeader) ?? cleanName;
+        const suffix = rawManual.toLowerCase().startsWith(newName.toLowerCase())
+            ? rawManual.slice(newName.length).replace(/^[\s—–,:-]+/, '').trim()
+            : '';
+        const initialFeature = isLikelyFeatureLabel(suffix) ? suffix : null;
+        const loc = {
+            id: `loc_${now}_${Math.random().toString(36).slice(2, 7)}`,
+            name: newName,
+            aliases: '',
+            broadLocation: '',
+            features: initialFeature ? [initialFeature] : [],
+            connections: [],
+            description: '',
+            firstSeenScene: now,
+            lastSeenScene: now,
+            source: 'manual' as const,
+        };
+        state.addLocation(loc);
+        state.updateContext({ currentPlaceId: loc.id, currentFeature: initialFeature });
+        state.dismissLocationSuggestion(newName);
+        toast.success(initialFeature
+            ? `Added "${newName}" with feature "${initialFeature}" and set it current.`
+            : `Added "${newName}" and set as current place.`);
+        // PRO/MAX: background AI fill (description/region/features/connections).
+        // No-ops on lite tier or without a provider; the shell entry stands alone.
+        queueLocationEnrichment(loc.id);
     };
 
     const setDeepArmed = useAppStore(s => s.setDeepArmed);
@@ -769,6 +872,16 @@ export function ChatArea() {
                 >
                     {npcAdding ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
                     Add NPC
+                </button>
+
+                <button
+                    onMouseDown={handleAddPlace}
+                    onTouchStart={handleAddPlace}
+                    className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all whitespace-nowrap cursor-pointer ${npcSel ? 'border-terminal text-terminal bg-terminal/5 animate-pulse' : 'border-terminal/30 text-terminal/60 hover:text-terminal hover:bg-terminal/5'}`}
+                    title="Add highlighted place to the location ledger and set it as current (or just set current if it exists)"
+                >
+                    <MapPin size={13} />
+                    Add Place
                 </button>
 
                 {activeCampaignId && (

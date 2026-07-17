@@ -7,6 +7,7 @@ import { ContextDrawer } from './components/ContextDrawer';
 import { ChatArea } from './components/ChatArea';
 import { SettingsModal } from './components/SettingsModal';
 import { NPCLedgerModal } from './components/NPCLedgerModal';
+import { LocationLedgerModal } from './components/LocationLedgerModal';
 import { BackupModal } from './components/BackupModal';
 import { LoreCheckModal } from './components/LoreCheckModal';
 import { DivergenceReviewModal } from './components/DivergenceReviewModal';
@@ -161,6 +162,7 @@ export default function App() {
       {/* <MapPanel /> */}
       <SettingsModal />
       <NPCLedgerModal />
+      <LocationLedgerModal />
       <BackupModal />
       <LoreCheckModal />
       <DivergenceReviewModal />

@@ -1,4 +1,4 @@
-import type { ArchiveChapter, Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, SemanticFact, EntityEntry, BackupMeta, TimelineEvent, DivergenceRegister, PinnedExcerpt } from '../types';
+import type { ArchiveChapter, Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, SemanticFact, EntityEntry, BackupMeta, TimelineEvent, DivergenceRegister, PinnedExcerpt, LocationEntry } from '../types';
 import { affinityToPcRelation } from '../services/npc/agency/agencyBands';
 
 import { API_BASE as API } from '../lib/apiBase';
@@ -124,6 +124,22 @@ export async function getNPCLedger(campaignId: string): Promise<NPCEntry[]> {
         }
     }
     return npcs;
+}
+
+// ─── Location Ledger ───
+
+export async function saveLocationLedger(campaignId: string, locations: LocationEntry[]): Promise<void> {
+    await fetch(`${API}/campaigns/${campaignId}/locations`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(locations),
+    });
+}
+
+export async function getLocationLedger(campaignId: string): Promise<LocationEntry[]> {
+    const res = await fetch(`${API}/campaigns/${campaignId}/locations`);
+    if (!res.ok) return [];
+    return res.json();
 }
 
 // ─── Archive Index (Tier 4) ───

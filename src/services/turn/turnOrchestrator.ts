@@ -233,6 +233,8 @@ export async function runTurn(
         relevantRules,
         rulesManifest,
         state.pinnedExcerpts,
+        undefined, // plannerEventTypes — recomputed inside buildWorld
+        useAppStore.getState().locationLedger,
     );
 
     const payload = payloadResult.messages;

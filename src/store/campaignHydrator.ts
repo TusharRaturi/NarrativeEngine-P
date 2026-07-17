@@ -1,6 +1,6 @@
 import { useAppStore } from './useAppStore';
 import {
-    loadCampaignState, getLoreChunks, getNPCLedger,
+    loadCampaignState, getLoreChunks, getNPCLedger, getLocationLedger,
     loadArchiveIndex, loadTimeline, loadChapters, loadEntities,
     loadDivergenceRegister, saveDivergenceRegister, saveChapters,
 } from './campaignStore';
@@ -25,10 +25,11 @@ function backfillSceneIds(chapters: ArchiveChapter[]): { chapters: ArchiveChapte
 }
 
 export async function hydrateCampaign(campaignId: string) {
-    const [state, chunks, npcs, archiveIndex, timeline, chapters, entities, divReg] = await Promise.all([
+    const [state, chunks, npcs, locations, archiveIndex, timeline, chapters, entities, divReg] = await Promise.all([
         loadCampaignState(campaignId),
         getLoreChunks(campaignId),
         getNPCLedger(campaignId),
+        getLocationLedger(campaignId),
         loadArchiveIndex(campaignId),
         loadTimeline(campaignId),
         loadChapters(campaignId),
@@ -65,6 +66,7 @@ export async function hydrateCampaign(campaignId: string) {
         condenser: { ...(state?.condenser ?? DEFAULT_CONDENSER) },
         loreChunks: chunks,
         npcLedger: npcs,
+        locationLedger: locations ?? [],
         archiveIndex: archiveIndex ?? [],
         timeline: timeline ?? [],
         chapters: backfilled,

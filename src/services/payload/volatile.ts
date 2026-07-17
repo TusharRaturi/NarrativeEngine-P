@@ -1,9 +1,10 @@
-import type { GameContext, InventoryItemCategory, ChatMessage, NPCEntry, SceneEventType } from '../../types';
+import type { GameContext, InventoryItemCategory, ChatMessage, NPCEntry, SceneEventType, LocationEntry } from '../../types';
 import { CORE_FLOOR_TRAITS } from '../../types';
 import { countTokens } from '../infrastructure/tokenizer';
 import { minifyBookkeepingStub, minifySelectedInventory, minifySelectedProfile } from '../turn/contextMinifier';
 import { queryTraits, formatTraitsForContext } from '../retrieval/semanticMemory';
 import type { TraceCollector } from './traceCollector';
+import { connectionBand } from '../locationParser';
 
 export function buildVolatile(opts: {
     context: GameContext;
@@ -15,8 +16,9 @@ export function buildVolatile(opts: {
     userMessage?: string;
     history?: ChatMessage[];
     npcLedger?: NPCEntry[];
+    locationLedger?: LocationEntry[];
 }): { volatileContent: string; volatileTokens: number } {
-    const { context, inventoryCategories, profileFields, budgetVolatile, collector, plannerEventTypes, userMessage, history, npcLedger } = opts;
+    const { context, inventoryCategories, profileFields, budgetVolatile, collector, plannerEventTypes, userMessage, history, npcLedger, locationLedger } = opts;
 
     // --- 5. Volatile State (Profile, Inventory) — Smart Injection ---
     // WO-I: capture each module's text so we can emit per-module trace rows with previews
@@ -26,6 +28,7 @@ export function buildVolatile(opts: {
     let inventoryBlock = '';
     let profileBlock = '';
     let notebookBlock = '';
+    let locationBlock = '';
 
     const hasSmart = context.smartBookkeepingActive;
     const hasStructured = (context.inventoryItems?.length ?? 0) > 0 || context.characterProfileData?.name;
@@ -89,6 +92,18 @@ export function buildVolatile(opts: {
         inventoryBlock = `[PLAYER INVENTORY — ${inventorySceneTag}]\n${context.inventory}`;
         volatileParts.push(inventoryBlock);
     }
+    // ── [LOCATION] block (WO-Location) — the place-analogue of [INVENTORY].
+    // Emits the resolved current place + description + nearby connections + known
+    // features. Hard-capped at ~400 chars (truncate features first, then Nearby).
+    // Zero-regression: emits nothing when there is no resolved current place, so
+    // campaigns that never use the location ledger see no change.
+    {
+        const locBlock = buildLocationBlock(context, locationLedger ?? []);
+        if (locBlock) {
+            locationBlock = locBlock;
+            volatileParts.push(locationBlock);
+        }
+    }
     if (context.notebookActive && context.notebook && context.notebook.length > 0) {
         // Notebook is the only unbounded volatile source. Reserve whatever budget remains after the
         // higher-priority character/inventory/profile parts and admit newest-first entries until full,
@@ -127,7 +142,69 @@ export function buildVolatile(opts: {
     if (inventoryBlock) collector.addTrace({ source: 'Inventory', classification: 'volatile_state', tokens: countTokens(inventoryBlock), reason: 'Player inventory', included: true, position: 'system_dynamic', preview: inventoryBlock });
     if (profileBlock) collector.addTrace({ source: 'Player Profile', classification: 'volatile_state', tokens: countTokens(profileBlock), reason: hasSmart ? 'Recommender-selected profile fields' : 'Scene-selected PC traits', included: true, position: 'system_dynamic', preview: profileBlock });
     if (notebookBlock) collector.addTrace({ source: 'Scene Notebook', classification: 'volatile_state', tokens: countTokens(notebookBlock), reason: 'Volatile working memory notebook', included: true, position: 'system_dynamic', preview: notebookBlock });
+    if (locationBlock) collector.addTrace({ source: 'Location', classification: 'volatile_state', tokens: countTokens(locationBlock), reason: 'Current place + nearby connections + known features', included: true, position: 'system_dynamic', preview: locationBlock });
     collector.addSection({ label: 'Profile/Inventory', role: 'system', tokens: volatileTokens, content: volatileContent, classification: 'volatile_state' });
 
     return { volatileContent, volatileTokens };
+}
+
+// ── [LOCATION] block builder (WO-Location) ──────────────────────────────
+// Format (verbatim from workorder §5.2):
+//   [LOCATION]
+//   At: <name> (<broadLocation>)<currentFeature ? ` — <feature>` : ''><status ? ` — <status>` : ''>
+//   <description>
+//   Nearby: <connection names, band in parens when not 'short', comma-separated>
+//   Known rooms/features: <features, comma-separated>
+//
+// Hard cap ~400 chars. Truncate `features` first (drop entries from the end), then `Nearby`.
+// Returns empty string when there is no resolved current place (zero-regression).
+const LOCATION_BLOCK_CHAR_CAP = 400;
+
+export function buildLocationBlock(context: GameContext, ledger: LocationEntry[]): string {
+    const placeId = context.currentPlaceId;
+    if (!placeId) return '';
+    const place = ledger.find(l => l.id === placeId);
+    if (!place) return '';
+
+    const featureSuffix = context.currentFeature ? ` — ${context.currentFeature}` : '';
+    const statusSuffix = place.status ? ` — ${place.status}` : '';
+    const header = `At: ${place.name} (${place.broadLocation || '?'})${featureSuffix}${statusSuffix}`;
+
+    // Nearby: connection names with band in parens when band !== 'short'
+    const nearbyParts: string[] = [];
+    for (const conn of place.connections) {
+        const other = ledger.find(l => l.id === conn.toId);
+        if (!other) continue;
+        const band = connectionBand(conn);
+        nearbyParts.push(band === 'short' ? other.name : `${other.name} (${band})`);
+    }
+    const nearbyLine = nearbyParts.length > 0 ? `Nearby: ${nearbyParts.join(', ')}` : '';
+
+    // Known rooms/features
+    const featuresLine = place.features.length > 0 ? `Known rooms/features: ${place.features.join(', ')}` : '';
+
+    // Assemble, then enforce the ~400-char cap by trimming features first, then Nearby.
+    const assemble = (featLine: string, nearLine: string) => {
+        const lines = [header, place.description || '', nearLine, featLine].filter(Boolean);
+        return `[LOCATION]\n${lines.join('\n')}`;
+    };
+
+    let block = assemble(featuresLine, nearbyLine);
+    if (block.length <= LOCATION_BLOCK_CHAR_CAP) return block;
+
+    // Trim features one entry at a time
+    const features = [...place.features];
+    while (block.length > LOCATION_BLOCK_CHAR_CAP && features.length > 0) {
+        features.pop();
+        const featLine = features.length > 0 ? `Known rooms/features: ${features.join(', ')}` : '';
+        block = assemble(featLine, nearbyLine);
+    }
+    if (block.length <= LOCATION_BLOCK_CHAR_CAP) return block;
+
+    // Then drop Nearby entirely
+    block = assemble(features.length > 0 ? `Known rooms/features: ${features.join(', ')}` : '', '');
+    if (block.length <= LOCATION_BLOCK_CHAR_CAP) return block;
+
+    // Last resort: hard truncate
+    return block.slice(0, LOCATION_BLOCK_CHAR_CAP);
 }
