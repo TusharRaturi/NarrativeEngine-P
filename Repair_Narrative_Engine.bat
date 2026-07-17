@@ -28,6 +28,45 @@ echo.
 echo ============================================
 echo.
 
+REM ===== Pre-flight: is the app still running? =====
+REM Checks both the frontend (5173) and backend server (3001)
+REM ports. The [^0-9] guard stops ":5173" from also matching
+REM ports like 15173 or 51737.
+echo Checking whether the app is still running...
+echo.
+netstat -ano | findstr /r ":5173[^0-9]" | findstr "LISTENING" >nul 2>nul
+if not errorlevel 1 goto :app_still_running
+netstat -ano | findstr /r ":3001[^0-9]" | findstr "LISTENING" >nul 2>nul
+if not errorlevel 1 goto :app_still_running
+echo No running instance detected - OK.
+echo.
+goto :app_check_done
+
+:app_still_running
+echo ============================================
+echo   [STOP] The app appears to still be running
+echo ============================================
+echo.
+echo One of the app's ports (5173 or 3001) is busy,
+echo which means the Narrative Engine is probably
+echo still open. Repairing while it is running will
+echo fail, because Windows locks files that are in
+echo use.
+echo.
+echo Please close the app completely:
+echo   - Close any browser tabs showing the app
+echo   - Close any black terminal/command windows
+echo     that say "Narrative Engine" in the title
+echo   - If you ran "npm run dev" in a terminal,
+echo     close that terminal
+echo.
+echo Then double-click this file again.
+echo.
+pause
+exit /b 1
+
+:app_check_done
+
 REM ===== Pre-flight: Node must be installed and new enough =====
 where node >nul 2>nul
 if not errorlevel 1 goto :repair_node_found
@@ -58,6 +97,24 @@ exit /b 1
 :repair_node_found
 
 for /f "delims=" %%v in ('node -p "process.versions.node" 2^>nul') do set "NODE_VERSION=%%v"
+
+REM Guard: if node.exe exists but would not run, NODE_VERSION stays
+REM empty and the version compare below would be a syntax error that
+REM closes the window with no message.
+if defined NODE_VERSION goto :node_version_read
+echo [STOP] Node.js is installed but could not be started.
+echo.
+echo Your Node.js installation may be damaged.
+echo Reinstalling it usually fixes this:
+echo   1. Open your web browser and go to https://nodejs.org/
+echo   2. Download the "LTS" version - the green button
+echo   3. Run the installer - just click Next through all steps
+echo   4. Come back and double-click this file again
+echo.
+pause
+exit /b 1
+
+:node_version_read
 for /f "tokens=1,2 delims=." %%a in ("%NODE_VERSION%") do (
     set "NODE_MAJOR=%%a"
     set "NODE_MINOR=%%b"
@@ -221,11 +278,9 @@ echo This will do the following:
 echo   - Delete the "node_modules" folder
 echo     (all the app's installed code files -
 echo      they will be re-downloaded automatically)
-echo   - Delete "package-lock.json"
-echo     (a small file that tracks which versions
-echo      are installed)
-echo   - Run "npm install" to download fresh copies
-echo     of everything
+echo   - Download fresh copies of everything, using
+echo     the exact same versions the app was tested
+echo     with
 echo.
 echo This will NOT touch:
 echo   - Your saved campaigns, characters, or lore
@@ -268,16 +323,46 @@ if exist "node_modules" (
     )
 )
 
-REM Step 2: delete package-lock.json
-if exist "package-lock.json" del /q "package-lock.json"
-
-REM Step 3: fresh install
+REM Step 2: fresh install. Prefer "npm ci": it installs the exact
+REM versions pinned in package-lock.json and, unlike deleting the
+REM lockfile (which is git-tracked), leaves the repo clean so the
+REM updater's "unsaved changes" check stays quiet afterwards.
+REM Fall back to plain "npm install" if the lockfile is missing or
+REM npm ci rejects it.
 echo.
 echo Downloading and installing fresh copies...
 echo This is the slowest step. Please be patient.
 echo.
+if not exist "package-lock.json" goto :reinstall_plain
+call npm ci
+if not errorlevel 1 goto :reinstall_done
+echo.
+echo The exact-version install did not work - trying
+echo the standard install method instead...
+echo.
+
+:reinstall_plain
 call npm install
 if errorlevel 1 goto :reinstall_failed
+
+:reinstall_done
+
+REM ===== Build the local engine package =====
+REM The app imports @narrative/engine from packages/engine, whose
+REM compiled dist/ output is git-ignored. npm install does not
+REM reliably rebuild an already-linked local package, so without
+REM this step the app can fail on startup with:
+REM   Failed to resolve import "@narrative/engine"
+if not exist "packages\engine\package.json" goto :engine_done
+echo.
+echo Building the game engine...
+echo.
+call npm run build --prefix packages/engine
+if errorlevel 1 goto :engine_build_failed
+if not exist "packages\engine\dist\index.js" goto :engine_build_failed
+echo.
+echo Engine build complete - OK.
+:engine_done
 
 echo.
 echo ============================================
@@ -291,6 +376,31 @@ echo (in this same folder) to start the app.
 echo.
 pause
 exit /b 0
+
+:engine_build_failed
+echo.
+echo ============================================
+echo   The engine build did not finish.
+echo ============================================
+echo.
+echo The dependencies were reinstalled, but one
+echo part of the app - the game engine - could not
+echo be compiled. The app will not start until this
+echo is fixed - you would see an error mentioning
+echo "@narrative/engine" if you tried.
+echo.
+echo Your saved campaigns and settings are safe.
+echo.
+echo What to do:
+echo   1. Run this repair again and choose option 2 -
+echo      this can be a one-off problem.
+echo   2. If it fails again, take a screenshot or
+echo      photo of ALL the text in this window -
+echo      especially any lines containing the word
+echo      "error" - and send it to support.
+echo.
+pause
+exit /b 1
 
 :reinstall_failed
 echo.
@@ -321,4 +431,4 @@ echo Cancelled. No changes were made to your computer.
 echo You can run this file again any time.
 echo.
 pause
-exit /b 0
+exit /b 0

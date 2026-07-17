@@ -35,6 +35,24 @@ exit /b 1
 REM Get clean Node version string (e.g. 22.14.0)
 for /f "delims=" %%v in ('node -p "process.versions.node" 2^>nul') do set "NODE_VERSION=%%v"
 
+REM Guard: if node.exe exists but would not run, NODE_VERSION stays
+REM empty and the version compare below would be a syntax error that
+REM closes the window with no message.
+if defined NODE_VERSION goto :node_version_read
+echo [STOP] Node.js is installed but could not be started.
+echo.
+echo Your Node.js installation may be damaged.
+echo Reinstalling it usually fixes this:
+echo   1. Open your web browser and go to https://nodejs.org/
+echo   2. Download the "LTS" version - the green button
+echo   3. Run the installer - just click Next through all steps
+echo   4. Come back and double-click this file again
+echo.
+pause
+exit /b 1
+
+:node_version_read
+
 REM Parse major and minor
 for /f "tokens=1,2 delims=." %%a in ("%NODE_VERSION%") do (
     set "NODE_MAJOR=%%a"
@@ -93,7 +111,51 @@ echo.
 REM ===== Main flow =====
 echo Installing dependencies...
 call npm install
+
+REM ===== Build the local engine package if its output is missing =====
+REM The app imports @narrative/engine from packages/engine, whose
+REM compiled dist/ output is git-ignored and must be built locally.
+REM Without it the app fails on startup with:
+REM   Failed to resolve import "@narrative/engine"
+REM Only built when missing, so normal starts stay fast.
+if not exist "packages\engine\package.json" goto :engine_ok
+if exist "packages\engine\dist\index.js" goto :engine_ok
+echo.
+echo Building the game engine - this only happens
+echo when it is missing, usually just the first run...
+echo.
+call npm run build --prefix packages/engine
+if errorlevel 1 goto :engine_build_failed
+if not exist "packages\engine\dist\index.js" goto :engine_build_failed
+echo.
+echo Engine build complete - OK.
+echo.
+goto :engine_ok
+
+:engine_build_failed
+echo.
+echo ============================================
+echo   [STOP] The game engine could not be built.
+echo ============================================
+echo.
+echo One part of the app - the game engine - could
+echo not be compiled, so the app cannot start yet.
+echo.
+echo Your saved campaigns and settings are safe.
+echo.
+echo What to do:
+echo   1. Close this window and double-click this
+echo      file again - this can be a one-off problem.
+echo   2. If it fails again, take a screenshot or
+echo      photo of ALL the text in this window -
+echo      especially any lines containing the word
+echo      "error" - and send it to support.
+echo.
+pause
+exit /b 1
+
+:engine_ok
 echo Starting the application...
 start cmd /c "timeout /t 3 /nobreak > nul & start http://localhost:5173"
 npm run dev
-pause
+pause
