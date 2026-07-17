@@ -1,6 +1,6 @@
 import type { EndpointConfig, ProviderConfig, ChatMessage, NPCEntry, PersonalityHex, HexAxis, RelationGraph } from '../../types';
 import type { OpenAIMessage } from '../llm/llmService';
-import { sendMessageAndParseJson } from './shared';
+import { sendMessageAndParseJson, sanitizeSignatureKit } from './shared';
 import { relationBand, describeHex } from '../npc/agency/agencyBands';
 import { hexDelta } from '../npc/agency/agencyDrift';
 import { applyRelationTone, isRelationTone } from '../npc/relationMeter';
@@ -70,6 +70,13 @@ export async function updateExistingNPCs(
             data += `PersonalityHex: ${describeHex(npc.personalityHex)}\n`;
         }
 
+        // NPC Signature Kit (v1) — show the current durable loadout so the model can
+        // decide if a narrated event changed it. Absent = no kit (plain character).
+        if (npc.signatureKit) {
+            const k = npc.signatureKit;
+            data += `SignatureKit: gear=[${k.equipment.join(', ') || 'none'}] powers=[${k.abilities.join(', ') || 'none'}]${k.element ? ` element=${k.element}` : ''}\n`;
+        }
+
         if (npc.traits && npc.traits.length > 0) {
             data += `Traits: ${npc.traits.join(', ')}\n`;
         }
@@ -104,7 +111,7 @@ CHANNEL 1 — "updates" (only when something fundamentally changed; usually empt
 Each update MUST include "name" and only the fields that fundamentally changed. Allowed changes keys:
   status, disposition, goals, storyRelevance, personality (flavor text), voice, appearance,
   wants (medium/long text only — NEVER include "short"; short is engine-managed),
-  personalityHex, traits, region, faction, relations, behavioralTriggers, hardBoundaries, softBoundaries, visualProfile.
+  personalityHex, traits, region, faction, relations, behavioralTriggers, hardBoundaries, softBoundaries, visualProfile, signatureKit.
 DO NOT include attributes that stayed the same. If nothing fundamental changed, "updates" is [].
 
 CHANNEL 2 — "tones" (MANDATORY: one entry for EVERY NPC listed below, every time):
@@ -143,6 +150,12 @@ WANTS UPDATE RULES:
   - "medium" is arc-level goal templates — update if the story moved to a new arc.
   - If the NPC has no "wants" yet, you MUST provide "medium" and "long".
 
+SIGNATURE KIT RULES:
+  - "signatureKit" is this NPC's durable loadout: {"equipment": string[], "abilities": string[], "element": string}. It keeps gear and powers CONSISTENT across the campaign.
+  - Only send it when the scene NARRATES a real change: the NPC gains/loses/breaks a signature item, learns or loses a power, or is transformed. An NPC merely *using* gear they already have is NOT a change — send nothing.
+  - Send ONLY the channel that changed. To update gear, send just "equipment" (the full new signature list, max 4); to update powers, send just "abilities". Never re-emit an unchanged channel.
+  - Default is NO change. Most turns have no signatureKit update.
+
 GENERAL RULES:
 - Valid statuses: Alive, Deceased, Missing, Unknown.
 - Do NOT change personality or voice unless the scene contains a genuinely transformative event for this character.
@@ -178,6 +191,13 @@ BAD — re-emitting the full hexagon as absolute values (this is a full-overwrit
 {"updates": [{"name": "Alden", "changes": {"personalityHex": {"drive": 2, "diligence": 1, "boldness": 3, "warmth": 0, "empathy": 1, "composure": 2}}]}
 Corrected — send ONLY the axis that drifted, as a small delta:
 {"updates": [{"name": "Alden", "changes": {"personalityHex": {"boldness": +1}}}]}
+
+GOOD — NPC's signature weapon changed on-screen (only the gear channel; powers untouched):
+{"updates": [{"name": "Rick", "changes": {"signatureKit": {"equipment": ["iron spear"]}}}]}
+
+BAD — re-emitting the unchanged kit because the NPC simply swung their existing sword:
+{"updates": [{"name": "Rick", "changes": {"signatureKit": {"equipment": ["Excalibur (holy longsword)"], "abilities": ["fire magic"]}}}]}
+Corrected: the loadout did not change — send no signatureKit at all.
 
 [RECENT CONTEXT]
 ${recentContext}
@@ -318,6 +338,15 @@ RESPOND ONLY WITH VALID JSON. NO MARKDOWN FORMATTING. NO EXPLANATIONS.`;
                                 ? incoming.long.trim()
                                 : existingWants.long,
                         };
+                    }
+
+                    // NPC Signature Kit (v1) — sanitize + per-channel supersession merge. The
+                    // model only sends the channel that changed; the untouched channel is preserved
+                    // by the merge. Empty result (kit fully cleared) deletes the field.
+                    if (changes.signatureKit !== undefined) {
+                        const merged = sanitizeSignatureKit(changes.signatureKit, targetNpc.signatureKit);
+                        if (merged) changes.signatureKit = merged;
+                        else delete (changes as Partial<NPCEntry>).signatureKit;
                     }
 
                     if (Array.isArray(changes.behavioralTriggers)) {

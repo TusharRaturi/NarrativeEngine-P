@@ -1,6 +1,6 @@
 import type { EndpointConfig, ProviderConfig, ChatMessage, NPCEntry, SceneEventType } from '../../types';
 import { uid } from '../../utils/uid';
-import { sendMessageAndParseJson } from './shared';
+import { sendMessageAndParseJson, sanitizeSignatureKit } from './shared';
 import { TRAIT_VOCAB, TRAIT_NAMES } from '../npc/agency/agencyPools';
 import { affinityToPcRelation, describeHex } from '../npc/agency/agencyBands';
 import { drawShortWants, drawMediumWants } from '../npc/agency/agencyWantDraw';
@@ -155,6 +155,9 @@ export async function generateNPCProfile(
         newEntry.fieldTags = buildDefaultFieldTags(newEntry);
         // Phase-3: seed Goal records from the new medium/long wants (engine layer; hidden cols).
         newEntry.goalRecords = buildGoalsFromWants(newEntry.wants.medium, newEntry.wants.long, finalTraits, 0);
+        // NPC Signature Kit (v1) — durable loadout seeded from the render call. `undefined`
+        // (empty kit) is fine and expected for plain characters. Bounded by sanitizeSignatureKit.
+        newEntry.signatureKit = sanitizeSignatureKit(parsed?.signatureKit);
 
         addNPCToStore(newEntry);
         console.log(`[NPC Generator] Successfully generated and added profile for: ${newEntry.name} (primaryGroup=${primary}, secondaryGroup=${secondary ?? 'none'})`);
@@ -290,10 +293,16 @@ ${voiceSection}OUTPUT FORMAT — respond with a JSON object matching this struct
   "hardBoundaries": ["String — something this NPC will never do. Example: 'will not betray her sister'"],
   "softBoundaries": ["String — something this NPC dislikes but may tolerate under pressure. Example: 'dislikes being excluded from plans'"],
   "longWant": "String — ONE long-term life ambition driving this NPC across the whole campaign, grounded in their bio/faction. Archetypes: ascend to power, become the strongest, avenge/restore, transcend/transform.",
-  "region": "String — the NPC's coarse home or current location if discernible from context (e.g. 'Ryuten', 'the academy'), else an empty string."
+  "region": "String — the NPC's coarse home or current location if discernible from context (e.g. 'Ryuten', 'the academy'), else an empty string.",
+  "signatureKit": { "equipment": [up to 4 signature items this character is known for], "abilities": [up to 4 signature powers/techniques], "element": "<single affinity tag or omit>" }
 }
 
 IMPORTANT: Do NOT emit a "personalityHex" field, numeric axis values, or a "traits" array. The engine has already rolled the personality hexagon and chosen the traits; you only render flavour. Numeric personality output will be discarded.
+
+SIGNATURE KIT RULES:
+- "signatureKit" is this NPC's durable loadout — the gear and powers that should stay consistent whenever they appear. It is NOT a full inventory.
+- Only give equipment/abilities this character is actually established or strongly implied to have in the context — do not invent a full arsenal. Stay inside this world's genre and tech level. A mundane character may have an empty kit (omit "signatureKit" or send empty arrays).
+- Each entry is a short noun phrase (e.g. "Excalibur (holy longsword)", "fire magic"). Max 4 entries per array. "element" is a single optional tag (e.g. "fire").
 
 CONTROLLED TRAIT VOCABULARY — for reference only (the engine has already chosen the traits from this list): ${offeredTraitNames(matureMode).join(', ')}.
 

@@ -28,7 +28,7 @@ function fieldTagMatches(
     return tags.some(t => plannerTags.has(t));
 }
 
-function buildCoreDirective(npc: NPCEntry): string {
+export function buildCoreDirective(npc: NPCEntry): string {
     const parts: string[] = [];
     const affinityLabel = npc.pcRelation !== undefined ? relationBand(npc.pcRelation) : undefined;
     if (affinityLabel) parts.push(`[Aff: ${affinityLabel}]`);
@@ -39,6 +39,16 @@ function buildCoreDirective(npc: NPCEntry): string {
     } else if (npc.drives?.sceneWant) {
         const sw = npc.drives.sceneWant;
         parts.push(`NOW: ${sw.length > 40 ? sw.substring(0, 40) + '\u2026' : sw}`);
+    }
+    // NPC Signature Kit (v1) — durable loadout rides CORE so scene-tag filtering
+    // can never drop it. The anti-drift analogue of personalityHex.
+    if (npc.signatureKit) {
+        const k = npc.signatureKit;
+        const kitBits: string[] = [];
+        if (k.equipment.length) kitBits.push(`KIT: ${k.equipment.join(', ')}`);
+        if (k.abilities.length) kitBits.push(`POWERS: ${k.abilities.join(', ')}`);
+        if (k.element) kitBits.push(`element: ${k.element}`);
+        if (kitBits.length) parts.push(kitBits.join(' | '));
     }
     return parts.length > 0 ? `PLAY AS: ${parts.join(' | ')}` : '';
 }

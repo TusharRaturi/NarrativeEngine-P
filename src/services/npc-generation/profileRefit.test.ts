@@ -1,9 +1,17 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { NPCEntry, EndpointConfig, ProviderConfig, ChatMessage, PersonalityHex } from '../../types';
 
-vi.mock('./shared', () => ({
-    sendMessageAndParseJson: vi.fn(),
-}));
+// WO: NPC Signature Kit — profile.ts now imports sanitizeSignatureKit from ./shared.
+// Partial-mock it alongside sendMessageAndParseJson so the real sanitizer runs (it is
+// a pure helper; no network). Without this, vi.mock replaces the whole module and
+// `sanitizeSignatureKit` is undefined, breaking generation.
+vi.mock('./shared', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('./shared')>();
+    return {
+        ...actual,
+        sendMessageAndParseJson: vi.fn(),
+    };
+});
 
 import { sendMessageAndParseJson } from './shared';
 import { generateNPCProfile } from './profile';

@@ -158,6 +158,19 @@ export type NPCPressure = {
 /** A name the auto-detector noticed but did NOT add — the player decides. (WO-11.3) */
 export type NpcSuggestion = { name: string; context?: string; firstSeen: number };
 
+/**
+ * NPC Signature Kit — the durable, bounded loadout that keeps an NPC's gear and
+ * powers consistent across the campaign (the anti-drift analogue of personalityHex).
+ * Bounded on purpose: this is a signature, not an inventory. Seeded at generation,
+ * injected every turn in the CORE tier, and changed ONLY on a narrated gain/loss/
+ * transformation by the NPC updater (supersede-in-place, never append/re-roll).
+ */
+export type NPCSignatureKit = {
+    equipment: string[];   // signature gear; <=4 entries; each a short noun phrase, e.g. "Excalibur (holy longsword)"
+    abilities: string[];   // signature powers/techniques; <=4 entries, e.g. "fire magic", "regeneration"
+    element?: string;      // optional single affinity/damage-type tag, e.g. "fire"
+};
+
 export type NPCEntry = {
     id: string;
     name: string;
@@ -199,6 +212,8 @@ export type NPCEntry = {
     // ---- NPC Agency fields (Phase 1, all optional → lazy migration) ----
     wants?: NPCWants;
     personalityHex?: PersonalityHex;
+    // ---- NPC Signature Kit (v1) — durable loadout; anti-drift for gear + powers ----
+    signatureKit?: NPCSignatureKit;
     traits?: string[];            // <=5, controlled vocab (see services/npc/agencyPools.ts)
     region?: string;              // coarse location: 'academy' | 'Ryuten' | ...
     haunt?: string;               // flavor only, for reports ('the garden')

@@ -84,6 +84,31 @@ export function NPCEditForm({
         setForm({ ...form, [field]: list });
     };
 
+    // ── Signature Kit (durable loadout) — bounded to KIT_MAX per channel, mirroring
+    // sanitizeSignatureKit's cap so the UI can't author a kit the parser would trim.
+    const KIT_MAX = 4;
+    const emptyKit = { equipment: [] as string[], abilities: [] as string[] };
+    const updateKitEntry = (field: 'equipment' | 'abilities', index: number, value: string) => {
+        const kit = form.signatureKit ?? emptyKit;
+        const list = [...(kit[field] || [])];
+        list[index] = value;
+        setForm({ ...form, signatureKit: { ...kit, [field]: list } });
+    };
+    const addKitEntry = (field: 'equipment' | 'abilities') => {
+        const kit = form.signatureKit ?? emptyKit;
+        if ((kit[field] || []).length >= KIT_MAX) return;
+        setForm({ ...form, signatureKit: { ...kit, [field]: [...(kit[field] || []), ''] } });
+    };
+    const removeKitEntry = (field: 'equipment' | 'abilities', index: number) => {
+        const kit = form.signatureKit ?? emptyKit;
+        const list = [...(kit[field] || [])].filter((_, i) => i !== index);
+        setForm({ ...form, signatureKit: { ...kit, [field]: list } });
+    };
+    const setKitElement = (value: string) => {
+        const kit = form.signatureKit ?? emptyKit;
+        setForm({ ...form, signatureKit: { ...kit, element: value } });
+    };
+
     if (!selectedId && !isEditing) {
         return (
             <div className="flex-1 flex flex-col items-center justify-center text-center p-8 opacity-50 bg-void">
@@ -293,48 +318,75 @@ export function NPCEditForm({
                         </div>
                     </div>
 
-                    {/* ── Drives (legacy — superseded by Wants) ───────────────── */}
+                    {/* ── Signature Kit (durable loadout — anti-drift for gear + powers) ─────── */}
                     <div className="bg-void p-4 rounded border border-border space-y-3">
                         <div className="flex items-center justify-between">
-                            <span className="text-text-primary font-bold uppercase tracking-widest text-xs">Drives <span className="text-text-dim/50 normal-case tracking-normal font-normal">— legacy</span></span>
-                        </div>
-                        {((form.wants?.long || '') || (form.wants?.medium?.length ?? 0) > 0) && (
-                            <p className="text-[9px] text-text-dim/60 italic">Superseded by Wants (below). Shown for legacy saves only.</p>
-                        )}
-                        <div>
-                            <label className="block text-amber-400 text-[10px] uppercase tracking-wider mb-1">Core Want</label>
-                            <input
-                                type="text"
-                                value={form.drives?.coreWant || ''}
-                                onChange={e => setForm({ ...form, drives: { coreWant: e.target.value, sessionWant: form.drives?.sessionWant ?? '', sceneWant: form.drives?.sceneWant ?? '' } })}
-                                disabled={!isEditing}
-                                placeholder="A deep character truth (NOT a goal). E.g. 'to be seen as capable'"
-                                className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-void focus:outline-none focus:border-amber-500"
-                            />
+                            <span className="text-text-primary font-bold uppercase tracking-widest text-xs">Signature Kit</span>
+                            <span className="text-[9px] text-text-dim/50 normal-case tracking-normal">Durable gear &amp; powers — stays consistent across scenes</span>
                         </div>
                         <div>
-                            <label className="block text-ice text-[10px] uppercase tracking-wider mb-1">Session Want</label>
-                            <input
-                                type="text"
-                                value={form.drives?.sessionWant || ''}
-                                onChange={e => setForm({ ...form, drives: { coreWant: form.drives?.coreWant ?? '', sessionWant: e.target.value, sceneWant: form.drives?.sceneWant ?? '' } })}
-                                disabled={!isEditing}
-                                placeholder="Arc-level objective for the current session"
-                                className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-void focus:outline-none focus:border-ice"
-                            />
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="text-amber-400 text-[10px] uppercase tracking-wider">Equipment</label>
+                                {isEditing && (form.signatureKit?.equipment?.length ?? 0) < KIT_MAX && (
+                                    <button onClick={() => addKitEntry('equipment')} className="text-[9px] text-terminal hover:text-terminal/80 uppercase tracking-wider">+ Add</button>
+                                )}
+                            </div>
+                            {(form.signatureKit?.equipment || []).map((item, i) => (
+                                <div key={i} className="flex gap-2 items-center mb-1">
+                                    <input
+                                        type="text"
+                                        value={item}
+                                        onChange={e => updateKitEntry('equipment', i, e.target.value)}
+                                        disabled={!isEditing}
+                                        placeholder="e.g. Excalibur (holy longsword)"
+                                        className="flex-1 bg-surface border border-border rounded px-2 py-1.5 text-[12px] text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-void focus:outline-none focus:border-amber-500"
+                                    />
+                                    {isEditing && <button onClick={() => removeKitEntry('equipment', i)} className="text-danger/60 hover:text-danger p-1 shrink-0"><Trash2 size={11} /></button>}
+                                </div>
+                            ))}
+                            {(form.signatureKit?.equipment || []).length === 0 && (
+                                <p className="text-[10px] text-text-dim/40 italic">No signature gear. This character travels light.</p>
+                            )}
                         </div>
                         <div>
-                            <label className="block text-amber-300 text-[10px] uppercase tracking-wider mb-1">Scene Want</label>
+                            <div className="flex items-center justify-between mb-1">
+                                <label className="text-ice text-[10px] uppercase tracking-wider">Abilities / Powers</label>
+                                {isEditing && (form.signatureKit?.abilities?.length ?? 0) < KIT_MAX && (
+                                    <button onClick={() => addKitEntry('abilities')} className="text-[9px] text-terminal hover:text-terminal/80 uppercase tracking-wider">+ Add</button>
+                                )}
+                            </div>
+                            {(form.signatureKit?.abilities || []).map((item, i) => (
+                                <div key={i} className="flex gap-2 items-center mb-1">
+                                    <input
+                                        type="text"
+                                        value={item}
+                                        onChange={e => updateKitEntry('abilities', i, e.target.value)}
+                                        disabled={!isEditing}
+                                        placeholder="e.g. fire magic"
+                                        className="flex-1 bg-surface border border-border rounded px-2 py-1.5 text-[12px] text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-void focus:outline-none focus:border-ice"
+                                    />
+                                    {isEditing && <button onClick={() => removeKitEntry('abilities', i)} className="text-danger/60 hover:text-danger p-1 shrink-0"><Trash2 size={11} /></button>}
+                                </div>
+                            ))}
+                            {(form.signatureKit?.abilities || []).length === 0 && (
+                                <p className="text-[10px] text-text-dim/40 italic">No signature powers.</p>
+                            )}
+                        </div>
+                        <div>
+                            <label className="block text-amber-300 text-[10px] uppercase tracking-wider mb-1">Element / Affinity</label>
                             <input
                                 type="text"
-                                value={form.drives?.sceneWant || ''}
-                                onChange={e => setForm({ ...form, drives: { coreWant: form.drives?.coreWant ?? '', sessionWant: form.drives?.sessionWant ?? '', sceneWant: e.target.value } })}
+                                value={form.signatureKit?.element || ''}
+                                onChange={e => setKitElement(e.target.value)}
                                 disabled={!isEditing}
-                                placeholder="What they want from the immediate scene"
-                                className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-void focus:outline-none focus:border-amber-300"
+                                placeholder="e.g. fire (optional)"
+                                className="w-full bg-surface border border-border rounded px-3 py-2 text-sm text-text-primary placeholder:text-text-dim/50 disabled:opacity-70 disabled:bg-void disabled:border-transparent focus:outline-none focus:border-amber-300"
                             />
                         </div>
                     </div>
+
+                    {/* ── Drives (legacy) UI hidden — superseded by Wants. The `drives` data still
+                        round-trips through `form`/handleSave; only the editor is removed. ───────── */}
 
                     {/* ── Traits (searchable multi-select, max 5) ────────────────── */}
                     <div className="bg-void p-4 rounded border border-border space-y-3">
