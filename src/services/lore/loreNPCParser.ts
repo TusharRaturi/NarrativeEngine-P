@@ -1,5 +1,6 @@
 import type { NPCEntry, LoreChunk, HexAxis, PersonalityHex, NPCDrives, NPCWants, NPCBehavioralTrigger } from '../../types';
 import { TRAIT_NAMES } from '../npc/agency/agencyPools';
+import { sanitizeSignatureKit } from '../npc/signatureKit';
 
 const HEX_AXES: readonly HexAxis[] = ['drive', 'diligence', 'boldness', 'warmth', 'empathy', 'composure'];
 const KNOWN_TRAITS = new Set<string>(TRAIT_NAMES);
@@ -34,6 +35,9 @@ function uid(): string {
  *           - **CoreWant:** a deep character truth (drives.coreWant)
  *           - **SessionWant:** arc-level goal (drives.sessionWant)
  *           - **SceneWant:** immediate-scene want (drives.sceneWant)
+ *           - **SignatureEquipment:** [Excalibur (holy longsword), plate armor]  (durable loadout gear, ≤4)
+ *           - **SignatureAbilities:** [fire magic, holy smite]                    (signature powers/techniques, ≤4)
+ *           - **Element:** fire                                                   (single affinity tag)
  *         Optional desktop-only visual fields (mobile parser ignores these):
  *           VisualRace, VisualGender, VisualAgeRange, VisualBuild, VisualSymmetry,
  *           VisualHairStyle, VisualEyeColor, VisualSkinTone, VisualGait,
@@ -241,6 +245,16 @@ export function parseNPCsFromLore(chunks: LoreChunk[]): NPCEntry[] {
             ? { short: wantsShort ?? [], medium: wantsMedium ?? [], long: wantsLong ?? '' }
             : undefined;
 
+        // ---- Signature Kit (durable loadout — anti-drift for gear + powers). ----
+        // Zero-LLM: parsed straight from lore bullets and bounded by the shared sanitizer
+        // (cap 4/channel, entry+element length caps) so a lore-seeded kit is identical in
+        // shape to one the post-turn updater would accept. Absent fields → undefined kit.
+        const signatureKit = sanitizeSignatureKit({
+            equipment: getStringList('SignatureEquipment') ?? getStringList('Equipment'),
+            abilities: getStringList('SignatureAbilities') ?? getStringList('Abilities') ?? getStringList('Powers'),
+            element: getAny(['Element', 'SignatureElement']),
+        });
+
         npcs.push({
             id: uid(),
             name,
@@ -269,6 +283,7 @@ export function parseNPCsFromLore(chunks: LoreChunk[]): NPCEntry[] {
             behavioralTriggers: getBehavioralTriggers('BehavioralTriggers'),
             drives,
             wants,
+            signatureKit,
             portrait: '',
         });
     }

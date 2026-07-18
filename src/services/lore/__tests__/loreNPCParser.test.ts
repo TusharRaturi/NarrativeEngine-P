@@ -261,3 +261,50 @@ describe('parseNPCsFromLore — extended agency fields (tier, region, haunt, bou
         expect(npc.wants?.long).toBe('become Hokage');
     });
 });
+describe('parseNPCsFromLore — signature kit (durable loadout)', () => {
+    it('parses SignatureEquipment / SignatureAbilities / Element into a bounded kit', () => {
+        const body = NARUTO_BLOCK
+            + '\n**SignatureEquipment:** [Excalibur (holy longsword), plate armor]'
+            + '\n**SignatureAbilities:** [fire magic, holy smite]'
+            + '\n**Element:** fire';
+        const [npc] = parseNPCsFromLore([charChunk('CHARACTER -- Naruto Uzumaki', body)]);
+        expect(npc.signatureKit).toBeDefined();
+        expect(npc.signatureKit!.equipment).toEqual(['Excalibur (holy longsword)', 'plate armor']);
+        expect(npc.signatureKit!.abilities).toEqual(['fire magic', 'holy smite']);
+        expect(npc.signatureKit!.element).toBe('fire');
+    });
+
+    it('accepts the author-friendly aliases (Equipment / Abilities / Powers)', () => {
+        const body = NARUTO_BLOCK
+            + '\n**Equipment:** [iron spear]'
+            + '\n**Powers:** [earth magic]';
+        const [npc] = parseNPCsFromLore([charChunk('CHARACTER -- Naruto Uzumaki', body)]);
+        expect(npc.signatureKit!.equipment).toEqual(['iron spear']);
+        expect(npc.signatureKit!.abilities).toEqual(['earth magic']);
+        // Element left unset here — must not leak from the numeric Affinity bullet.
+        expect(npc.signatureKit!.element).toBeUndefined();
+    });
+
+    it('caps each channel at 4 entries (shared sanitizer bound)', () => {
+        const body = NARUTO_BLOCK
+            + '\n**SignatureEquipment:** [a, b, c, d, e, f]'
+            + '\n**SignatureAbilities:** [g, h, i, j, k]';
+        const [npc] = parseNPCsFromLore([charChunk('CHARACTER -- Naruto Uzumaki', body)]);
+        expect(npc.signatureKit!.equipment).toEqual(['a', 'b', 'c', 'd']);
+        expect(npc.signatureKit!.abilities).toEqual(['g', 'h', 'i', 'j']);
+    });
+
+    it('leaves signatureKit undefined when no kit fields are present (default)', () => {
+        const [npc] = parseNPCsFromLore([charChunk('CHARACTER -- Naruto Uzumaki', NARUTO_BLOCK)]);
+        expect(npc.signatureKit).toBeUndefined();
+    });
+
+    it('supports an element-only kit (no gear/powers)', () => {
+        const body = NARUTO_BLOCK + '\n**Element:** lightning';
+        const [npc] = parseNPCsFromLore([charChunk('CHARACTER -- Naruto Uzumaki', body)]);
+        expect(npc.signatureKit).toBeDefined();
+        expect(npc.signatureKit!.element).toBe('lightning');
+        expect(npc.signatureKit!.equipment).toEqual([]);
+        expect(npc.signatureKit!.abilities).toEqual([]);
+    });
+});
