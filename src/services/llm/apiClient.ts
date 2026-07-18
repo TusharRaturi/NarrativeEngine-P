@@ -313,7 +313,7 @@ export const api = {
             if (!res.ok) throw new Error('Failed to get vault status');
             return await res.json();
         },
-        async setup(password: string | null, presets: unknown[], providers?: unknown[]): Promise<void> {
+        async setup(password: string | null, presets: any[], providers?: any[]): Promise<void> {
             const res = await fetch(`${API}/vault/setup`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -338,12 +338,12 @@ export const api = {
         async lock(): Promise<void> {
             await fetch(`${API}/vault/lock`, { method: 'POST' });
         },
-        async getKeys(): Promise<{ presets: unknown[]; providers?: unknown[] }> {
+        async getKeys(): Promise<{ presets: any[]; providers?: any[] }> {
             const res = await fetch(`${API}/vault/keys`);
             if (!res.ok) throw new Error('Vault is locked');
             return await res.json();
         },
-        async saveKeys(data: { presets: unknown[]; providers?: unknown[] }): Promise<void> {
+        async saveKeys(data: { presets: any[]; providers?: any[] }): Promise<void> {
             const res = await fetch(`${API}/vault/keys`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },

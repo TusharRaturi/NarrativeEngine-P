@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { TurnState, TurnCallbacks } from '../turn/turnOrchestrator';
 import type { GameContext, ChatMessage } from '../../types';
