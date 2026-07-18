@@ -487,7 +487,8 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
         debouncedSaveNPCLedger(s.activeCampaignId, newLedger);
         return { npcLedger: newLedger };
     }),
-    mergeOrRenameNpc: (from, to, _turn) => {
+    mergeOrRenameNpc: (from, to, turn) => {
+        void turn;
         const fromKey = from.trim().toLowerCase();
         const toKey = to.trim().toLowerCase();
         if (!fromKey || !toKey || fromKey === toKey) return 'none';

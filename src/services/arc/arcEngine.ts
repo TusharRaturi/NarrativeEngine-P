@@ -16,7 +16,9 @@ import { arcSurfaceLine } from './arcSurface';
 
 // Phase 4 stub — until the real AiTier gate is wired, the arc tick runs unconditionally
 // (a no-op when no arcs exist or none are active).
-function tierAllows(_tier: unknown, _feature: string): boolean {
+function tierAllows(tier: unknown, feature: string): boolean {
+    void tier;
+    void feature;
     return true;
 }
 

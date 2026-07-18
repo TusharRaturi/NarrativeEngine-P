@@ -35,7 +35,7 @@ export async function injectPinnedChapters(
     if (pinnedRanges.length > 0) {
         const scoredIds = retrieveArchiveMemory(
             archiveIndex, input, messages, npcLedger,
-            undefined, (state as any).semanticFacts,
+            undefined, state.semanticFacts,
             pinnedRanges, undefined, semanticArchiveIds,
             getDivergenceSceneIds(state.divergenceRegister || EMPTY_REGISTER),
             excludeSceneIds,

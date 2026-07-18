@@ -6,7 +6,7 @@ import {
 } from './campaignStore';
 import { DEFAULT_CONTEXT, DEFAULT_CONDENSER } from '../services/campaignInit';
 import { migrateLegacyContext } from '../types';
-import type { GameContext, ArchiveChapter, DivergenceRegister } from '../types';
+import type { GameContext, ArchiveChapter, DivergenceRegister, DivergenceEntry } from '../types';
 import { migrateV1ToV2 } from '../services/campaign-state/divergenceRegister';
 
 function backfillSceneIds(chapters: ArchiveChapter[]): { chapters: ArchiveChapter[]; changed: boolean } {
@@ -43,7 +43,7 @@ export async function hydrateCampaign(campaignId: string) {
     // v1→v2 divergence register migration: wipe-and-restart
     let register: DivergenceRegister;
     if (!divReg || !divReg.version || divReg.version < 2) {
-        register = migrateV1ToV2(divReg ?? { entries: [] as any[], lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 1 });
+        register = migrateV1ToV2(divReg ?? { entries: [] as DivergenceEntry[], lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 1 });
         saveDivergenceRegister(campaignId, register).catch(e =>
             console.warn('[Hydrator] Failed to save migrated divergence register:', e)
         );

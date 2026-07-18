@@ -36,7 +36,8 @@ function defaultLongWant(faction: string): string {
  * scenes. (Main's NPCEntry has no combat fields; combat tags are omitted — desktop combat is
  * bespoke per Upgrade doc 07.)
  */
-function buildDefaultFieldTags(_npc: NPCEntry): Partial<Record<string, SceneEventType[]>> {
+function buildDefaultFieldTags(npc: NPCEntry): Partial<Record<string, SceneEventType[]>> {
+    void npc;
     const tags: Partial<Record<string, SceneEventType[]>> = {
         voice: ['relationship_shift', 'revelation', 'other'],
         hardBoundaries: ['relationship_shift', 'promise', 'betrayal'],

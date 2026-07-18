@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import type { DivergenceEntry, DivergenceRegister, DivergenceCategory, ArchiveChapter } from '../../types';
+import type { DivergenceEntry, DivergenceRegister, ArchiveChapter } from '../../types';
 
 vi.mock('../../components/Toast', () => ({ toast: { info: vi.fn(), error: vi.fn(), success: vi.fn(), warning: vi.fn() } }));
 vi.mock('../infrastructure/tokenizer', () => ({ countTokens: vi.fn(() => 100) }));

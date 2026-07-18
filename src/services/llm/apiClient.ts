@@ -263,7 +263,7 @@ export const api = {
     },
     campaigns: {} as Record<string, never>,
     settings: {
-        async get(): Promise<any> {
+        async get(): Promise<unknown> {
             const res = await fetch(`${API}/settings`);
             if (!res.ok) throw new Error('Failed to load settings');
             return await res.json();
@@ -277,7 +277,7 @@ export const api = {
         }
     },
     backups: {
-        async create(campaignId: string, opts: { label?: string; trigger?: string; isAuto?: boolean } = {}): Promise<any> {
+        async create(campaignId: string, opts: { label?: string; trigger?: string; isAuto?: boolean } = {}): Promise<unknown> {
             const res = await fetch(`${API}/campaigns/${campaignId}/backup`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -313,7 +313,7 @@ export const api = {
             if (!res.ok) throw new Error('Failed to get vault status');
             return await res.json();
         },
-        async setup(password: string | null, presets: any[], providers?: any[]): Promise<void> {
+        async setup(password: string | null, presets: unknown[], providers?: unknown[]): Promise<void> {
             const res = await fetch(`${API}/vault/setup`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -338,12 +338,12 @@ export const api = {
         async lock(): Promise<void> {
             await fetch(`${API}/vault/lock`, { method: 'POST' });
         },
-        async getKeys(): Promise<{ presets: any[]; providers?: any[] }> {
+        async getKeys(): Promise<{ presets: unknown[]; providers?: unknown[] }> {
             const res = await fetch(`${API}/vault/keys`);
             if (!res.ok) throw new Error('Vault is locked');
             return await res.json();
         },
-        async saveKeys(data: { presets: any[]; providers?: any[] }): Promise<void> {
+        async saveKeys(data: { presets: unknown[]; providers?: unknown[] }): Promise<void> {
             const res = await fetch(`${API}/vault/keys`, {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },

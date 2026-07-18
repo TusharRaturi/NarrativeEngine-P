@@ -413,13 +413,13 @@ function parsePlainInventory(text: string): InventoryItem[] {
 }
 
 function extractHp(str: string): { current: number; max: number } | undefined {
-    const m = str.match(/HP[:\s]*?(\d+)\s*[\/]\s*(\d+)/i);
+    const m = str.match(/HP[:\s]*?(\d+)\s*\/\s*(\d+)/i);
     if (m) return { current: parseInt(m[1], 10), max: parseInt(m[2], 10) };
     return undefined;
 }
 
 function extractStat(str: string, label: string): number | undefined {
-    const r = new RegExp(`${label}[:\s]*?(\\d+)`, 'i');
+    const r = new RegExp(`${label}[:\\s]*?(\\d+)`, 'i');
     const m = str.match(r);
     if (m) return parseInt(m[1], 10);
     return undefined;
@@ -495,7 +495,7 @@ export function migrateLegacyContext(ctx: Partial<GameContext>): GameContext {
     // activeTraits over a few turns. The sheet (characterProfileData) is still
     // extracted from the legacy blob below for backward compatibility.
     const legacyProfileString: string | null =
-        typeof (merged as any).characterProfile === 'string' ? (merged as any).characterProfile : null;
+        typeof (merged as Record<string, unknown>).characterProfile === 'string' ? (merged as Record<string, unknown>).characterProfile as string : null;
     if (legacyProfileString !== null) {
         merged.characterProfile = {
             identity: {},

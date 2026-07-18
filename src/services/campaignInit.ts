@@ -1,4 +1,4 @@
-import type { GameContext } from '../types';
+import type { GameContext, LootTree } from '../types';
 import {
     saveLoreChunks, getNPCLedger, saveNPCLedger,
     loadCampaignState, saveCampaignState,
@@ -72,7 +72,7 @@ export async function initializeCampaignState(params: {
         seeds = extractEngineSeeds(chunks);
     }
 
-    let lootTree: any = null;
+    let lootTree: LootTree | null = null;
     if (lootFile) {
         try {
             const rawLoot = JSON.parse(await lootFile.text());

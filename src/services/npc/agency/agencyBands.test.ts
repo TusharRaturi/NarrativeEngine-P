@@ -117,7 +117,7 @@ describe('agencyBands', () => {
             expect(affinityToPcRelation(Infinity)).toBe(0);
             expect(affinityToPcRelation(-Infinity)).toBe(0);
             // also test undefined (casted to any/number)
-            expect(affinityToPcRelation(undefined as any)).toBe(0);
+            expect(affinityToPcRelation(undefined as unknown as number)).toBe(0);
         });
     });
 });

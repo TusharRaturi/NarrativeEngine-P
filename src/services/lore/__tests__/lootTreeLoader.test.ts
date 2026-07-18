@@ -4,7 +4,7 @@ import * as path from 'path';
 import { loadLootTree } from '../lootTreeLoader';
 
 describe('Loot Tree Loader (loadLootTree)', () => {
-    let warnSpy: any;
+    let warnSpy: ReturnType<typeof vi.spyOn>;
 
     beforeEach(() => {
         // Silence console.warn in tests so negative tests don't spam console output
@@ -103,7 +103,7 @@ describe('Loot Tree Loader (loadLootTree)', () => {
                 rootPick: {
                     kind: 'pick',
                     axis: 'category',
-                    weights: { a: 'fifty' as any, b: 50 }, // weight is not a number
+                    weights: { a: 'fifty' as unknown as number, b: 50 }, // weight is not a number
                     branches: { a: 'nodeA', b: 'nodeB' }
                 },
                 nodeA: {

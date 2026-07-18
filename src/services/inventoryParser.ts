@@ -6,7 +6,7 @@
  * Expects back a JSON array of operations which are applied locally.
  */
 
-import type { ChatMessage, ProviderConfig, EndpointConfig, InventoryItem } from '../types';
+import type { ChatMessage, ProviderConfig, EndpointConfig, InventoryItem, InventoryItemCategory } from '../types';
 import { llmCall } from '../utils/llmCall';
 import { AI_CALL_TIMEOUT_MS } from './llm/timeouts';
 
@@ -72,7 +72,7 @@ export function applyOps(items: InventoryItem[], ops: InventoryOp[]): InventoryI
                     id: `inv_${sceneId}_${Math.random().toString(36).slice(2, 7)}`,
                     name: op.name,
                     qty: op.qty || 1,
-                    category: (op.category as any) || 'misc',
+                    category: (op.category as InventoryItemCategory) || 'misc',
                     keywords: op.keywords || op.name.toLowerCase().split(/\s+/).filter(w => w.length > 2),
                     equipped: false,
                     lastUsedScene: sceneId,
@@ -88,7 +88,7 @@ export function applyOps(items: InventoryItem[], ops: InventoryOp[]): InventoryI
             if (!f) continue;
             if (op.changes.name !== undefined) f.item.name = op.changes.name;
             if (op.changes.qty !== undefined) f.item.qty = Math.max(0, op.changes.qty);
-            if (op.changes.category !== undefined) f.item.category = op.changes.category as any;
+            if (op.changes.category !== undefined) f.item.category = op.changes.category as InventoryItemCategory;
             if (op.changes.keywords !== undefined) f.item.keywords = op.changes.keywords;
             if (op.changes.notes !== undefined) f.item.notes = op.changes.notes;
         } else if (op.action === 'consume') {

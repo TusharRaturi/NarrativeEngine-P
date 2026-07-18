@@ -30,7 +30,9 @@ import { isAgencyEligible } from './agencyLifecycle';
 // Phase 4 stub — until the real AiTier gate is wired, the agency tick runs unconditionally
 // (a no-op when no NPCs have goalRecords, which is all legacy NPCs until populateAgencyFields
 // fills wants — tracked as a Phase 5/6 follow-up).
-function tierAllows(_tier: unknown, _feature: string): boolean {
+function tierAllows(tier: unknown, feature: string): boolean {
+    void tier;
+    void feature;
     return true;
 }
 
@@ -83,7 +85,7 @@ export function runAgencyTick(
     }
 
     // ── Goal upgrade: idempotent wants→goalRecords migration (§9.6) ──
-    let updatedNpc = { ...pick };
+    const updatedNpc = { ...pick };
     if (!updatedNpc.goalRecords || updatedNpc.goalRecords.length === 0) {
         const goals = upgradeWantsToGoals(updatedNpc, now);
         if (goals.length > 0) {

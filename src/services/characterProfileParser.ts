@@ -50,11 +50,11 @@ function applyPatch(profile: CharacterProfile, patch: Record<string, unknown>): 
     if ('class' in patch && typeof patch.class === 'string') next.class = patch.class;
     if ('level' in patch && typeof patch.level === 'number') next.level = patch.level;
     if ('hp' in patch && patch.hp && typeof patch.hp === 'object') {
-        const p = patch.hp as any;
+        const p = patch.hp as Partial<{ current: number; max: number }>;
         next.hp = { current: p.current ?? next.hp.current, max: p.max ?? next.hp.max };
     }
     if ('mp' in patch && patch.mp && typeof patch.mp === 'object') {
-        const p = patch.mp as any;
+        const p = patch.mp as Partial<{ current: number; max: number }>;
         next.mp = { current: p.current ?? (next.mp?.current || 0), max: p.max ?? (next.mp?.max || 0) };
     }
     if ('stats' in patch && patch.stats && typeof patch.stats === 'object') {

@@ -145,7 +145,7 @@ export function parseNPCsFromLore(chunks: LoreChunk[]): NPCEntry[] {
         const getTraits = (field: string): string[] | undefined => {
             const raw = get(field);
             if (!raw) return undefined;
-            const stripped = raw.replace(/[\[\]]/g, '').trim();
+            const stripped = raw.replace(/[[\]]/g, '').trim();
             if (!stripped) return undefined;
             const out: string[] = [];
             for (const item of stripped.split(/[,;]|\s{2,}|\|/)) {
@@ -165,7 +165,7 @@ export function parseNPCsFromLore(chunks: LoreChunk[]): NPCEntry[] {
         const getStringList = (field: string): string[] | undefined => {
             const raw = get(field);
             if (!raw) return undefined;
-            const stripped = raw.replace(/[\[\]]/g, '').trim();
+            const stripped = raw.replace(/[[\]]/g, '').trim();
             if (!stripped) return undefined;
             const out = stripped.split(/[,;]|\s{2,}|\|/)
                 .map(s => s.trim())
@@ -181,7 +181,7 @@ export function parseNPCsFromLore(chunks: LoreChunk[]): NPCEntry[] {
         const getBehavioralTriggers = (field: string): NPCBehavioralTrigger[] | undefined => {
             const raw = get(field);
             if (!raw) return undefined;
-            const stripped = raw.replace(/[\[\]]/g, '').trim();
+            const stripped = raw.replace(/[[\]]/g, '').trim();
             if (!stripped) return undefined;
             const out: NPCBehavioralTrigger[] = [];
             for (const item of stripped.split(/[,;]|\s{2,}|\|/)) {

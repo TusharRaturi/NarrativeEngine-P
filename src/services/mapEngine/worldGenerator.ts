@@ -78,7 +78,7 @@ export function generateWorld(
         for (let x = 0; x < MAP_SIZE; x++) {
             const nx = (x / MAP_SIZE) * 3.5;
             const ny = (y / MAP_SIZE) * 3.5;
-            let e = gen.fbm(nx, ny, 4, 2.0, 0.5);
+            const e = gen.fbm(nx, ny, 4, 2.0, 0.5);
             let elevation = (e + 1) / 2;
 
             if (worldType === 'two_continents') {

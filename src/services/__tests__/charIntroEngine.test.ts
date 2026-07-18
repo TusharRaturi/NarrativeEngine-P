@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect } from 'vitest';
 
 describe('charIntroEngine', () => {
     describe('think-stripping pattern', () => {
@@ -31,10 +31,6 @@ describe('charIntroEngine', () => {
         it('picks from candidates with weighted probabilities', () => {
             // We can't easily test the actual function without mocking Math.random
             // but we can verify the weighting logic conceptually.
-            const candidates = [
-                { name: 'A', type: 'wandering' as const },
-                { name: 'B', type: 'wandering' as const },
-            ];
             const weights = new Map<string, number>([['A', 3], ['B', 1]]);
             const totalWeight = 4;
             // With these weights, A should be picked ~75% of the time

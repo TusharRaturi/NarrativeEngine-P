@@ -35,8 +35,9 @@ export async function gatherArchiveRecall(
     // Accepted for signature symmetry with gatherPlannerSceneIds, but the archive
     // recall path (recallArchiveScenes / recallWithChapterFunnel) has no AbortSignal
     // plumbing yet, so cancellation is not wired through here. See follow-up.
-    _signal?: AbortSignal
+    signal?: AbortSignal
 ): Promise<ArchiveScene[] | undefined> {
+    void signal;
     const { input, messages, npcLedger, archiveIndex, activeCampaignId } = state;
 
     if (archiveIndex.length === 0 || !activeCampaignId) {
@@ -52,7 +53,7 @@ export async function gatherArchiveRecall(
     if (!hasSealedChapters) {
         return recallArchiveScenes(
             activeCampaignId, archiveIndex, input, messages, 3000,
-            npcLedger, (state as any).semanticFacts,
+            npcLedger, state.semanticFacts,
             undefined, semanticArchiveIds,
             divergenceSceneIds,
             excludeSceneIds,
@@ -65,7 +66,7 @@ export async function gatherArchiveRecall(
     if (!tierAllows(state.settings.aiTier, 'archiveFunnel')) {
         return recallArchiveScenes(
             activeCampaignId, archiveIndex, input, messages, 3000,
-            npcLedger, (state as any).semanticFacts,
+            npcLedger, state.semanticFacts,
             undefined, semanticArchiveIds,
             divergenceSceneIds,
             excludeSceneIds,
@@ -75,7 +76,7 @@ export async function gatherArchiveRecall(
     }
 
     const rankedChapters = rankChapters(
-        chapters, input, messages, npcLedger, (state as any).semanticFacts
+        chapters, input, messages, npcLedger, state.semanticFacts
     );
 
     const utilityConfig = state.getUtilityEndpoint?.();
@@ -83,7 +84,7 @@ export async function gatherArchiveRecall(
 
     const funnelPromise = recallWithChapterFunnel(
         chapters, archiveIndex, input, messages,
-        npcLedger, (state as any).semanticFacts, utilityConfig,
+        npcLedger, state.semanticFacts, utilityConfig,
         activeCampaignId, 3000, excludeSceneIds
     );
 
@@ -98,7 +99,7 @@ export async function gatherArchiveRecall(
 
             const matchedIds = retrieveArchiveMemory(
                 archiveIndex, input, messages, npcLedger,
-                undefined, (state as any).semanticFacts, fallbackRanges,
+                undefined, state.semanticFacts, fallbackRanges,
                 undefined, semanticArchiveIds,
                 divergenceSceneIds,
                 excludeSceneIds,
@@ -117,7 +118,7 @@ export async function gatherArchiveRecall(
         console.warn('[ChapterFunnel] Empty result - falling back to flat retrieval');
         archiveRecall = await recallArchiveScenes(
             activeCampaignId, archiveIndex, input, messages, 3000,
-            npcLedger, (state as any).semanticFacts,
+            npcLedger, state.semanticFacts,
             undefined, semanticArchiveIds,
             divergenceSceneIds,
             excludeSceneIds,

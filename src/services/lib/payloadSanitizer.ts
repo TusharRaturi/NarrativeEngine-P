@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 /**
  * Strips invalid or disallowed tool-related messages from an OpenAI-format payload.
  *
@@ -27,7 +28,8 @@ export const sanitizePayloadForApi = (rawPayload: any[], allowTools: boolean, mo
             // turn — preventing a 400. The orphaned tool message will be dropped below.
             if (isThinkingModel && hasToolCalls && !msg.reasoning_content) {
                 console.warn('[Sanitizer] Thinking-model: stripping tool_calls from assistant missing reasoning_content — would cause 400. ids:', msg.tool_calls.map((tc: any) => tc.id));
-                const { tool_calls, ...stripped } = msg;
+                const stripped = { ...msg };
+                delete (stripped as any).tool_calls;
                 cleaned.push(stripped);
                 continue;
             }
@@ -38,7 +40,8 @@ export const sanitizePayloadForApi = (rawPayload: any[], allowTools: boolean, mo
                 } else if (!allowTools && hasToolCalls) {
                     console.warn('[Payload] Stripped tool_calls from assistant message (tools disabled)');
                 }
-                const { tool_calls, ...assistantNoTools } = msg;
+                const assistantNoTools = { ...msg };
+                delete (assistantNoTools as any).tool_calls;
                 cleaned.push(assistantNoTools);
                 continue;
             }
@@ -57,7 +60,8 @@ export const sanitizePayloadForApi = (rawPayload: any[], allowTools: boolean, mo
 
             if (validCalls.length === 0) {
                 console.warn('[Payload] All tool_calls invalid for assistant message, stripping', msg.tool_calls?.length, 'calls');
-                const { tool_calls, ...assistantNoTools } = msg;
+                const assistantNoTools = { ...msg };
+                delete (assistantNoTools as any).tool_calls;
                 cleaned.push(assistantNoTools);
                 continue;
             }
@@ -93,7 +97,8 @@ export const sanitizePayloadForApi = (rawPayload: any[], allowTools: boolean, mo
             const resolved = msg.tool_calls.filter((tc: any) => resolvedCallIds.has(tc.id));
             if (resolved.length !== msg.tool_calls.length) {
                 console.warn('[Payload] Stripping unresolved tool_calls from assistant message to prevent 400');
-                const { tool_calls, ...rest } = msg;
+                const rest = { ...msg };
+                delete (rest as any).tool_calls;
                 return resolved.length > 0 ? { ...rest, tool_calls: resolved } : rest;
             }
         }

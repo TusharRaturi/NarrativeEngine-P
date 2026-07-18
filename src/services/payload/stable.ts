@@ -59,9 +59,9 @@ export function buildStable(opts: {
     if (context.continuePromptActive && context.continuePrompt) stableParts.push(context.continuePrompt);
 
     // Only inject if using a known reasoning/thinking model (DeepSeek-R1, Qwen QwQ, etc.)
-    const activePreset: any = (settings as any).presets?.find?.((p: any) => p.id === (settings as any).activePresetId);
+    const activePreset = settings.presets?.find((p) => p.id === settings.activePresetId);
     const storyProviderId: string | undefined = activePreset?.storyAIProviderId;
-    const storyProvider: any = storyProviderId ? (settings as any).providers?.find?.((p: any) => p.id === storyProviderId) : undefined;
+    const storyProvider = storyProviderId ? settings.providers?.find((p) => p.id === storyProviderId) : undefined;
     const modelName = storyProvider?.modelName ?? activePreset?.storyAI?.modelName ?? '';
     const isReasoningModel = /deepseek-r|qwq|qwen.*think|r1/i.test(modelName);
     if (isReasoningModel) {

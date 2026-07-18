@@ -190,7 +190,10 @@ export async function commitPendingTurn(): Promise<void> {
     const idx = freshMsgs.findIndex(m => m.id === pendingMsg.id);
     if (idx !== -1) {
         const updated = [...freshMsgs];
-        const { swipeSet: _ss, pendingCommit: _pc, swipeActiveIndex: _si, ...rest } = updated[idx];
+        const rest = { ...updated[idx] };
+        delete rest.swipeSet;
+        delete rest.pendingCommit;
+        delete rest.swipeActiveIndex;
         updated[idx] = rest as ChatMessage;
         useAppStore.setState({ messages: updated });
         const activeCampaignId = commitState.activeCampaignId;

@@ -1,5 +1,5 @@
 import { useAppStore } from '../../store/useAppStore';
-import type { AppSettings, GameContext, ChatMessage, NPCEntry, LoreChunk, CondenserState, ArchiveIndexEntry, TimelineEvent, EndpointConfig, ProviderConfig, ArchiveChapter, SamplingConfig, PipelinePhase, DivergenceRegister, ThinkingEffort, InventoryProposal, PayloadTrace, SwipeVariant } from '../../types';
+import type { AppSettings, GameContext, ChatMessage, NPCEntry, LoreChunk, CondenserState, ArchiveIndexEntry, TimelineEvent, EndpointConfig, ProviderConfig, ArchiveChapter, SamplingConfig, PipelinePhase, DivergenceRegister, ThinkingEffort, InventoryProposal, PayloadTrace, SwipeVariant, SemanticFact } from '../../types';
 import { uid } from '../../utils/uid';
 import { buildPayload, sendMessage } from '../chatEngine';
 import { rollEngines, rollDiceFairness, resolveManualRoll } from '../engine/engineRolls';
@@ -28,7 +28,7 @@ export type TurnCallbacks = {
     addNPC: (npc: NPCEntry) => void;
     setCondensed: (upToIndex: number) => void;
     setStreaming: (v: boolean) => void;
-    setLastPayloadTrace?: (trace: any) => void;
+    setLastPayloadTrace?: (trace: PayloadTrace[] | undefined) => void;
     setLoadingStatus?: (status: string | null) => void;
     setPipelinePhase?: (phase: PipelinePhase) => void;
     setDivergenceRegister?: (register: DivergenceRegister) => void;
@@ -77,6 +77,7 @@ export type TurnState = {
     armedRoll?: import('../../types').ManualRollRequest | string | null;
     armedLoot?: import('../../types').ArmedLoot | null;
     armedOneShot?: OneShotEventId | null;
+    semanticFacts?: SemanticFact[];
 };
 
 

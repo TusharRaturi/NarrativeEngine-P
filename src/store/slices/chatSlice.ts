@@ -160,14 +160,14 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
             return { condenser: newCondenser };
         }),
     setCondenser: (state) =>
-        set((_s) => {
+        set(() => {
             debouncedSaveCampaignState();
             return { condenser: state };
         }),
 
     divergenceRegister: { entries: [], chapterToggles: {}, categoryToggles: {}, lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 2 },
     setDivergenceRegister: (register) =>
-        set((_s) => {
+        set(() => {
             debouncedSaveCampaignState();
             return { divergenceRegister: register };
         }),

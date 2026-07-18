@@ -301,8 +301,9 @@ export function handleProposeInventoryTool(
  * without erroring. Phase 7 replaces this with the real `callbacks.initiateCombat` call.
  */
 export function handleInitiateCombatTool(
-    _toolArguments: string
+    toolArguments: string
 ): InitiateCombatHandlerResult {
+    void toolArguments;
     console.warn('[InitiateCombat] Combat mode is not yet available on this build (Phase 7) — deferring.');
     return {
         toolResult: JSON.stringify({

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildChatBody, getApiFormat } from '../llmApiHelper';
+import { buildChatBody } from '../llmApiHelper';
 import type { EndpointConfig } from '../../types';
 
 const claudeProvider: EndpointConfig = {

@@ -65,7 +65,11 @@ export async function importCampaign(bundle: unknown): Promise<{ id: string; nam
 export async function saveCampaignState(campaignId: string, state: CampaignState): Promise<void> {
     const stripped: CampaignState = {
         ...state,
-        messages: state.messages.map(({ debugPayload: _dp, ...msg }) => msg),
+        messages: state.messages.map((m) => {
+            const msg = { ...m };
+            delete msg.debugPayload;
+            return msg;
+        }),
     };
     await fetch(`${API}/campaigns/${campaignId}/state`, {
         method: 'PUT',

@@ -38,7 +38,7 @@ const PRESENT_HEADER_RE = /👥\s*\[Present\]\s*(.+)/i;
  * campaign-id check and merges the patch into whatever `s.context` is
  * currently active).
  */
-function makeGuarded<T extends (...args: any[]) => void>(
+function makeGuarded<T extends (...args: unknown[]) => void>(
     fn: T,
     activeCampaignId: string,
     label: string,

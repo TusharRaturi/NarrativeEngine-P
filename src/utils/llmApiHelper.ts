@@ -268,7 +268,11 @@ export function buildChatBody(
 
     // OpenAI / Ollama / DeepSeek — strip cache_control (Anthropic-specific)
     const isOllama = format === 'ollama';
-    const sanitizedMessages = messages.map(({ cache_control: _cc, ...rest }) => rest);
+    const sanitizedMessages = messages.map((m) => {
+        const rest = { ...m };
+        delete (rest as Record<string, unknown>).cache_control;
+        return rest;
+    });
     const body: Record<string, unknown> = {
         model: provider.modelName,
         messages: sanitizedMessages,

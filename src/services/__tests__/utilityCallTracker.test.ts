@@ -25,7 +25,7 @@ describe('utilityCallTracker', () => {
         clearHistory();
         // Clear active from any prior tests
         for (const call of getActiveCalls()) {
-            // N/A — shouldn't be any
+            void call;
         }
         const handle = startUtilityCall('success-test', 'ep', 60000);
         handle.settleSuccess();

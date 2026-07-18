@@ -124,7 +124,7 @@ export function runAgencyTick(
     }
 
     // ── Goal upgrade: idempotent wants→goalRecords migration (§9.6) ──
-    let updatedNpc = { ...pick };
+    const updatedNpc = { ...pick };
     if (!updatedNpc.goalRecords || updatedNpc.goalRecords.length === 0) {
         const goals = upgradeWantsToGoals(updatedNpc, now);
         if (goals.length > 0) {

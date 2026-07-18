@@ -58,7 +58,7 @@ export function gatherSemanticFacts(
     state: TurnState,
     finalInput: string
 ): string | undefined {
-    const semanticFacts = (state as any).semanticFacts ?? [];
+    const semanticFacts = state.semanticFacts ?? [];
     if (semanticFacts.length === 0) {
         return undefined;
     }
