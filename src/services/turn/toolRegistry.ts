@@ -4,7 +4,6 @@ import {
     handleNotebookTool,
     handleDiceTool,
     handleProposeInventoryTool,
-    handleInitiateCombatTool,
 } from './toolHandlers';
 
 /**
@@ -21,7 +20,7 @@ import {
  *  - `accumulationMode` mirrors the per-tool overwrite/append behaviour that
  *    existed inline in the orchestrator before Phase 4.
  *  - `traceResult` is `true` for every tool that previously called
- *    `pushToolTrace`. `propose_inventory_change` and `initiate_combat`
+ *    `pushToolTrace`. `propose_inventory_change`
  *    previously did NOT call `pushToolTrace` — that is preserved.
  *  - Side-effects (`updateContext`, `stageProposal`) are returned as data
  *    and applied by the orchestrator, not executed here, so the handlers
@@ -99,21 +98,11 @@ const handleProposeInventory: ToolHandlerFn = (ctx) => {
     };
 };
 
-const handleInitiateCombat: ToolHandlerFn = (ctx) => {
-    const { toolResult } = handleInitiateCombatTool(ctx.arguments);
-    return {
-        toolResult,
-        accumulation: 'append',
-        traceResult: false,
-    };
-};
-
 export const TOOL_REGISTRY: Record<string, ToolHandlerFn> = {
     query_campaign_lore: handleLore,
     update_scene_notebook: handleNotebook,
     roll_dice: handleDice,
     propose_inventory_change: handleProposeInventory,
-    initiate_combat: handleInitiateCombat,
 };
 
 /**
@@ -136,7 +125,6 @@ export function validateToolRegistry(): void {
         'update_scene_notebook',
         'roll_dice',
         'propose_inventory_change',
-        'initiate_combat',
     ];
     for (const name of expected) {
         const handler = TOOL_REGISTRY[name];

@@ -297,7 +297,7 @@ export async function runTurn(
         // When the player armed a manual roll, the resolved fact is already in the payload;
         // offering the tool too would let the model double-roll (WO-H).
         const allowDiceTool = context.diceFairnessActive === false && !armed;
-        const tools = allowTools ? getToolDefinitions({ allowDiceTool, combatModeActive: context.combatModeActive }) : undefined;
+        const tools = allowTools ? getToolDefinitions({ allowDiceTool }) : undefined;
 
         callbacks.setPipelinePhase?.('generating');
         callbacks.setLoadingStatus?.(null);

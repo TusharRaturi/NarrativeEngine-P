@@ -32,10 +32,6 @@ export type ProposeInventoryHandlerResult = {
     proposal: InventoryProposal;
 };
 
-export type InitiateCombatHandlerResult = {
-    toolResult: string;
-};
-
 // ── Tool Definitions (JSON schemas for LLM tools array) ───────────────
 
 const BASE_TOOLS = [
@@ -55,7 +51,7 @@ const BASE_TOOLS = [
         type: 'function' as const,
         function: {
             name: 'update_scene_notebook',
-            description: 'Update the scene notebook for tracking temporary state — active spells, timers, NPC positions, environmental conditions, combat state. Actions: add (create note), remove (delete by text match), clear (wipe all). Max 50 notes, max 5 actions per call. Use sparingly — only for volatile scene state that changes within a scene.',
+            description: 'Update the scene notebook for tracking temporary state — timers, NPC positions, environmental conditions, combat state. Actions: add (create note), remove (delete by text match), clear (wipe all). Max 50 notes, max 5 actions per call. Use sparingly — only for volatile scene state that changes within a scene.',
             parameters: {
                 type: 'object' as const,
                 properties: {
@@ -138,47 +134,11 @@ const PROPOSE_INVENTORY_TOOL = {
     },
 } as const;
 
-const INITIATE_COMBAT_TOOL = {
-    type: 'function' as const,
-    function: {
-        name: 'initiate_combat',
-        description:
-            "Signal that physical combat is beginning. Call this the moment a fight actually starts " +
-            "(a strike is launched, an ambush triggers), NOT for threats or posturing. List the " +
-            "hostile parties so the engine can build the encounter. The engine owns all stats and " +
-            "resolution — you are only flagging that combat mode should open.",
-        parameters: {
-            type: 'object' as const,
-            properties: {
-                foes: {
-                    type: 'array' as const,
-                    items: {
-                        type: 'object' as const,
-                        properties: {
-                            name:       { type: 'string' as const, description: 'Name or short label, e.g. "Drunk Pirate".' },
-                            count:      { type: 'integer' as const, description: 'How many of this foe (mooks). Default 1.' },
-                            combatTier: { type: 'string' as const, enum: ['minion', 'grunt', 'elite', 'boss', 'legendary'], description: "Threat level. Use 'minion' for basic/weak/fodder foes; reserve 'elite'+ for standout, named, or clearly-dangerous foes." },
-                            archetype:  { type: 'string' as const, enum: ['bulwark', 'assassin', 'caster', 'skirmisher', 'brute'], description: 'Fighting style.' },
-                        },
-                        required: ['name'],
-                    },
-                    description: 'The hostile combatants entering the fight.',
-                },
-            },
-            required: ['foes'],
-        },
-    },
-} as const;
-
-export function getToolDefinitions(opts: { allowDiceTool: boolean; combatModeActive?: boolean }): unknown[] {
+export function getToolDefinitions(opts: { allowDiceTool: boolean }): unknown[] {
     const tools: unknown[] = [...BASE_TOOLS];
     if (opts.allowDiceTool) tools.push(ROLL_DICE_TOOL);
     // propose_inventory_change is combat-independent — always offered.
     tools.push(PROPOSE_INVENTORY_TOOL);
-    // initiate_combat is only offered when combat isn't already active. The handler
-    // is a stub until Phase 7 (combat engine) lands; exposing the definition keeps the
-    // LLM's tool-calling from erroring while the result defers gracefully.
-    if (!opts.combatModeActive) tools.push(INITIATE_COMBAT_TOOL);
     return tools;
 }
 
@@ -291,25 +251,6 @@ export function handleProposeInventoryTool(
     return {
         toolResult: JSON.stringify({ status: 'staged', name, op, kind, quality }),
         proposal,
-    };
-}
-
-/**
- * Phase 6 STUB for `initiate_combat`. The combat engine is Phase 7; until then this
- * defers gracefully — it parses nothing of consequence, does NOT flip combatModeActive,
- * and returns a tool result telling the LLM combat is unavailable so the turn continues
- * without erroring. Phase 7 replaces this with the real `callbacks.initiateCombat` call.
- */
-export function handleInitiateCombatTool(
-    toolArguments: string
-): InitiateCombatHandlerResult {
-    void toolArguments;
-    console.warn('[InitiateCombat] Combat mode is not yet available on this build (Phase 7) — deferring.');
-    return {
-        toolResult: JSON.stringify({
-            status: 'unavailable',
-            message: 'Combat mode is not yet available on this build. Narrate the conflict freeform instead.',
-        }),
     };
 }
 
