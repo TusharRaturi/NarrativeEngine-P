@@ -77,6 +77,8 @@ export type TurnState = {
     armedRoll?: import('../../types').ManualRollRequest | string | null;
     armedLoot?: import('../../types').ArmedLoot | null;
     armedOneShot?: OneShotEventId | null;
+    /** Confirmed Ask GM meta-guidance. Volatile only; it is never added to story history. */
+    nextTurnOocBrief?: string;
     semanticFacts?: SemanticFact[];
 };
 
@@ -236,6 +238,7 @@ export async function runTurn(
         state.pinnedExcerpts,
         undefined, // plannerEventTypes — recomputed inside buildWorld
         useAppStore.getState().locationLedger,
+        state.nextTurnOocBrief,
     );
 
     const payload = payloadResult.messages;

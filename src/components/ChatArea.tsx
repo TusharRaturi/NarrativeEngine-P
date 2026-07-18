@@ -29,6 +29,8 @@ import { PCCreationWizard } from './pc/PCCreationWizard';
 import { addNpcFromSelection } from '../services/npc/manualAdd';
 import { isLikelyFeatureLabel, parseLocationHeader, resolveLocationHeader } from '../services/locationHeader';
 import { queueLocationEnrichment } from '../services/locationEnrich';
+import { AskGmPanel } from './ooc/AskGmPanel';
+import { ArmedAskGmNote } from './ooc/ArmedAskGmNote';
 
 export function ChatArea() {
     const messages = useAppStore(s => s.messages);
@@ -36,6 +38,8 @@ export function ChatArea() {
     const context = useAppStore(s => s.context);
     const activeCampaignId = useAppStore(s => s.activeCampaignId);
     const activeProvider = useAppStore(s => s.getActiveStoryEndpoint?.());
+    const activeUtilityProvider = useAppStore(s => s.getActiveUtilityEndpoint?.());
+    const semanticFacts = useAppStore(s => s.semanticFacts ?? []);
 
     const { settings, loreChunks, npcLedger, archiveIndex, chapters } = useAppStore(
         useShallow(s => ({
@@ -82,6 +86,15 @@ export function ChatArea() {
     const [showPCCreator, setShowPCCreator] = useState(false);
     // Phase 6: GM-proposed inventory change awaiting user confirmation.
     const [pendingProposal, setPendingProposal] = useState<InventoryProposal | null>(null);
+    // Session-local OOC state stays outside the campaign store and turn lifecycle.
+    const [oocOpen, setOocOpen] = useState(false);
+    const [oocBusy, setOocBusy] = useState(false);
+    const [armedAskGmBrief, setArmedAskGmBrief] = useState<{ campaignId: string; text: string } | null>(null);
+
+    // A brief belongs to this in-memory chat session and one campaign only.
+    useEffect(() => {
+        setArmedAskGmBrief(current => current?.campaignId === activeCampaignId ? current : null);
+    }, [activeCampaignId]);
 
     // WO-11.6 — Map tool_call_id -> result content, sourced from the (filtered-out)
     // `tool` role messages, so each assistant bubble can surface what its tool call
@@ -445,7 +458,7 @@ export function ChatArea() {
 
     const handleSend = async (overrideText?: string, deepSearch = false) => {
         const textToUse = overrideText || input.trim();
-        if (!textToUse || isStreaming) return;
+        if (!textToUse || isStreaming || oocBusy) return;
 
         const useDeepSearch = deepSearch || deepArmed;
         if (deepArmed) setDeepArmed(false);
@@ -479,6 +492,13 @@ export function ChatArea() {
         // swipe result still streaming in the background finishes and fills its
         // slot (the onDone guard drops it silently once commit fired).
         await commitPendingTurn().catch(e => console.warn('[ChatArea] commit failed:', e));
+        const storyProvider = storeSnapshot.getActiveStoryEndpoint();
+        if (!storyProvider) return;
+        const useAskGmBrief = armedAskGmBrief?.campaignId === activeCampaignId ? armedAskGmBrief.text : undefined;
+        // Consume only as the real story run begins. runTurn builds once, so retries reuse this payload.
+        if (useAskGmBrief) {
+            setArmedAskGmBrief(null);
+        }
 
         await runTurn({
             input: textToUse,
@@ -491,7 +511,7 @@ export function ChatArea() {
             npcLedger,
             archiveIndex,
             activeCampaignId,
-            provider: storeSnapshot.getActiveStoryEndpoint(),
+            provider: storyProvider,
             getMessages: () => useAppStore.getState().messages,
             getFreshProvider: () => useAppStore.getState().getActiveStoryEndpoint(),
             getUtilityEndpoint: () => useAppStore.getState().getActiveUtilityEndpoint(),
@@ -516,6 +536,7 @@ export function ChatArea() {
                 const aux = useAppStore.getState().getActiveAuxiliaryEndpoint();
                 return aux?.modelName ? aux : useAppStore.getState().getActiveStoryEndpoint();
             },
+            nextTurnOocBrief: useAskGmBrief,
         }, {
             onCheckingNotes: setIsCheckingNotes,
             addMessage: storeSnapshot.addMessage,
@@ -894,6 +915,13 @@ export function ChatArea() {
                     <OneShotInjectorButton />
                 )}
                 <button
+                    onClick={() => setOocOpen(true)}
+                    className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-terminal/30 hover:border-terminal text-terminal text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-terminal/5 whitespace-nowrap"
+                    title="Open Ask GM side chat"
+                >
+                    Ask GM
+                </button>
+                <button
                     onClick={handleOpenArchive}
                     disabled={!activeCampaignId}
                     className="flex-shrink-0 flex items-center gap-1.5 bg-void border border-ice/30 hover:border-ice text-ice text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all hover:bg-ice/5 disabled:opacity-30 disabled:cursor-not-allowed ml-auto whitespace-nowrap"
@@ -905,6 +933,14 @@ export function ChatArea() {
 
             <div className="flex-shrink-0 bg-void border-t border-border">
                 <IndexingBanner campaignId={activeCampaignId} />
+                {armedAskGmBrief?.campaignId === activeCampaignId && (
+                    <ArmedAskGmNote
+                        brief={armedAskGmBrief.text}
+                        onUpdate={text => setArmedAskGmBrief(current => current ? { ...current, text } : current)}
+                        onRemove={() => setArmedAskGmBrief(null)}
+                    />
+                )}
+
                 {pendingProposal && (
                     <div className="bg-amber-500/10 border-b border-amber-500/40 px-4 py-2 flex items-center justify-between gap-3">
                         <span className="text-amber-400 text-[11px] font-mono flex items-center gap-2 min-w-0">
@@ -964,7 +1000,7 @@ export function ChatArea() {
                         />
                         <button
                             onClick={isStreaming ? handleStop : () => handleSend()}
-                            disabled={!isStreaming && !input.trim()}
+                            disabled={!isStreaming && (!input.trim() || oocBusy)}
                             className={`h-[32px] w-[44px] mb-[4px] rounded transition-all disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center shrink-0 ${isStreaming ? 'text-amber-500 hover:bg-amber-500/10' : 'text-terminal hover:bg-terminal/10'}`}
                         >
                             {isStreaming ? <Square size={16} fill="currentColor" /> : <Send size={16} />}
@@ -972,6 +1008,31 @@ export function ChatArea() {
                     </div>
                 </div>
             </div>
+
+            {oocOpen && (
+                <AskGmPanel
+                    key={activeCampaignId ?? 'no-campaign'}
+                    snapshot={{
+                        campaignId: activeCampaignId,
+                        provider: activeProvider,
+                        context,
+                        messages,
+                        semanticFacts,
+                        loreChunks,
+                        archiveIndex,
+                        npcLedger,
+                    }}
+                    utilityProvider={activeUtilityProvider}
+                    hasArmedBrief={armedAskGmBrief?.campaignId === activeCampaignId}
+                    onArmBrief={text => {
+                        if (!activeCampaignId) return;
+                        setArmedAskGmBrief({ campaignId: activeCampaignId, text });
+                    }}
+                    storyBusy={isStreaming || pipelinePhase !== 'idle'}
+                    onBusyChange={setOocBusy}
+                    onClose={() => setOocOpen(false)}
+                />
+            )}
 
             <div className="absolute right-3 bottom-[145px] flex flex-col gap-1.5 z-30 pointer-events-auto">
                 <button

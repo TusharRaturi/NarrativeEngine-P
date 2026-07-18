@@ -4,6 +4,8 @@ import userEvent from '@testing-library/user-event';
 import { ChatArea } from '../ChatArea';
 import type { ChatMessage, AppSettings, GameContext, CondenserState } from '../../types';
 
+const { mockAnswerOocQuestion, mockSummarizeAskGmConversation } = vi.hoisted(() => ({ mockAnswerOocQuestion: vi.fn(), mockSummarizeAskGmConversation: vi.fn() }));
+
 vi.mock('../../store/useAppStore', () => {
     const state = {
         messages: [] as ChatMessage[],
@@ -105,8 +107,18 @@ vi.mock('../../store/useAppStore', () => {
     return { useAppStore };
 });
 
+vi.mock('../../services/ooc/oocService', () => ({ answerOocQuestion: mockAnswerOocQuestion }));
+
+vi.mock('../../services/ooc/askGmHandoff', async importOriginal => ({ ...(await importOriginal<typeof import('../../services/ooc/askGmHandoff')>()), summarizeAskGmConversation: mockSummarizeAskGmConversation }));
+
 vi.mock('../../services/turn/turnOrchestrator', () => ({
     runTurn: vi.fn(async () => {}),
+}));
+
+vi.mock('../../services/turn/pendingCommit', () => ({
+    commitPendingTurn: vi.fn(async () => {}),
+    findPendingCommitMessage: vi.fn(() => null),
+    hasSwipeSet: vi.fn(() => false),
 }));
 
 vi.mock('../../services/archive-memory/condenser', () => ({
@@ -158,6 +170,8 @@ vi.mock('../../services/archive-memory/archiveChapterEngine', () => ({
 
 import { useAppStore } from '../../store/useAppStore';
 import { runTurn } from '../../services/turn/turnOrchestrator';
+import { commitPendingTurn } from '../../services/turn/pendingCommit';
+import { answerOocQuestion } from '../../services/ooc/oocService';
 
 function makeMessage(overrides: Partial<ChatMessage> = {}): ChatMessage {
     return {
@@ -178,6 +192,9 @@ describe('ChatArea', () => {
         state.activeCampaignId = 'test-campaign';
         state.archiveIndex = [];
         state.chapters = [];
+        state.pipelinePhase = 'idle';
+        (mockSummarizeAskGmConversation as ReturnType<typeof vi.fn>).mockResolvedValue('Keep the gate scene tense.');
+        (mockAnswerOocQuestion as ReturnType<typeof vi.fn>).mockResolvedValue({ text: 'Ask GM answer', sources: [], archiveSearched: false });
     });
 
     it('renders empty state when no messages', () => {
@@ -249,6 +266,80 @@ describe('ChatArea', () => {
         render(<ChatArea />);
     });
 
+    it('opens Ask GM without committing a pending turn or changing canonical story messages', async () => {
+        const user = userEvent.setup();
+        const state = useAppStore.getState();
+        const storyMessages = [makeMessage({ role: 'assistant', content: 'A visible pending swipe', pendingCommit: true, swipeSet: [{ id: 'swipe-1', text: 'A visible pending swipe', sceneStakes: 'calm', tagPresent: false }] })];
+        state.messages = storyMessages;
+        render(<ChatArea />);
+        await user.click(screen.getByTitle('Open Ask GM side chat'));
+        expect(screen.getByRole('heading', { name: 'Ask GM' })).toBeInTheDocument();
+        expect(commitPendingTurn).not.toHaveBeenCalled();
+        expect(runTurn).not.toHaveBeenCalled();
+        expect(state.messages).toBe(storyMessages);
+        expect(state.messages[0].pendingCommit).toBe(true);
+    });
+
+    it('blocks story send while an unresolved Ask GM request is generating without changing canonical messages', async () => {
+        const user = userEvent.setup();
+        const state = useAppStore.getState();
+        const storyMessages = [makeMessage({ role: 'assistant', content: 'Canonical story' })];
+        state.messages = storyMessages;
+        (mockAnswerOocQuestion as ReturnType<typeof vi.fn>).mockImplementation(() => new Promise(() => {}));
+        render(<ChatArea />);
+        const storyInput = screen.getByPlaceholderText('What do you do?');
+        await user.type(storyInput, 'Advance the story');
+        await user.click(screen.getByTitle('Open Ask GM side chat'));
+        await user.type(screen.getByPlaceholderText('Ask the GM...'), 'Quick Ask GM question');
+        await user.click(screen.getByTitle('Send Ask GM question'));
+        await waitFor(() => expect(answerOocQuestion).toHaveBeenCalledTimes(1));
+        expect(screen.getByTitle('Stop Ask GM response')).toBeInTheDocument();
+        expect((storyInput.closest('.flex')?.querySelector('button:last-child') as HTMLButtonElement).disabled).toBe(true);
+        await user.click(storyInput.closest('.flex')?.querySelector('button:last-child') as HTMLButtonElement);
+        expect(runTurn).not.toHaveBeenCalled();
+        expect(state.messages).toBe(storyMessages);
+        expect(state.messages[0].content).toBe('Canonical story');
+    });
+
+    it('disables Ask GM input while story generation is active', async () => {
+        const user = userEvent.setup();
+        const state = useAppStore.getState();
+        state.pipelinePhase = 'generating';
+        render(<ChatArea />);
+        await user.click(screen.getByTitle('Open Ask GM side chat'));
+        expect(screen.getByPlaceholderText('Ask the GM...')).toBeDisabled();
+    });
+    it('requires an editable confirmation before arming a visible one-turn Story AI note', async () => {
+        const user = userEvent.setup();
+        const state = useAppStore.getState();
+        const canonical = [makeMessage({ role: 'assistant', content: 'Canonical story' })];
+        state.messages = canonical;
+        render(<ChatArea />);
+        await user.click(screen.getByTitle('Open Ask GM side chat'));
+        await user.type(screen.getByPlaceholderText('Ask the GM...'), 'How should I approach the gate?');
+        await user.click(screen.getByTitle('Send Ask GM question'));
+        await waitFor(() => expect(screen.getByText('Pass to Story AI')).toBeInTheDocument());
+        await user.click(screen.getByText('Pass to Story AI'));
+        await waitFor(() => expect(screen.getByText('This will be sent to the Story AI with your next turn:')).toBeInTheDocument());
+        await user.clear(screen.getByLabelText('Ask GM brief preview'));
+        await user.type(screen.getByLabelText('Ask GM brief preview'), 'Edited player guidance.');
+        await user.click(screen.getByText('Confirm'));
+        expect(screen.getByText('Story AI note armed')).toBeInTheDocument();
+        expect(commitPendingTurn).not.toHaveBeenCalled();
+        await user.click(screen.getByText('Edit'));
+        await user.clear(screen.getByLabelText('Edit Story AI note'));
+        await user.type(screen.getByLabelText('Edit Story AI note'), 'Final player guidance.');
+        await user.click(screen.getByText('Save'));
+        expect(screen.getByText('Final player guidance.')).toBeInTheDocument();
+        const storyInput = screen.getByPlaceholderText('What do you do?');
+        await user.type(storyInput, 'I approach the gate.');
+        await user.click(storyInput.closest('.flex')?.querySelector('button:last-child') as HTMLButtonElement);
+        const [turnState] = (runTurn as ReturnType<typeof vi.fn>).mock.calls.at(-1);
+        expect(turnState.nextTurnOocBrief).toBe('Final player guidance.');
+        expect(state.messages).toBe(canonical);
+        expect(screen.queryByText('Story AI note armed')).not.toBeInTheDocument();
+
+    });
     it('force save writes to IndexedDB', async () => {
         const user = userEvent.setup();
         render(<ChatArea />);

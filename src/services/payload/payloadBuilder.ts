@@ -7,6 +7,7 @@ import { buildWorld } from './world';
 import { buildVolatile } from './volatile';
 import { buildHistory } from './history';
 import { buildPinnedMemoriesBlock } from './pinnedMemories';
+import { formatAskGmBrief } from '../ooc/askGmHandoff';
 
 export function buildPayload(
     settings: AppSettings,
@@ -35,6 +36,8 @@ export function buildPayload(
     pinnedExcerpts?: PinnedExcerpt[],
     plannerEventTypes?: SceneEventType[],
     locationLedger?: LocationEntry[],
+    /** User-confirmed session-only guidance, excluded from canonical chat history. */
+    nextTurnOocBrief?: string,
 ): { messages: OpenAIMessage[]; trace?: PayloadTrace[]; debugSections?: DebugSection[] } {
     const isDebug = settings.debugMode === true;
     const limit = settings.contextLimit || 8192;
@@ -75,7 +78,8 @@ export function buildPayload(
     // mobileApp. Only verbatim full-rules fallback stays in stable (byte-identical across turns).
     const GM_REMINDER = '[GM REMINDER: NPCs push back when their wants/boundaries are crossed. Do not default to facilitation.]';
     const volatileBlock = [retrievedRulesContent, worldContent, volatileContent].filter(Boolean).join('\n\n');
-    const finalUserContent = [volatileBlock, GM_REMINDER, userMessage].filter(Boolean).join('\n\n');
+    const askGmBrief = formatAskGmBrief(nextTurnOocBrief);
+    const finalUserContent = [volatileBlock, GM_REMINDER, askGmBrief, userMessage].filter(Boolean).join('\n\n');
     messages.push({ role: 'user', content: finalUserContent });
 
     return { messages, trace: isDebug ? collector.trace : undefined, debugSections: isDebug ? collector.debugSections : undefined };
