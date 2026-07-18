@@ -8,7 +8,8 @@ import { buildOneShotDirective } from '../oneshot/oneShotEvents';
 import type { OneShotEventId } from '../oneshot/oneShotEvents';
 import { toast } from '../../components/Toast';
 import { sanitizePayloadForApi } from '../lib/payloadSanitizer';
-import { getToolDefinitions, handleLoreTool, handleNotebookTool, handleDiceTool, handleProposeInventoryTool, handleInitiateCombatTool } from './toolHandlers';
+import { getToolDefinitions } from './toolHandlers';
+import { resolveToolHandler } from './toolRegistry';
 import { gatherContext } from './contextGatherer';
 import { tierAllows } from './aiTier';
 import { extractAndStripSceneStakes } from './sceneStakesTag';
@@ -314,274 +315,81 @@ export async function runTurn(
                     console.warn(`[Turn] Tool-call cap (${MAX_TOOL_CALLS_PER_TURN}) reached — refusing tool call '${toolCall.name}' and treating model output as final answer.`);
                     toolCall = undefined;
                 }
-                if (toolCall && toolCall.name === 'query_campaign_lore') {
-                    callbacks.setPipelinePhase?.('checking-notes');
-                    callbacks.onCheckingNotes(true);
-                    const loreEngineText = sceneNumber
+                const toolHandler = toolCall ? resolveToolHandler(toolCall.name) : null;
+                if (toolCall && toolHandler) {
+                    const toolName = toolCall.name;
+                    // Lore tool signals the "checking notes" UI state — preserved verbatim from
+                    // the pre-Phase-4 inline implementation. This is a UI concern owned by the
+                    // orchestrator, not the registry handler.
+                    if (toolName === 'query_campaign_lore') {
+                        callbacks.setPipelinePhase?.('checking-notes');
+                        callbacks.onCheckingNotes(true);
+                    }
+
+                    const engineText = sceneNumber
                         ? `Scene #${sceneNumber} | ${stripLLMSceneHeader(finalText)}`
                         : finalText;
-                    accumulatedContent = loreEngineText;
-                    callbacks.updateLastAssistant(loreEngineText);
-
-                    callbacks.updateLastMessage({
-                        tool_calls: [{
-                            id: toolCall.id,
-                            type: 'function' as const,
-                            function: { name: toolCall.name, arguments: toolCall.arguments }
-                        }],
-                        ...(reasoningContent ? { reasoning_content: reasoningContent } : {})
-                    });
-
-                    currentPayload.push({
-                        role: 'assistant',
-                        content: loreEngineText || "",
-                        reasoning_content: reasoningContent || undefined,
-                        tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('../chatEngine').OpenAIMessage);
-
-                    const { toolResult: loreResult } = handleLoreTool(toolCall.arguments, { loreChunks, notebook: state.context.notebook });
-                    pushToolTrace(toolCall.name, toolCall.arguments, loreResult);
-
-                    const toolMsgId = uid();
-                    callbacks.addMessage({
-                        id: toolMsgId,
-                        role: 'tool' as const,
-                        content: loreResult,
-                        timestamp: Date.now(),
-                        name: toolCall.name,
-                        tool_call_id: toolCall.id,
-                        ephemeral: true
-                    });
-
-                    currentPayload.push({
-                        role: 'tool',
-                        content: loreResult,
-                        name: toolCall.name,
-                        tool_call_id: toolCall.id
-                    } as unknown as import('../chatEngine').OpenAIMessage);
-
-                    retryTimer = setTimeout(() => {
-                        retryTimer = null;
-                        if (abortController.signal.aborted) return;
-                        callbacks.onCheckingNotes(false);
-                        callbacks.setPipelinePhase?.('generating');
-                        executeTurn(currentPayload, toolCallCount + 1, 0, assistantMsgId);
-                    }, 800);
-                    return;
-                }
-
-                if (toolCall && toolCall.name === 'update_scene_notebook') {
-                    const nbEngineText = sceneNumber
-                        ? `Scene #${sceneNumber} | ${stripLLMSceneHeader(finalText)}`
-                        : finalText;
-                    accumulatedContent = nbEngineText;
-                    callbacks.updateLastAssistant(nbEngineText);
-
-                    callbacks.updateLastMessage({
-                        tool_calls: [{
-                            id: toolCall.id,
-                            type: 'function' as const,
-                            function: { name: toolCall.name, arguments: toolCall.arguments }
-                        }],
-                        ...(reasoningContent ? { reasoning_content: reasoningContent } : {})
-                    });
-
-                    currentPayload.push({
-                        role: 'assistant',
-                        content: nbEngineText || "",
-                        reasoning_content: reasoningContent || undefined,
-                        tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('../chatEngine').OpenAIMessage);
-
-                    const { toolResult: notebookResult, updatedNotebook } = handleNotebookTool(toolCall.arguments, { loreChunks, notebook: state.context.notebook });
-                    pushToolTrace(toolCall.name, toolCall.arguments, notebookResult);
-                    callbacks.updateContext({ notebook: updatedNotebook });
-
-                    const toolMsgId = uid();
-                    callbacks.addMessage({
-                        id: toolMsgId,
-                        role: 'tool' as const,
-                        content: notebookResult,
-                        timestamp: Date.now(),
-                        name: toolCall.name,
-                        tool_call_id: toolCall.id,
-                        ephemeral: true
-                    });
-
-                    currentPayload.push({
-                        role: 'tool',
-                        content: notebookResult,
-                        name: toolCall.name,
-                        tool_call_id: toolCall.id
-                    } as unknown as import('../chatEngine').OpenAIMessage);
-
-                    retryTimer = setTimeout(() => {
-                        retryTimer = null;
-                        if (abortController.signal.aborted) return;
-                        executeTurn(currentPayload, toolCallCount + 1, 0, assistantMsgId);
-                    }, 800);
-                    return;
-                }
-
-                if (toolCall && toolCall.name === 'roll_dice') {
-                    const diceEngineText = sceneNumber
-                        ? `Scene #${sceneNumber} | ${stripLLMSceneHeader(finalText)}`
-                        : finalText;
-                    accumulatedContent = accumulatedContent
-                        ? `${accumulatedContent}\n\n${stripLLMSceneHeader(finalText)}`
-                        : diceEngineText;
+                    const dispatchResult = toolHandler({ arguments: toolCall.arguments, loreChunks, notebook: state.context.notebook, diceSystem: context.diceSystem });
+                    if (dispatchResult.accumulation === 'overwrite') {
+                        accumulatedContent = engineText;
+                    } else {
+                        accumulatedContent = accumulatedContent
+                            ? `${accumulatedContent}\n\n${stripLLMSceneHeader(finalText)}`
+                            : engineText;
+                    }
                     callbacks.updateLastAssistant(accumulatedContent);
 
                     callbacks.updateLastMessage({
                         tool_calls: [{
                             id: toolCall.id,
                             type: 'function' as const,
-                            function: { name: toolCall.name, arguments: toolCall.arguments }
+                            function: { name: toolName, arguments: toolCall.arguments }
                         }],
                         ...(reasoningContent ? { reasoning_content: reasoningContent } : {})
                     });
 
                     currentPayload.push({
                         role: 'assistant',
-                        content: diceEngineText || "",
+                        content: engineText || "",
                         reasoning_content: reasoningContent || undefined,
-                        tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
+                        tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolName, arguments: toolCall.arguments } }]
                     } as unknown as import('../chatEngine').OpenAIMessage);
 
-                    const { toolResult: diceResult } = handleDiceTool(toolCall.arguments, { diceSystem: context.diceSystem });
-                    pushToolTrace(toolCall.name, toolCall.arguments, diceResult);
+                    if (dispatchResult.traceResult) {
+                        pushToolTrace(toolName, toolCall.arguments, dispatchResult.toolResult);
+                    }
+                    if (dispatchResult.contextPatch) {
+                        callbacks.updateContext(dispatchResult.contextPatch);
+                    }
+                    if (dispatchResult.proposal) {
+                        callbacks.stageInventoryProposal?.(dispatchResult.proposal);
+                    }
 
                     const toolMsgId = uid();
                     callbacks.addMessage({
                         id: toolMsgId,
                         role: 'tool' as const,
-                        content: diceResult,
+                        content: dispatchResult.toolResult,
                         timestamp: Date.now(),
-                        name: toolCall.name,
+                        name: toolName,
                         tool_call_id: toolCall.id,
                         ephemeral: true
                     });
 
                     currentPayload.push({
                         role: 'tool',
-                        content: diceResult,
-                        name: toolCall.name,
+                        content: dispatchResult.toolResult,
+                        name: toolName,
                         tool_call_id: toolCall.id
                     } as unknown as import('../chatEngine').OpenAIMessage);
 
                     retryTimer = setTimeout(() => {
                         retryTimer = null;
                         if (abortController.signal.aborted) return;
-                        executeTurn(currentPayload, toolCallCount + 1, 0, assistantMsgId);
-                    }, 800);
-                    return;
-                }
-
-                if (toolCall && toolCall.name === 'propose_inventory_change') {
-                    const invEngineText = sceneNumber
-                        ? `Scene #${sceneNumber} | ${stripLLMSceneHeader(finalText)}`
-                        : finalText;
-                    accumulatedContent = accumulatedContent
-                        ? `${accumulatedContent}\n\n${stripLLMSceneHeader(finalText)}`
-                        : invEngineText;
-                    callbacks.updateLastAssistant(accumulatedContent);
-
-                    callbacks.updateLastMessage({
-                        tool_calls: [{
-                            id: toolCall.id,
-                            type: 'function' as const,
-                            function: { name: toolCall.name, arguments: toolCall.arguments }
-                        }],
-                        ...(reasoningContent ? { reasoning_content: reasoningContent } : {})
-                    });
-
-                    currentPayload.push({
-                        role: 'assistant',
-                        content: invEngineText || "",
-                        reasoning_content: reasoningContent || undefined,
-                        tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('../chatEngine').OpenAIMessage);
-
-                    const { toolResult: invResult, proposal } = handleProposeInventoryTool(toolCall.arguments);
-                    callbacks.stageInventoryProposal?.(proposal);
-
-                    const toolMsgId = uid();
-                    callbacks.addMessage({
-                        id: toolMsgId,
-                        role: 'tool' as const,
-                        content: invResult,
-                        timestamp: Date.now(),
-                        name: toolCall.name,
-                        tool_call_id: toolCall.id,
-                        ephemeral: true
-                    });
-
-                    currentPayload.push({
-                        role: 'tool',
-                        content: invResult,
-                        name: toolCall.name,
-                        tool_call_id: toolCall.id
-                    } as unknown as import('../chatEngine').OpenAIMessage);
-
-                    retryTimer = setTimeout(() => {
-                        retryTimer = null;
-                        if (abortController.signal.aborted) return;
-                        executeTurn(currentPayload, toolCallCount + 1, 0, assistantMsgId);
-                    }, 800);
-                    return;
-                }
-
-                if (toolCall && toolCall.name === 'initiate_combat') {
-                    // Phase 6 stub: combat engine is Phase 7. The handler defers gracefully
-                    // (returns "not available") and we do NOT flip combatModeActive — the turn
-                    // continues narratively without erroring on the tool call.
-                    const combatEngineText = sceneNumber
-                        ? `Scene #${sceneNumber} | ${stripLLMSceneHeader(finalText)}`
-                        : finalText;
-                    accumulatedContent = accumulatedContent
-                        ? `${accumulatedContent}\n\n${stripLLMSceneHeader(finalText)}`
-                        : combatEngineText;
-                    callbacks.updateLastAssistant(accumulatedContent);
-
-                    callbacks.updateLastMessage({
-                        tool_calls: [{
-                            id: toolCall.id,
-                            type: 'function' as const,
-                            function: { name: toolCall.name, arguments: toolCall.arguments }
-                        }],
-                        ...(reasoningContent ? { reasoning_content: reasoningContent } : {})
-                    });
-
-                    currentPayload.push({
-                        role: 'assistant',
-                        content: combatEngineText || "",
-                        reasoning_content: reasoningContent || undefined,
-                        tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolCall.name, arguments: toolCall.arguments } }]
-                    } as unknown as import('../chatEngine').OpenAIMessage);
-
-                    const { toolResult: combatResult } = handleInitiateCombatTool(toolCall.arguments);
-
-                    const toolMsgId = uid();
-                    callbacks.addMessage({
-                        id: toolMsgId,
-                        role: 'tool' as const,
-                        content: combatResult,
-                        timestamp: Date.now(),
-                        name: toolCall.name,
-                        tool_call_id: toolCall.id,
-                        ephemeral: true
-                    });
-
-                    currentPayload.push({
-                        role: 'tool',
-                        content: combatResult,
-                        name: toolCall.name,
-                        tool_call_id: toolCall.id
-                    } as unknown as import('../chatEngine').OpenAIMessage);
-
-                    retryTimer = setTimeout(() => {
-                        retryTimer = null;
-                        if (abortController.signal.aborted) return;
+                        if (toolName === 'query_campaign_lore') {
+                            callbacks.onCheckingNotes(false);
+                            callbacks.setPipelinePhase?.('generating');
+                        }
                         executeTurn(currentPayload, toolCallCount + 1, 0, assistantMsgId);
                     }, 800);
                     return;
