@@ -149,7 +149,7 @@ function SwipeIndicator({
     const isStreaming = swipeSet[msg.swipeActiveIndex ?? 0]?.streaming === true;
 
     return (
-        <div className="mt-2 flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest text-text-dim select-none">
+        <div className="flex items-center justify-center gap-2 text-[10px] uppercase tracking-widest text-text-dim select-none">
             <button
                 onClick={onPrev}
                 disabled={atFirst}
