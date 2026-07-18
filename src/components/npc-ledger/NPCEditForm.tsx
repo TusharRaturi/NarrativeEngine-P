@@ -86,7 +86,7 @@ export function NPCEditForm({
 
     // ── Signature Kit (durable loadout) — bounded to KIT_MAX per channel, mirroring
     // sanitizeSignatureKit's cap so the UI can't author a kit the parser would trim.
-    const KIT_MAX = 4;
+    const KIT_MAX = 8;
     const emptyKit = { equipment: [] as string[], abilities: [] as string[] };
     const updateKitEntry = (field: 'equipment' | 'abilities', index: number, value: string) => {
         const kit = form.signatureKit ?? emptyKit;

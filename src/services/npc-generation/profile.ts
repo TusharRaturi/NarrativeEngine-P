@@ -294,7 +294,7 @@ ${voiceSection}OUTPUT FORMAT — respond with a JSON object matching this struct
   "softBoundaries": ["String — something this NPC dislikes but may tolerate under pressure. Example: 'dislikes being excluded from plans'"],
   "longWant": "String — ONE long-term life ambition driving this NPC across the whole campaign, grounded in their bio/faction. Archetypes: ascend to power, become the strongest, avenge/restore, transcend/transform.",
   "region": "String — the NPC's coarse home or current location if discernible from context (e.g. 'Ryuten', 'the academy'), else an empty string.",
-  "signatureKit": { "equipment": [up to 4 signature items this character is known for], "abilities": [up to 4 signature powers/techniques], "element": "<single affinity tag or omit>" }
+  "signatureKit": { "equipment": [up to 8 signature items this character is known for], "abilities": [up to 8 signature powers/techniques], "element": "<single affinity tag or omit>" }
 }
 
 IMPORTANT: Do NOT emit a "personalityHex" field, numeric axis values, or a "traits" array. The engine has already rolled the personality hexagon and chosen the traits; you only render flavour. Numeric personality output will be discarded.
@@ -302,7 +302,7 @@ IMPORTANT: Do NOT emit a "personalityHex" field, numeric axis values, or a "trai
 SIGNATURE KIT RULES:
 - "signatureKit" is this NPC's durable loadout — the gear and powers that should stay consistent whenever they appear. It is NOT a full inventory.
 - Only give equipment/abilities this character is actually established or strongly implied to have in the context — do not invent a full arsenal. Stay inside this world's genre and tech level. A mundane character may have an empty kit (omit "signatureKit" or send empty arrays).
-- Each entry is a short noun phrase (e.g. "Excalibur (holy longsword)", "fire magic"). Max 4 entries per array. "element" is a single optional tag (e.g. "fire").
+- Each entry is a short noun phrase (e.g. "Excalibur (holy longsword)", "fire magic"). Max 8 entries per array. "element" is a single optional tag (e.g. "fire").
 
 CONTROLLED TRAIT VOCABULARY — for reference only (the engine has already chosen the traits from this list): ${offeredTraitNames(matureMode).join(', ')}.
 

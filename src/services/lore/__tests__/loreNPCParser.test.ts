@@ -285,13 +285,13 @@ describe('parseNPCsFromLore — signature kit (durable loadout)', () => {
         expect(npc.signatureKit!.element).toBeUndefined();
     });
 
-    it('caps each channel at 4 entries (shared sanitizer bound)', () => {
+    it('caps each channel at 8 entries (shared sanitizer bound)', () => {
         const body = NARUTO_BLOCK
-            + '\n**SignatureEquipment:** [a, b, c, d, e, f]'
-            + '\n**SignatureAbilities:** [g, h, i, j, k]';
+            + '\n**SignatureEquipment:** [a, b, c, d, e, f, g, h, i, j]'
+            + '\n**SignatureAbilities:** [g, h, i, j, k, l, m, n, o]';
         const [npc] = parseNPCsFromLore([charChunk('CHARACTER -- Naruto Uzumaki', body)]);
-        expect(npc.signatureKit!.equipment).toEqual(['a', 'b', 'c', 'd']);
-        expect(npc.signatureKit!.abilities).toEqual(['g', 'h', 'i', 'j']);
+        expect(npc.signatureKit!.equipment).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']);
+        expect(npc.signatureKit!.abilities).toEqual(['g', 'h', 'i', 'j', 'k', 'l', 'm', 'n']);
     });
 
     it('leaves signatureKit undefined when no kit fields are present (default)', () => {

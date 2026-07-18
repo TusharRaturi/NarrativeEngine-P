@@ -6,7 +6,7 @@ import type { NPCSignatureKit } from '../../types';
 // the exact same bounds without pulling the llm module graph into their import chain.
 // shared.ts re-exports sanitizeSignatureKit for backward compatibility.
 
-export const KIT_MAX_ENTRIES = 4;
+export const KIT_MAX_ENTRIES = 8;
 export const KIT_ENTRY_MAXLEN = 48;
 export const KIT_ELEMENT_MAXLEN = 20;
 

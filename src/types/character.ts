@@ -166,8 +166,8 @@ export type NpcSuggestion = { name: string; context?: string; firstSeen: number 
  * transformation by the NPC updater (supersede-in-place, never append/re-roll).
  */
 export type NPCSignatureKit = {
-    equipment: string[];   // signature gear; <=4 entries; each a short noun phrase, e.g. "Excalibur (holy longsword)"
-    abilities: string[];   // signature powers/techniques; <=4 entries, e.g. "fire magic", "regeneration"
+    equipment: string[];   // signature gear; <=8 entries; each a short noun phrase, e.g. "Excalibur (holy longsword)"
+    abilities: string[];   // signature powers/techniques; <=8 entries, e.g. "fire magic", "regeneration"
     element?: string;      // optional single affinity/damage-type tag, e.g. "fire"
 };
 

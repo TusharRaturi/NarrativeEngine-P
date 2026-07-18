@@ -153,7 +153,7 @@ WANTS UPDATE RULES:
 SIGNATURE KIT RULES:
   - "signatureKit" is this NPC's durable loadout: {"equipment": string[], "abilities": string[], "element": string}. It keeps gear and powers CONSISTENT across the campaign.
   - Only send it when the scene NARRATES a real change: the NPC gains/loses/breaks a signature item, learns or loses a power, or is transformed. An NPC merely *using* gear they already have is NOT a change — send nothing.
-  - Send ONLY the channel that changed. To update gear, send just "equipment" (the full new signature list, max 4); to update powers, send just "abilities". Never re-emit an unchanged channel.
+  - Send ONLY the channel that changed. To update gear, send just "equipment" (the full new signature list, max 8); to update powers, send just "abilities". Never re-emit an unchanged channel.
   - Default is NO change. Most turns have no signatureKit update.
 
 GENERAL RULES:

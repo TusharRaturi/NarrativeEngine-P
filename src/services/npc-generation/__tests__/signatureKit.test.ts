@@ -7,7 +7,7 @@ import { buildCoreDirective } from '../../payload/world';
 // WO: NPC Signature Kit (v1) — behavior-lock tests.
 //
 // Coverage:
-//  1. Sanitizer bounds (cap 4, trim, drop empties, truncate, cap element, empty→undefined).
+//  1. Sanitizer bounds (cap 8, trim, drop empties, truncate, cap element, empty→undefined).
 //  2. Sanitizer per-channel supersession merge (gear replaced, powers + element preserved).
 //  3. CORE-tier injection: kit surfaces as `KIT: ... | POWERS: ... | element: ...`;
 //     absent kit produces the pre-existing core line with none of those tokens.
@@ -46,17 +46,17 @@ function baseNpc(overrides: Partial<NPCEntry> = {}): NPCEntry {
 describe('NPC Signature Kit (v1)', () => {
     // ── 1. Sanitizer bounds ────────────────────────────────────────────────
     describe('sanitizeSignatureKit — bounds', () => {
-        it('caps each array to 4 entries', () => {
+        it('caps each array to 8 entries', () => {
             const raw = {
-                equipment: ['a', 'b', 'c', 'd', 'e', 'f'],
-                abilities: ['w', 'x', 'y', 'z', 'extra'],
+                equipment: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'],
+                abilities: ['w', 'x', 'y', 'z', '1', '2', '3', '4', 'extra'],
             };
             const kit = sanitizeSignatureKit(raw);
             expect(kit).toBeDefined();
-            expect(kit!.equipment).toHaveLength(4);
-            expect(kit!.abilities).toHaveLength(4);
-            expect(kit!.equipment).toEqual(['a', 'b', 'c', 'd']);
-            expect(kit!.abilities).toEqual(['w', 'x', 'y', 'z']);
+            expect(kit!.equipment).toHaveLength(8);
+            expect(kit!.abilities).toHaveLength(8);
+            expect(kit!.equipment).toEqual(['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h']);
+            expect(kit!.abilities).toEqual(['w', 'x', 'y', 'z', '1', '2', '3', '4']);
         });
 
         it('trims whitespace, coerces non-strings via String(), and drops empties', () => {
@@ -256,11 +256,11 @@ describe('NPC Signature Kit (v1)', () => {
 
         it('over-length entries are still bounded on the change path (defensive cap)', () => {
             const incomingChanges = {
-                signatureKit: { equipment: ['a', 'b', 'c', 'd', 'e', 'f'] },
+                signatureKit: { equipment: ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i', 'j'] },
             } as Partial<NPCEntry>;
             const merged = sanitizeSignatureKit(incomingChanges.signatureKit, targetNpcKit);
             expect(merged).toBeDefined();
-            expect(merged!.equipment).toHaveLength(4);
+            expect(merged!.equipment).toHaveLength(8);
             // Powers + element preserved from the target kit.
             expect(merged!.abilities).toEqual(['fire magic', 'regeneration']);
             expect(merged!.element).toBe('fire');
