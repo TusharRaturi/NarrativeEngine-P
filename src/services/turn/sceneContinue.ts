@@ -47,9 +47,14 @@ export function buildSceneContinueDirective(opts: {
 }): string {
     const { pcName, targetWords, allowDiceTool } = opts;
 
-    // Clamp the word target: a short (or meta-junk) last segment must not spiral
-    // the next continuation down to a fragment, and a huge one must not demand an essay.
-    const words = Math.min(500, Math.max(120, targetWords));
+    // Target 70–100% of the last segment's length — no ceiling; the continuation
+    // should match the passage it extends. The 120-word floor guards the death
+    // spiral where a short (or meta-junk) segment begets an even shorter target.
+    const upper = Math.max(120, targetWords);
+    const lower = Math.max(120, Math.round(targetWords * 0.7));
+    const lengthLine = lower >= upper
+        ? `- Write roughly ${upper} words of new story.`
+        : `- Write between ${lower} and ${upper} words of new story — comparable to the passage you are extending.`;
 
     const pcLine = pcName.trim()
         ? `- The player character is ${pcName}. Do not act, speak, or decide for ${pcName} beyond what their last input already committed to. End your reply at the point where ${pcName} would next need to choose or respond — a story beat that invites a response, never an explicit prompt for input.`
@@ -67,7 +72,7 @@ export function buildSceneContinueDirective(opts: {
         '- Everyone and everything EXCEPT the player character may act: NPCs speak and move, the environment shifts, tension builds — the moment keeps unfolding in real time.',
         '- Do not open a new scene, skip time, change location, or introduce new arrivals, random events, or encounters. Deepen and extend only what is already present in the scene.',
         pcLine,
-        `- Write roughly ${words} words of new story.`,
+        lengthLine,
         '- Do not emit a Scene header.',
         diceLine,
         '- Reply with story prose only — do not acknowledge, mention, or answer this instruction.]',

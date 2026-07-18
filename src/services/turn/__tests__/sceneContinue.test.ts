@@ -82,7 +82,13 @@ function simulateSend(opts: {
 describe('buildSceneContinueDirective', () => {
     it('substitutes {N} with targetWords', () => {
         const out = buildSceneContinueDirective({ pcName: 'Rin', targetWords: 120, allowDiceTool: true });
+        // Floor-collapsed range (N ≤ ~170): both bounds hit the 120 floor.
         expect(out).toMatch(/roughly 120 words/);
+    });
+
+    it('targets 70–100% of the last segment with no ceiling', () => {
+        const out = buildSceneContinueDirective({ pcName: 'Rin', targetWords: 1000, allowDiceTool: false });
+        expect(out).toMatch(/between 700 and 1000 words/);
     });
 
     it('uses the named-PC line when pcName is non-empty', () => {
