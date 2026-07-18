@@ -53,6 +53,8 @@ repomix-output.md
 Upgrade/
 PLAN-*.md
 GLM-CODE-REVIEW-HANDOFF.md
+# SESSION_LOG.md is a local working journal — keep it out of git going forward
+Upgrade/Refactor 18-07/SESSION_LOG.md
 
 # Graphify output and tooling
 graphify-out/
