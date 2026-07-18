@@ -22,7 +22,6 @@ import { useChapterSealing } from './hooks/useChapterSealing';
 import { useMessageEditor } from './hooks/useMessageEditor';
 import { UtilityCallStrip } from './UtilityCallStrip';
 import { IndexingBanner } from './IndexingBanner';
-import { CreateTroubleButton } from './CreateTroubleButton';
 import { ArcInjectorButton } from './ArcInjectorButton';
 import { OneShotInjectorButton } from './OneShotInjectorButton';
 import { PCCreationWizard } from './pc/PCCreationWizard';
@@ -31,6 +30,38 @@ import { isLikelyFeatureLabel, parseLocationHeader, resolveLocationHeader } from
 import { queueLocationEnrichment } from '../services/locationEnrich';
 import { AskGmPanel } from './ooc/AskGmPanel';
 import { ArmedAskGmNote } from './ooc/ArmedAskGmNote';
+
+
+type SelectionSnapshot = {
+    messageId: string;
+    text: string;
+    start: number;
+    end: number;
+    bubbleText: string;
+};
+
+const stripMarkdown = (s: string) => s.replace(/\*\*/g, '').replace(/\*/g, '').trim();
+
+const captureFromBubble = (selector: string): SelectionSnapshot | null => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
+    const range = sel.getRangeAt(0);
+    const node = range.commonAncestorContainer;
+    const el = (node.nodeType === 1 ? node as Element : node.parentElement);
+    const bubble = el?.closest(selector) as HTMLElement | null;
+    if (!bubble) return null;
+    const messageId = bubble.dataset.messageId;
+    const text = sel.toString().trim();
+    if (!messageId || text.length < 1) return null;
+    const bubbleText = bubble.textContent ?? '';
+    let start = bubbleText.indexOf(text);
+    if (start === -1) {
+        const norm = (value: string) => value.replace(/\s+/g, ' ').trim();
+        start = norm(bubbleText).indexOf(norm(text));
+    }
+    if (start === -1) start = 0;
+    return { messageId, text, start, end: start + text.length, bubbleText };
+};
 
 export function ChatArea() {
     const messages = useAppStore(s => s.messages);
@@ -121,38 +152,6 @@ export function ChatArea() {
 
     const deepArmed = useAppStore(s => s.deepArmed);
 
-    // Selection state & action handlers (moved from Header for bottom toolbar visibility)
-    type SelectionSnapshot = {
-        messageId: string;
-        text: string;
-        start: number;
-        end: number;
-        bubbleText: string;
-    };
-
-    const stripMarkdown = (s: string) => s.replace(/\*\*/g, '').replace(/\*/g, '').trim();
-
-    const captureFromBubble = (selector: string): SelectionSnapshot | null => {
-        const sel = window.getSelection();
-        if (!sel || sel.isCollapsed || sel.rangeCount === 0) return null;
-        const range = sel.getRangeAt(0);
-        const node = range.commonAncestorContainer;
-        const el = (node.nodeType === 1 ? node as Element : node.parentElement);
-        const bubble = el?.closest(selector) as HTMLElement | null;
-        if (!bubble) return null;
-        const messageId = bubble.dataset.messageId;
-        const text = sel.toString().trim();
-        if (!messageId || text.length < 1) return null;
-        const bubbleText = bubble.textContent ?? '';
-        let start = bubbleText.indexOf(text);
-        if (start === -1) {
-            const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
-            start = norm(bubbleText).indexOf(norm(text));
-        }
-        if (start === -1) start = 0;
-        return { messageId, text, start, end: start + text.length, bubbleText };
-    };
-
     const openLoreCheck = useAppStore(s => s.openLoreCheck);
     const addPinnedExcerpt = useAppStore(s => s.addPinnedExcerpt);
     const openRenameModal = useAppStore(s => s.openRenameModal);
@@ -167,16 +166,54 @@ export function ChatArea() {
     const [renameSel, setRenameSel] = useState<SelectionSnapshot | null>(null);
     const [npcSel, setNpcSel] = useState<SelectionSnapshot | null>(null);
     const [npcAdding, setNpcAdding] = useState(false);
+    const selectionMenuRef = useRef<HTMLDivElement>(null);
+    const [selectionMenuPosition, setSelectionMenuPosition] = useState<{ left: number; top: number } | null>(null);
 
     useEffect(() => {
         const handle = () => {
-            setLoreSel(captureFromBubble('[data-lore-checkable="true"]'));
+            const lore = captureFromBubble('[data-lore-checkable="true"]');
+            setLoreSel(lore);
             setPinSel(captureFromBubble('[data-message-id]'));
             setRenameSel(captureFromBubble('[data-message-id]'));
-            setNpcSel(captureFromBubble('[data-lore-checkable="true"]'));
+            setNpcSel(lore);
+
+            const selection = window.getSelection();
+            if (!lore || !selection?.rangeCount) {
+                setSelectionMenuPosition(null);
+                return;
+            }
+
+            const rect = selection.getRangeAt(0).getBoundingClientRect();
+            const menuWidth = Math.min(640, window.innerWidth - 24);
+            const menuHeight = 88;
+            const left = Math.min(Math.max(12, rect.left), Math.max(12, window.innerWidth - menuWidth - 12));
+            const below = rect.bottom + 10;
+            const top = below + menuHeight <= window.innerHeight - 12
+                ? below
+                : Math.max(12, rect.top - menuHeight - 10);
+            setSelectionMenuPosition({ left, top });
         };
+        const dismissOnOutsidePointer = (event: PointerEvent) => {
+            if (!selectionMenuRef.current?.contains(event.target as Node)) {
+                setSelectionMenuPosition(null);
+            }
+        };
+        const dismissOnEscape = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setSelectionMenuPosition(null);
+        };
+        const dismiss = () => setSelectionMenuPosition(null);
         document.addEventListener('selectionchange', handle);
-        return () => document.removeEventListener('selectionchange', handle);
+        document.addEventListener('pointerdown', dismissOnOutsidePointer);
+        document.addEventListener('keydown', dismissOnEscape);
+        window.addEventListener('resize', dismiss);
+        window.addEventListener('scroll', dismiss, true);
+        return () => {
+            document.removeEventListener('selectionchange', handle);
+            document.removeEventListener('pointerdown', dismissOnOutsidePointer);
+            document.removeEventListener('keydown', dismissOnEscape);
+            window.removeEventListener('resize', dismiss);
+            window.removeEventListener('scroll', dismiss, true);
+        };
     }, []);
 
     const handleLoreCheck = (e: React.MouseEvent | React.TouchEvent) => {
@@ -696,6 +733,58 @@ export function ChatArea() {
                 </div>
             )}
 
+            {selectionMenuPosition && loreSel && (
+                <div
+                    ref={selectionMenuRef}
+                    role="toolbar"
+                    aria-label="Selected text actions"
+                    className="fixed z-[120] max-w-[calc(100vw-24px)] rounded-md border border-terminal/80 bg-void-darker/95 p-2 shadow-2xl backdrop-blur-md"
+                    style={{ left: selectionMenuPosition.left, top: selectionMenuPosition.top }}
+                >
+                    <div className="mb-1.5 max-w-[300px] truncate px-1 text-[9px] uppercase tracking-widest text-text-primary/90">
+                        Selected: {stripMarkdown(loreSel.text)}
+                    </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                            onMouseDown={handleLoreCheck}
+                            onTouchStart={handleLoreCheck}
+                            className="flex items-center gap-1.5 rounded-sm border border-terminal/60 bg-void-lighter/95 px-2.5 py-1.5 text-[10px] uppercase tracking-wider text-terminal transition-colors hover:border-terminal hover:bg-terminal/15 hover:text-text-primary"
+                        >
+                            <BookCheck size={13} /> Lore Check
+                        </button>
+                        <button
+                            onMouseDown={handlePinSelection}
+                            onTouchStart={handlePinSelection}
+                            className="flex items-center gap-1.5 rounded-sm border border-terminal/60 bg-void-lighter/95 px-2.5 py-1.5 text-[10px] uppercase tracking-wider text-terminal transition-colors hover:border-terminal hover:bg-terminal/15 hover:text-text-primary"
+                        >
+                            <Pin size={13} /> Pin Memory
+                        </button>
+                        <button
+                            onMouseDown={handleRenameSelection}
+                            onTouchStart={handleRenameSelection}
+                            className="flex items-center gap-1.5 rounded-sm border border-terminal/60 bg-void-lighter/95 px-2.5 py-1.5 text-[10px] uppercase tracking-wider text-terminal transition-colors hover:border-terminal hover:bg-terminal/15 hover:text-text-primary"
+                        >
+                            <Replace size={13} /> Rename
+                        </button>
+                        <button
+                            onMouseDown={handleAddNpc}
+                            onTouchStart={handleAddNpc}
+                            disabled={npcAdding}
+                            className="flex items-center gap-1.5 rounded-sm border border-terminal/60 bg-void-lighter/95 px-2.5 py-1.5 text-[10px] uppercase tracking-wider text-terminal transition-colors hover:border-terminal hover:bg-terminal/15 hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                            {npcAdding ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />} Add NPC
+                        </button>
+                        <button
+                            onMouseDown={handleAddPlace}
+                            onTouchStart={handleAddPlace}
+                            className="flex items-center gap-1.5 rounded-sm border border-terminal/60 bg-void-lighter/95 px-2.5 py-1.5 text-[10px] uppercase tracking-wider text-terminal transition-colors hover:border-terminal hover:bg-terminal/15 hover:text-text-primary"
+                        >
+                            <MapPin size={13} /> Add Place
+                        </button>
+                    </div>
+                </div>
+            )}
+
             <div ref={scrollContainerRef} className="chat-panel flex-1 overflow-y-auto px-2 md:px-4 py-4 space-y-3 relative">
                 {messages.length === 0 && (
                     <div className="flex items-center justify-center h-full">
@@ -854,60 +943,6 @@ export function ChatArea() {
                     </button>
                 )}
 
-                {/* Text Selection Actions - always clickable with adaptive styling and informational toasts */}
-                <button
-                    onMouseDown={handleLoreCheck}
-                    onTouchStart={handleLoreCheck}
-                    className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all whitespace-nowrap cursor-pointer ${loreSel ? 'border-terminal text-terminal bg-terminal/5 animate-pulse' : 'border-terminal/30 text-terminal/60 hover:text-terminal hover:bg-terminal/5'}`}
-                    title="Lore Check selection (highlight text in a GM message first)"
-                >
-                    <BookCheck size={13} />
-                    Lore Check
-                </button>
-
-                <button
-                    onMouseDown={handlePinSelection}
-                    onTouchStart={handlePinSelection}
-                    className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all whitespace-nowrap cursor-pointer ${pinSel ? 'border-terminal text-terminal bg-terminal/5 animate-pulse' : 'border-terminal/30 text-terminal/60 hover:text-terminal hover:bg-terminal/5'}`}
-                    title="Pin selected text as a memory"
-                >
-                    <Pin size={13} />
-                    Pin Memory
-                </button>
-
-                <button
-                    onMouseDown={handleRenameSelection}
-                    onTouchStart={handleRenameSelection}
-                    className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all whitespace-nowrap cursor-pointer ${renameSel ? 'border-terminal text-terminal bg-terminal/5 animate-pulse' : 'border-terminal/30 text-terminal/60 hover:text-terminal hover:bg-terminal/5'}`}
-                    title="Rename selected name everywhere (highlight a name first)"
-                >
-                    <Replace size={13} />
-                    Rename
-                </button>
-
-                <button
-                    onMouseDown={handleAddNpc}
-                    onTouchStart={handleAddNpc}
-                    className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all whitespace-nowrap cursor-pointer ${npcSel ? 'border-terminal text-terminal bg-terminal/5 animate-pulse' : 'border-terminal/30 text-terminal/60 hover:text-terminal hover:bg-terminal/5'}`}
-                    title="Add highlighted name to the NPC ledger (or update if it exists)"
-                >
-                    {npcAdding ? <Loader2 size={13} className="animate-spin" /> : <UserPlus size={13} />}
-                    Add NPC
-                </button>
-
-                <button
-                    onMouseDown={handleAddPlace}
-                    onTouchStart={handleAddPlace}
-                    className={`flex-shrink-0 flex items-center gap-1.5 bg-void border text-[10px] sm:text-[11px] uppercase tracking-wider px-3 h-[32px] rounded-sm transition-all whitespace-nowrap cursor-pointer ${npcSel ? 'border-terminal text-terminal bg-terminal/5 animate-pulse' : 'border-terminal/30 text-terminal/60 hover:text-terminal hover:bg-terminal/5'}`}
-                    title="Add highlighted place to the location ledger and set it as current (or just set current if it exists)"
-                >
-                    <MapPin size={13} />
-                    Add Place
-                </button>
-
-                {activeCampaignId && (
-                    <CreateTroubleButton provider={activeProvider} />
-                )}
                 {activeCampaignId && (
                     <ArcInjectorButton />
                 )}
