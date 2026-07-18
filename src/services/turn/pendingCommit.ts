@@ -50,6 +50,21 @@ export function getCachedSwipePayload(): OpenAIMessage[] | null {
     return pendingSnapshot?.cachedPayload ?? null;
 }
 
+/** After a continue merges text into the pending message, refresh the snapshot's
+ *  frozen copy of that message so the commit-time importance rater sees the
+ *  merged text (snapshot.messages holds stale object refs otherwise). */
+export function refreshPendingSnapshotMessage(messageId: string, patch: Partial<ChatMessage>): void {
+    if (!pendingSnapshot) return;
+    const idx = pendingSnapshot.messages.findIndex(m => m.id === messageId);
+    if (idx === -1) return;
+    pendingSnapshot = {
+        ...pendingSnapshot,
+        messages: pendingSnapshot.messages.map(m =>
+            m.id === messageId ? { ...m, ...patch } : m
+        ),
+    };
+}
+
 // ── Find the latest GM message with a pending commit ───────────────────
 // mainApp stamps sceneId on committed messages (WO-F) instead of inserting a
 // scene-marker system message. So the scan stops at a message with sceneId set

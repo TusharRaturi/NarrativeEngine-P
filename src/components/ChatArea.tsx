@@ -9,6 +9,7 @@ import { LootRollModal } from './chat/LootRollModal';
 import { DiceRollModal } from './chat/DiceRollModal';
 import { RegenerateSheet } from './chat/RegenerateSheet';
 import { useSwipeVariants } from './hooks/useSwipeVariants';
+import { useSceneContinue } from './hooks/useSceneContinue';
 import { uid } from '../utils/uid';
 import type { InventoryProposal, InventoryItem, InventoryItemCategory } from '../types';
 import { set } from 'idb-keyval';
@@ -148,6 +149,7 @@ export function ChatArea() {
     }, [messages]);
 
     const swipe = useSwipeVariants(pendingMessageId);
+    const sceneContinue = useSceneContinue(pendingMessageId);
     const [swipeSheetMessageId, setSwipeSheetMessageId] = useState<string | null>(null);
 
     const deepArmed = useAppStore(s => s.deepArmed);
@@ -670,6 +672,9 @@ export function ChatArea() {
             abortControllerRef.current.abort();
             abortControllerRef.current = null;
         }
+        // Scene Continue v1: abort an in-flight continue too (the global Stop owns
+        // every streaming operation — no second stop button is built).
+        sceneContinue.getAbortController()?.abort();
         setStreaming(false);
         setIsCheckingNotes(false);
         setLoadingStatus(null);
@@ -846,6 +851,13 @@ export function ChatArea() {
                             if (dir === 'prev') swipe.prevSwipe();
                             else swipe.nextSwipe();
                         }}
+                        onSceneContinue={(id) => {
+                            if (id !== pendingMessageId) return;
+                            sceneContinue.runSceneContinue();
+                        }}
+                        sceneContinueLoading={sceneContinue.continueLoading}
+                        swipeGenLoading={swipe.swipeGenLoading}
+                        globalIsStreaming={isStreaming}
                     />
                 ))}
 
@@ -1113,6 +1125,7 @@ export function ChatArea() {
                 getSessionOffset={swipe.getSessionOffset}
                 setSessionOffset={swipe.setSessionOffset}
                 getSwipeTemperature={swipe.getSwipeTemperature}
+                continueLoading={sceneContinue.continueLoading}
             />
         </div>
     );

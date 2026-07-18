@@ -1,6 +1,6 @@
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { Edit2, Trash2, Loader2, Check, X, Volume2, Square, RotateCw, Play, Pause, RefreshCw, Rewind, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Edit2, Trash2, Loader2, Check, X, Volume2, Square, RotateCw, Play, Pause, RefreshCw, Rewind, ChevronLeft, ChevronRight, FastForward } from 'lucide-react';
 import type { ChatMessage, DebugSection, NPCEntry } from '../types';
 import { DebugPayloadView } from './DebugPayloadView';
 import { ToolCallChips } from './chat/ToolCallChips';
@@ -115,6 +115,15 @@ interface MessageBubbleProps {
     onOpenSwipeSheet?: (messageId: string) => void;
     /** Swipe Generation v1: called when the user swipes left/right on the bubble. */
     onSwipeNavigate?: (messageId: string, direction: 'prev' | 'next') => void;
+    /** Scene Continue v1: called when the user taps the Continue button on the latest GM bubble.
+     *  Returns a promise the caller can await if it wants to block on completion. */
+    onSceneContinue?: (messageId: string) => void | Promise<void>;
+    /** Scene Continue v1: true while a continue is streaming into ANY pending GM bubble. */
+    sceneContinueLoading?: boolean;
+    /** Swipe Generation v1: true while a swipe is generating (mutual exclusion — Continue is disabled during swipes). */
+    swipeGenLoading?: boolean;
+    /** Global stream lock — true while a real turn is streaming (mutual exclusion — Continue is disabled during turns). */
+    globalIsStreaming?: boolean;
 }
 
 /**
@@ -164,6 +173,34 @@ function SwipeIndicator({
     );
 }
 
+/**
+ * ContinueButton — extends the latest GM reply in place (a swipe that appends
+ * instead of replaces). Mounted beside the swipe controls; same visibility
+ * condition as the swipe indicator (latest GM message + pending commit).
+ * Disabled while a continue, swipe, or real turn is streaming (mutual exclusion).
+ */
+function ContinueButton({
+    loading,
+    disabled,
+    onClick,
+}: {
+    loading: boolean;
+    disabled: boolean;
+    onClick: () => void;
+}) {
+    return (
+        <button
+            onClick={onClick}
+            disabled={disabled}
+            title="Continue — extend this reply"
+            className="flex items-center gap-1 px-2 py-0.5 rounded text-[10px] uppercase tracking-widest text-text-dim hover:text-ice border border-border/50 hover:border-ice/50 transition-colors disabled:opacity-30 disabled:pointer-events-none"
+        >
+            {loading ? <Loader2 size={12} className="animate-spin" /> : <FastForward size={12} />}
+            <span>Continue</span>
+        </button>
+    );
+}
+
 export function MessageBubble({
     message: msg,
     isStreaming,
@@ -181,6 +218,10 @@ export function MessageBubble({
     onInlineCancel,
     onOpenSwipeSheet,
     onSwipeNavigate,
+    onSceneContinue,
+    sceneContinueLoading,
+    swipeGenLoading,
+    globalIsStreaming,
 }: MessageBubbleProps) {
     let markdownContent: string = typeof msg.displayContent === 'string'
         ? msg.displayContent
@@ -896,11 +937,23 @@ export function MessageBubble({
                 </div>
 
                 {hasSwipeSet(msg) && (
-                    <SwipeIndicator
-                        msg={msg}
-                        onPrev={() => onSwipeNavigate?.(msg.id, 'prev')}
-                        onNext={() => onSwipeNavigate?.(msg.id, 'next')}
-                    />
+                    <div className="mt-2 flex items-center justify-center gap-3 select-none">
+                        <SwipeIndicator
+                            msg={msg}
+                            onPrev={() => onSwipeNavigate?.(msg.id, 'prev')}
+                            onNext={() => onSwipeNavigate?.(msg.id, 'next')}
+                        />
+                        <ContinueButton
+                            loading={!!sceneContinueLoading}
+                            disabled={
+                                !!sceneContinueLoading ||
+                                !!swipeGenLoading ||
+                                !!globalIsStreaming ||
+                                msg.swipeSet?.[msg.swipeActiveIndex ?? 0]?.streaming === true
+                            }
+                            onClick={() => onSceneContinue?.(msg.id)}
+                        />
+                    </div>
                 )}
 
                 {hasDebug && (

@@ -30,6 +30,8 @@ export interface RegenerateSheetProps {
     getSessionOffset: () => number;
     setSessionOffset: (offset: number) => void;
     getSwipeTemperature: () => number;
+    /** Scene Continue v1: Continue must disable swipe Generate (mutual exclusion — wire both directions). */
+    continueLoading?: boolean;
 }
 
 export function RegenerateSheet({
@@ -42,6 +44,7 @@ export function RegenerateSheet({
     getSessionOffset,
     setSessionOffset,
     getSwipeTemperature,
+    continueLoading = false,
 }: RegenerateSheetProps) {
     // Subscribe to the message directly so the sheet re-renders when the
     // store's swipeSet / content / swipeActiveIndex change.
@@ -69,7 +72,7 @@ export function RegenerateSheet({
     const baseTemp = activePreset?.sampling?.temperature ?? 0.7;
     const currentTemp = getSwipeTemperature();
     const isStreaming = swipeSet?.[currentIdx]?.streaming === true;
-    const generating = swipeGenLoading || isStreaming;
+    const generating = swipeGenLoading || isStreaming || continueLoading;
 
     const handleBackdropClick = () => {
         if (Date.now() - openedAtRef.current < 350) return;
