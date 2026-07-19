@@ -669,13 +669,17 @@ export function openArchive(campaignId, callback) {
  * Archive semantic candidates. Short-circuits to { sceneIds: [], pending: true }
  * if the model is cold-loading or a bulk archive embed is in flight — exactly
  * as the original route did. The client falls back to lexical retrieval.
+ *
+ * `body.scopeSceneIds` (WO-10): optional array of scene IDs to restrict recall
+ * to. Forwarded to `searchArchiveCandidates` → `searchArchive` as `opts.scopeIds`.
+ * Absent / null / empty / non-array → unscoped (existing callers unaffected).
  */
 export async function archiveSemanticCandidates(campaignId, body) {
     if (!isModelReady() || isJobRunning(campaignId, 'archive')) {
         return { sceneIds: [], pending: true };
     }
-    const { query, queries, limit, diversity = true } = body;
-    const sceneIds = await searchArchiveCandidates(campaignId, { query, queries, limit, diversity });
+    const { query, queries, limit, diversity = true, scopeSceneIds } = body;
+    const sceneIds = await searchArchiveCandidates(campaignId, { query, queries, limit, diversity, scopeSceneIds });
     return { sceneIds };
 }
 

@@ -190,7 +190,7 @@ export async function runTurn(
 
     // ─── Context Gathering (parallel: archive, timeline, recommender, lore, pinned chapters) ───
     const {
-        sceneNumber, archiveRecall, recommendedNPCNames, timelineEvents, relevantLore, inventoryCategories, profileFields, deepContextSummary, semanticFactText, relevantRules, rulesManifest,
+        sceneNumber, archiveRecall, recommendedNPCNames, timelineEvents, relevantLore, inventoryCategories, profileFields, deepContextSummary, semanticFactText, relevantRules, rulesManifest, elevatedScenes, slottedRagSnippets,
     } = await gatherContext(state, finalInput, {
         chapters: state.chapters,
         pinnedChapterIds: state.pinnedChapterIds,
@@ -318,6 +318,8 @@ export async function runTurn(
         state.nextTurnOocBrief,
         watchdogNudge,
         directorBrief ?? undefined,
+        elevatedScenes,
+        slottedRagSnippets,
     );
 
     const payload = payloadResult.messages;

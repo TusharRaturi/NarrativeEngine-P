@@ -112,6 +112,16 @@ export type AppSettings = {
     lodSummaryChapters?: number;     // how many recent sealed chapters render at summary tier; default 7
     lodImportanceBonus?: number;     // effective-age bonus when a chapter has any importance ≥ 8 scene; default 2
 
+    // WO-11: Dynamic Elevation — when the player references a synopsis-tier memory,
+    // its scenes surface verbatim below the cache boundary for that turn only.
+    // Optional with migrated default; old campaigns hydrate undefined → 2.
+    lodElevateScenes?: number;       // max synopsis-tier scenes to elevate per turn; default 2
+
+    // WO-12: Slotted RAG — synopsis-tier scenes with search hits that did NOT get
+    // elevated contribute one-line verbatim snippets, witness-filtered. Optional
+    // with migrated default; old campaigns hydrate undefined → 2.
+    lodSlottedMaxPerScene?: number;  // max snippet lines per slotted-RAG scene; default 2
+
     // Two-tier providers (new) — reusable endpoint configs referenced by preset *AIProviderId
     providers: LLMProvider[];
 

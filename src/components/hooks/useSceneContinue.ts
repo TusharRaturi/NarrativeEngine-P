@@ -347,6 +347,10 @@ async function buildFallbackPayload(opts: {
             undefined,   // plannerEventTypes — recomputed inside buildWorld
             store.locationLedger,
             undefined,   // nextTurnOocBrief — continue has none
+            undefined,   // watchdogNudge — not wired for scene-continue
+            undefined,   // directorBrief — not wired for scene-continue
+            gathered.elevatedScenes,
+            gathered.slottedRagSnippets,
         );
 
         return { basePayload: payloadResult.messages, directive: '' };

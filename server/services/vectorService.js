@@ -84,14 +84,20 @@ export async function embedAndStoreLore(campaignId, loreId, text) {
  *
  * If `queries` is a non-empty array, runs each query and unions the sceneIds
  * into a deduplicated array. Otherwise runs the single `query`.
+ *
+ * `scopeSceneIds` (WO-10): optional array of scene IDs to restrict recall to.
+ * Forwarded as `opts.scopeIds` to `searchArchive`; null/empty/absent → unscoped
+ * (existing callers unaffected). The scope filter is additive on the search
+ * function — see `createSearchFn` in `vectorStore.js` for the SQL IN / fallback
+ * implementation.
  */
-export async function searchArchiveCandidates(campaignId, { query, queries, limit, diversity = true }) {
+export async function searchArchiveCandidates(campaignId, { query, queries, limit, diversity = true, scopeSceneIds } = {}) {
     if (queries && Array.isArray(queries) && queries.length > 0) {
         const allSceneIds = new Set();
         for (const q of queries) {
             if (!q?.trim()) continue;
             const embedding = await embedText(q);
-            const results = searchArchive(campaignId, embedding, limit || 20, diversity);
+            const results = searchArchive(campaignId, embedding, limit || 20, diversity, { scopeIds: scopeSceneIds });
             for (const r of results) allSceneIds.add(r.sceneId);
         }
         console.log(`[VectorStore] archive candidates for ${queries.length} queries: [${[...allSceneIds].join(', ')}]`);
@@ -99,7 +105,7 @@ export async function searchArchiveCandidates(campaignId, { query, queries, limi
     }
     if (!query?.trim()) return [];
     const embedding = await embedText(query);
-    const results = searchArchive(campaignId, embedding, limit || 20, diversity);
+    const results = searchArchive(campaignId, embedding, limit || 20, diversity, { scopeIds: scopeSceneIds });
     console.log(`[VectorStore] archive candidates for "${query.slice(0, 50)}": [${results.map(r => r.sceneId).join(', ')}]`);
     return results.map(r => r.sceneId);
 }

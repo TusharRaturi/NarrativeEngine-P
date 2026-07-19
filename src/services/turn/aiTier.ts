@@ -8,7 +8,9 @@ export type TierFeature =
   | 'sceneStakesClassify'
   | 'heartbeatTick' | 'timeskipRun'
   | 'arcTick' | 'arcSpawn'
-  | 'directorBrief';
+  | 'directorBrief'
+  | 'lodDynamicElevation'
+  | 'lodSlottedRag';
 
 const MATRIX: Record<AiTier, Record<TierFeature, boolean>> = {
     lite: {
@@ -20,6 +22,8 @@ const MATRIX: Record<AiTier, Record<TierFeature, boolean>> = {
         heartbeatTick: false, timeskipRun: false,
         arcTick: false, arcSpawn: false,
         directorBrief: false,
+        lodDynamicElevation: false,
+        lodSlottedRag: false,
     },
     pro: {
         introEngine: false, planner: true, expandQuery: false, reranker: false, archiveFunnel: true,
@@ -30,6 +34,8 @@ const MATRIX: Record<AiTier, Record<TierFeature, boolean>> = {
         heartbeatTick: true, timeskipRun: true,
         arcTick: true, arcSpawn: true,
         directorBrief: true,
+        lodDynamicElevation: true,
+        lodSlottedRag: false,
     },
     max: {
         introEngine: true, planner: true, expandQuery: true, reranker: true, archiveFunnel: true,
@@ -40,6 +46,8 @@ const MATRIX: Record<AiTier, Record<TierFeature, boolean>> = {
         heartbeatTick: true, timeskipRun: true,
         arcTick: true, arcSpawn: true,
         directorBrief: true,
+        lodDynamicElevation: true,
+        lodSlottedRag: true,
     },
 };
 

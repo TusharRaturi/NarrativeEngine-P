@@ -196,13 +196,34 @@ export const storeArchiveEmbedding = createStoreFn('archive_vss', 'scene_id', 's
 export const storeLoreEmbedding = createStoreFn('lore_vss', 'lore_id', 'lore');
 export const storeRulesEmbedding = createStoreFn('rules_vss', 'rule_id', 'rule');
 
+// ─── Scoped vector search (WO-10) ───────────────────────────────────────────
+// Over-fetch cap for the scoped-search fallback path. sqlite-vec vec0 restricts
+// auxiliary WHERE clauses on KNN queries; when the `IN (...)` scope constraint
+// is rejected, we over-fetch (limit * 4, capped here) and JS-filter to scopeIds.
+// The cap bounds the worst-case row count pulled back before filtering.
+const SCOPE_FALLBACK_OVERFETCH_CAP = 64;
+
+/**
+ * Normalize the optional `scopeIds` opt. Returns null when no scope is requested
+ * (missing, non-array, or empty after filtering to non-empty strings) so the
+ * search function takes the unchanged unscoped path. A degenerate empty array
+ * is treated as "no scope" (returns all) — the additive no-op reading per WO-10
+ * invariant 8 (existing callers unaffected).
+ */
+function normalizeScopeIds(scopeIds) {
+    if (scopeIds === undefined || scopeIds === null) return null;
+    if (!Array.isArray(scopeIds)) return null;
+    const filtered = scopeIds.filter(s => typeof s === 'string' && s.length > 0);
+    return filtered.length > 0 ? filtered : null;
+}
+
 // `applyMmr` is fixed per search type at construction time. archive + lore are
 // diversified (near-duplicate scenes/lore are redundant); rules are NOT — rule
 // chunks aren't redundant, and diversity-reranking could evict the one rule a
 // turn needs in favour of a "more different" but less relevant one. searchRules
 // is built with applyMmr=false and ignores the `diversity` flag entirely.
 function createSearchFn(table, idCol, resultKey, itemType, applyMmr) {
-    return (campaignId, queryEmbedding, limit, diversity = true) => {
+    return (campaignId, queryEmbedding, limit, diversity = true, opts = {}) => {
         if (!db) return [];
         const useMmr = applyMmr && diversity !== false;
         // Pull a wider candidate pool than the final limit so MMR has room to
@@ -210,13 +231,46 @@ function createSearchFn(table, idCol, resultKey, itemType, applyMmr) {
         const poolSize = useMmr ? Math.max(limit, MMR_MIN_POOL, limit * 3) : limit;
         const cols = useMmr ? `${idCol}, distance, embedding` : `${idCol}, distance`;
         try {
-            const rows = db.prepare(`
-                SELECT ${cols}
-                FROM ${table}
-                WHERE embedding MATCH ? AND campaign_id = ?
-                ORDER BY distance
-                LIMIT ?
-            `).all(queryEmbedding, campaignId, poolSize);
+            let rows;
+            const scopeIds = normalizeScopeIds(opts.scopeIds);
+            if (scopeIds) {
+                // Scoped path (WO-10): add an `AND {idCol} IN (...)` constraint to
+                // the KNN query, parameterized. sqlite-vec vec0 restricts auxiliary
+                // WHERE clauses on KNN queries; if this throws, fall back below.
+                try {
+                    const placeholders = scopeIds.map(() => '?').join(',');
+                    rows = db.prepare(`
+                        SELECT ${cols}
+                        FROM ${table}
+                        WHERE embedding MATCH ? AND campaign_id = ? AND ${idCol} IN (${placeholders})
+                        ORDER BY distance
+                        LIMIT ?
+                    `).all(queryEmbedding, campaignId, ...scopeIds, poolSize);
+                } catch (scopeErr) {
+                    // sqlite-vec rejected the IN constraint — over-fetch (limit * 4,
+                    // cap 64) and JS-filter to scopeIds. The fallback query's own
+                    // errors propagate to the outer catch.
+                    console.warn(`[VectorStore] ${table} scoped search (SQL IN) failed, falling back to over-fetch: ${scopeErr.message}`);
+                    const overFetch = Math.min(limit * 4, SCOPE_FALLBACK_OVERFETCH_CAP);
+                    rows = db.prepare(`
+                        SELECT ${cols}
+                        FROM ${table}
+                        WHERE embedding MATCH ? AND campaign_id = ?
+                        ORDER BY distance
+                        LIMIT ?
+                    `).all(queryEmbedding, campaignId, overFetch);
+                    const scopeSet = new Set(scopeIds);
+                    rows = rows.filter(r => scopeSet.has(r[idCol]));
+                }
+            } else {
+                rows = db.prepare(`
+                    SELECT ${cols}
+                    FROM ${table}
+                    WHERE embedding MATCH ? AND campaign_id = ?
+                    ORDER BY distance
+                    LIMIT ?
+                `).all(queryEmbedding, campaignId, poolSize);
+            }
             // Filter out stale embeddings (version mismatch) and unversioned embeddings (no meta entry)
             const currentVersion = EMBEDDING_VERSION;
             const staleIds = new Set();

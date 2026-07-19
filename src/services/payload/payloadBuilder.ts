@@ -9,6 +9,8 @@ import { buildHistory } from './history';
 import { buildPinnedMemoriesBlock } from './pinnedMemories';
 import { formatAskGmBrief } from '../ooc/askGmHandoff';
 import { countTokens } from '../infrastructure/tokenizer';
+import type { ElevatedScene } from '../archive-memory/dynamicElevation';
+import type { SlottedRagSnippet } from '../archive-memory/slottedRag';
 
 export function buildPayload(
     settings: AppSettings,
@@ -49,13 +51,20 @@ export function buildPayload(
      *  Supersedes `watchdogNudge` (the deterministic nudge is omitted when the Brief
      *  is present — the Brief carries the same intent with LLM-authored directives). */
     directorBrief?: string,
+    /** WO-11: synopsis-tier scenes elevated verbatim below the cache boundary for
+     *  this turn only. Each carries a chapterId for the labeled rendering in world.ts. */
+    elevatedScenes?: ElevatedScene[],
+    /** WO-12: Slotted RAG — one-line snippets from synopsis-tier scenes that had
+     *  search hits but did NOT get elevated. Reuses WO-11's scoped search results
+     *  (one search, two consumers); no second vector search. Witness-filtered. */
+    slottedRagSnippets?: SlottedRagSnippet[],
 ): { messages: OpenAIMessage[]; trace?: PayloadTrace[]; debugSections?: DebugSection[] } {
     const isDebug = settings.debugMode === true;
     const limit = settings.contextLimit || 8192;
     const collector = createTraceCollector(isDebug);
     const { rulesBudget, budgetMap } = computeBudgets(limit, settings.rulesBudgetPct, !!deepContextSummary);
     const { stableContent, stableTokens, retrievedRulesContent } = buildStable({ settings, context, relevantRules, rulesManifest, rulesBudget, budgetStable: budgetMap.stable, collector });
-    const { worldContent, currentWorldTokens, divergenceContent, divergenceTokens, plannerEventTypes: resolvedEventTypes } = buildWorld({ history, userMessage, condensedUpToIndex, relevantLore, npcLedger, archiveRecall, recommendedNPCNames, semanticFactText, archiveIndex, timelineEvents, deepContextSummary, divergenceRegister, chapters, onStageNpcIds, loreRaw: context.loreRaw, agencyDigest: context.agencyDigest, arcDigest: context.arcDigest, budgetWorld: budgetMap.world, npcBudgetFloor: budgetMap.npc, plannerEventTypes, matureMode: settings.matureMode, isDebug, collector });
+    const { worldContent, currentWorldTokens, divergenceContent, divergenceTokens, plannerEventTypes: resolvedEventTypes } = buildWorld({ history, userMessage, condensedUpToIndex, relevantLore, npcLedger, archiveRecall, recommendedNPCNames, semanticFactText, archiveIndex, timelineEvents, deepContextSummary, divergenceRegister, chapters, onStageNpcIds, loreRaw: context.loreRaw, agencyDigest: context.agencyDigest, arcDigest: context.arcDigest, budgetWorld: budgetMap.world, npcBudgetFloor: budgetMap.npc, plannerEventTypes, matureMode: settings.matureMode, isDebug, collector, elevatedScenes, slottedRagSnippets });
     const { volatileContent, volatileTokens } = buildVolatile({ context, inventoryCategories, profileFields, budgetVolatile: budgetMap.volatile, collector, plannerEventTypes: resolvedEventTypes, userMessage, history, npcLedger, locationLedger });
     const fitted = buildHistory({
         history,

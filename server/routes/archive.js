@@ -99,7 +99,38 @@ export function createArchiveRouter() {
     }));
 
     router.post('/api/campaigns/:id/archive/semantic-candidates', wrapAsync(async (req, res) => {
-        res.json(await svc.archiveSemanticCandidates(req.params.id, req.body));
+        // WO-10: optional scene-ID scope. Validate up-front so the service layer
+        // receives a clean array or undefined. Non-strings and empties are dropped;
+        // an over-cap array is rejected with 400. Existing callers (no scopeSceneIds
+        // field, or an empty array) pass through unchanged (unscoped).
+        // WO-11b Correction 2: the cap is 4096 (was 256). Chapters auto-seal at 25
+        // scenes, so eleven synopsis chapters already exceed the old 256 cap and
+        // silently reduced WO-11 elevation to an empty result after a 400. 4096
+        // supports ~160 full 25-scene synopsis chapters; the local sqlite-vec
+        // v0.1.9 driver reports MAX_VARIABLE_NUMBER=32766, so the primary SQL `IN`
+        // path has ample parameter headroom. Drivers that reject the constraint
+        // still use the existing over-fetch fallback.
+        const SCOPE_SCENE_IDS_MAX = 4096;
+        const rawScope = req.body?.scopeSceneIds;
+        let scopeSceneIds;
+        if (rawScope !== undefined && rawScope !== null) {
+            if (!Array.isArray(rawScope)) {
+                return res.status(400).json({ error: 'scopeSceneIds must be an array of strings' });
+            }
+            // Tolerant filter: keep only non-empty strings. A degenerate empty array
+            // (or all-empty) collapses to undefined → unscoped (additive no-op).
+            const cleaned = rawScope.filter(s => typeof s === 'string' && s.length > 0);
+            if (cleaned.length > SCOPE_SCENE_IDS_MAX) {
+                return res.status(400).json({ error: `scopeSceneIds length cap is ${SCOPE_SCENE_IDS_MAX}` });
+            }
+            scopeSceneIds = cleaned.length > 0 ? cleaned : undefined;
+        }
+        // Always rebuild the body so a collapsed-to-undefined scope is NOT
+        // forwarded as the original empty array (which would reach searchArchive
+        // as opts.scopeIds: [] — harmless due to normalizeScopeIds, but the
+        // route's contract is to forward a clean scope or none at all).
+        const body = { ...req.body, scopeSceneIds };
+        res.json(await svc.archiveSemanticCandidates(req.params.id, body));
     }));
 
     router.post('/api/campaigns/:id/lore/semantic-candidates', wrapAsync(async (req, res) => {

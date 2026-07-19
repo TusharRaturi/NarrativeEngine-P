@@ -6,6 +6,8 @@ import { minifyLoreChunk, minifyNPC } from '../turn/contextMinifier';
 import { resolveTimeline, formatResolvedForContext } from '../campaign-state/timelineResolver';
 import { renderRegisterForPayload } from '../campaign-state/divergenceRegister';
 import { isKnownToAnyOnStage, parseKnownByToken } from '../campaign-state/knowledgeScope';
+import { dedupElevatedScenes, type ElevatedScene } from '../archive-memory/dynamicElevation';
+import { renderSlottedRagBlock, type SlottedRagSnippet } from '../archive-memory/slottedRag';
 import type { TraceCollector } from './traceCollector';
 
 const RECENT_SCENE_WINDOW = 3;      // mobile used 2; desktop can see a touch deeper
@@ -130,6 +132,13 @@ export function buildWorld(opts: {
     matureMode?: boolean;
     isDebug: boolean;
     collector: TraceCollector;
+    // WO-11: synopsis-tier scenes surfaced verbatim below the cache boundary
+    // for this turn only. Each carries a chapterId for the labeled rendering.
+    elevatedScenes?: ElevatedScene[];
+    // WO-12: Slotted RAG — one-line snippets from synopsis-tier scenes that had
+    // search hits but did NOT get elevated (WO-11). Reuses WO-11's ranked IDs —
+    // no second vector search. Witness-filtered, capped at 4 scenes / N per scene.
+    slottedRagSnippets?: SlottedRagSnippet[];
 }): { worldContent: string; currentWorldTokens: number; divergenceContent: string; divergenceTokens: number; plannerEventTypes: SceneEventType[] } {
     const {
         history,
@@ -155,6 +164,8 @@ export function buildWorld(opts: {
         matureMode,
         isDebug,
         collector,
+        elevatedScenes,
+        slottedRagSnippets,
     } = opts;
 
     // --- 3. Gather trimmable World Context (Medium Priority) ---
@@ -164,6 +175,10 @@ export function buildWorld(opts: {
     // WO-G: derive plannerEventTypes — explicit param wins; otherwise derive from
     // recent scene events (the desktop adaptation of mobile's turn-time planner).
     let plannerEventTypes: SceneEventType[] = plannerEventTypesOpt ?? [];
+
+    // WO-11b Correction 1: Dynamic Elevation renders independently of ordinary recall.
+    // The post-filter regular-recall IDs feed elevation dedup; empty set when no recall.
+    let regularRecallIds = new Set<string>();
 
     // Archive Recall
     if (archiveRecall && archiveRecall.length > 0) {
@@ -206,6 +221,9 @@ export function buildWorld(opts: {
             worldBlocks.push({ source: 'Archive Recall', content: text, tokens: countTokens(text), reason: `Verbatim history (${filteredRecall.length} scenes)` });
         }
 
+        // Post-filter regular-recall IDs available to elevation dedup.
+        regularRecallIds = new Set(filteredRecall.map(s => s.sceneId));
+
         // Recent Scene Events block rendering
         const recentScenes = archiveRecall.slice(-RECENT_SCENE_WINDOW);
         const allEvents: SceneEvent[] = [];
@@ -247,6 +265,95 @@ export function buildWorld(opts: {
                     reason: `${includedEvents.length} events from last ${RECENT_SCENE_WINDOW} scene(s)`,
                 });
             }
+        }
+    }
+
+    // WO-11 / WO-11b: Dynamic Elevation — synopsis-tier scenes referenced this turn
+    // surface verbatim below the cache boundary, labeled by chapter. Per WO-11b
+    // Correction 1, this renders independently of ordinary recall — evaluated
+    // whenever elevatedScenes is non-empty, regardless of whether archiveRecall is
+    // undefined, [], or non-empty. Dedup uses the post-filter regular-recall IDs
+    // (empty set when no regular recall rendered). Perceptual filter: elevated
+    // scenes are subject to the same witness semantics as regular recall — broadcast
+    // scenes (no witness data) always pass; witnessed scenes only if at least one
+    // witness is in the active/on-stage NPC set. An unwitnessed elevated scene must
+    // not surface merely because ordinary recall is empty. The scope was already
+    // restricted to synopsis-tier scenes at gather time (computeSynopsisScope), so
+    // the LOD history from WO-09 is never touched — elevation is a new path beside
+    // it, not a modification. The elevated block stays a worldBlocks entry with
+    // source: 'Dynamic Elevation' so it rides below the cache boundary (never in
+    // history, stable, pinned, divergence, or a system message).
+    if (elevatedScenes && elevatedScenes.length > 0) {
+        let elevated = dedupElevatedScenes(elevatedScenes, regularRecallIds);
+
+        // Perceptual filter — mirrors the archiveRecall filter above. Applies in
+        // every shape (including when ordinary recall is empty) so an unwitnessed
+        // elevated scene never leaks through.
+        if (archiveIndex && npcLedger && archiveIndex.some(e => e.witnesses && e.witnesses.length > 0)) {
+            const activeNpcIds = new Set(npcLedger.filter(n => !n.archived).map(n => n.id));
+            if (onStageNpcIds) {
+                for (const id of onStageNpcIds) activeNpcIds.add(id);
+            }
+            const sceneWitnessMap = new Map(archiveIndex.map(e => [e.sceneId, e.witnesses]));
+            const before = elevated.length;
+            elevated = elevated.filter(scene => {
+                const witnesses = sceneWitnessMap.get(scene.sceneId);
+                if (!witnesses || witnesses.length === 0) return true; // broadcast
+                return witnesses.some(w => activeNpcIds.has(w));
+            });
+            if (isDebug && before > elevated.length) {
+                collector.addTrace({ source: 'Dynamic Elevation', classification: 'world_context', tokens: 0, reason: `Perceptual filter removed ${before - elevated.length} elevated scene(s) (not witnessed by active NPCs)`, included: false });
+            }
+        }
+
+        if (elevated.length > 0) {
+            // Group by chapterId so each chapter's scenes render under one labeled section.
+            const byChapter = new Map<string, ArchiveScene[]>();
+            for (const s of elevated) {
+                const arr = byChapter.get(s.chapterId) ?? [];
+                arr.push(s);
+                byChapter.set(s.chapterId, arr);
+            }
+            const sections: string[] = [];
+            for (const [chapterId, scenes] of byChapter) {
+                const body = scenes.map(s => `[PAST SCENE]\n${s.content}`).join('\n\n');
+                sections.push(`[ELEVATED MEMORY — Chapter ${chapterId}]\n${body}\n[END ELEVATED MEMORY]`);
+            }
+            const text = sections.join('\n\n');
+            // WO-11 §5: trace reason carries the elevated scene IDs so the debug
+            // panel shows what was surfaced. The scoped search endpoint returns
+            // ranked scene IDs but not explicit score values (cosine similarity
+            // is internal to sqlite-vec); the order IS the ranking.
+            worldBlocks.push({
+                source: 'Dynamic Elevation',
+                content: text,
+                tokens: countTokens(text),
+                reason: `Synopsis-tier scenes elevated verbatim (${elevated.length} scene(s) across ${byChapter.size} chapter(s)); IDs: ${elevated.map(s => s.sceneId).join(', ')} (ranked by cosine similarity; scores not exposed by endpoint)`,
+            });
+        }
+    }
+
+    // WO-12: Slotted RAG — synopsis-tier scenes with search hits that did NOT get
+    // elevated contribute one-line verbatim snippets, witness-filtered. Reuses
+    // WO-11's scoped search results (one search, two consumers); no second vector
+    // search. The witness filter already ran in buildSlottedRagSnippets, so every
+    // snippet here is already witness-cleared (broadcast scenes pass; witnessed
+    // scenes pass only if an on-stage/active NPC saw them). Renders the
+    // [FABLE-AUTHORED] [ARCHIVE FLASHES] block, labeled per scene with the chapter
+    // id and witness names. Empty snippets → no block emitted (renderSlottedRagBlock
+    // returns ''). Stays a worldBlocks entry with source: 'Slotted RAG' so it rides
+    // below the cache boundary (never in history, stable, pinned, divergence, or a
+    // system message). Per invariant 6, the witness filter is the core of this WO —
+    // scenes not witnessed by any on-stage NPC are dropped at snippet-build time.
+    if (slottedRagSnippets && slottedRagSnippets.length > 0) {
+        const text = renderSlottedRagBlock(slottedRagSnippets);
+        if (text) {
+            worldBlocks.push({
+                source: 'Slotted RAG',
+                content: text,
+                tokens: countTokens(text),
+                reason: `Synopsis-tier snippet flashes (${slottedRagSnippets.length} line(s) across ${new Set(slottedRagSnippets.map(s => s.sceneId)).size} scene(s)); reuses WO-11 scoped search results`,
+            });
         }
     }
 

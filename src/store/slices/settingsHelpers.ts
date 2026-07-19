@@ -106,6 +106,8 @@ export const defaultSettings: AppSettings = {
     ttsVoice: 'af_heart',
     lodSummaryChapters: 7,
     lodImportanceBonus: 2,
+    lodElevateScenes: 2,
+    lodSlottedMaxPerScene: 2,
 };
 
 export function applyTheme(theme: 'light' | 'dark' | 'system') {
@@ -324,6 +326,8 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         ttsVoice: (raw.ttsVoice as string) ?? 'af_heart',
         lodSummaryChapters: (raw.lodSummaryChapters as number) ?? 7,
         lodImportanceBonus: (raw.lodImportanceBonus as number) ?? 2,
+        lodElevateScenes: (raw.lodElevateScenes as number) ?? 2,
+        lodSlottedMaxPerScene: (raw.lodSlottedMaxPerScene as number) ?? 2,
     };
 }
 

@@ -7,6 +7,8 @@ import { gatherRecommender } from '../context-gatherer/recommenderGather';
 import { gatherLoreAndRules } from '../context-gatherer/loreRulesGather';
 import { injectPinnedChapters } from '../context-gatherer/pinnedChaptersGather';
 import { gatherDeepSearch, gatherSemanticFacts } from '../context-gatherer/deepSearchGather';
+import { gatherDynamicElevation, type ElevatedScene } from '../archive-memory/dynamicElevation';
+import { gatherSlottedRag, type SlottedRagSnippet } from '../archive-memory/slottedRag';
 import { beginGatherStage, endGatherStage, clearGatherStages } from './gatherProgress';
 import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 import type { LoreChunk } from '../../types';
@@ -20,6 +22,7 @@ const STAGE_LABELS: Record<string, string> = {
     'recommender': 'Selecting context',
     'lore-rules': 'Loading lore & rules',
     'deep-search': 'Deep archive search',
+    'dynamic-elevation': 'Elevating memories',
 };
 
 export type GatheredContext = {
@@ -36,6 +39,14 @@ export type GatheredContext = {
     semanticFactText?: string;
     relevantRules?: LoreChunk[];
     rulesManifest?: string;
+    // WO-11: synopsis-tier scenes surfaced verbatim below the cache boundary for
+    // this turn only. Attached chapterId for the labeled rendering in world.ts.
+    elevatedScenes?: ElevatedScene[];
+    elevatedSceneRankedIds?: string[];
+    // WO-12: Slotted RAG — one-line snippets from synopsis-tier scenes that had
+    // search hits but did NOT get elevated (WO-11). Reuses WO-11's ranked IDs —
+    // no second vector search. Witness-filtered, capped at 4 scenes / N per scene.
+    slottedRagSnippets?: SlottedRagSnippet[];
 };
 
 type GatherDeps = {
@@ -115,6 +126,15 @@ export async function gatherContext(
         return gatherLoreAndRules(state, semanticCandidates);
     })());
 
+    // ─── Dynamic Elevation (WO-11) — depends on state only (synopsis scope
+    // computation re-derives the LOD tier map from state.chapters). Runs in
+    // parallel with the other stages; timeout/failure → empty, never blocks.
+    // Per spec item 2: expanded queries are not reachable from this layer
+    // (gatherSemanticCandidates does query expansion internally but does not
+    // expose the expanded queries). Uses the raw user message as the single
+    // query. Reported in the WO-11 report.
+    const elevationPromise = timed('dynamic-elevation', gatherDynamicElevation(state, { chapters: deps.chapters }, signal));
+
     // Timeline events — from state, used directly
     const timelineEvents: TimelineEvent[] = state.timeline || [];
 
@@ -125,7 +145,7 @@ export async function gatherContext(
     // Individual calls have their own (tighter) timeouts, so this is just a backstop.
     const CONTEXT_GATHER_TIMEOUT_MS = AI_CALL_TIMEOUT_MS;
     await Promise.race([
-        Promise.all([timelinePromise, archiveRecallPromise, recommenderPromise, loreRulesPromise, plannerPromise]),
+        Promise.all([timelinePromise, archiveRecallPromise, recommenderPromise, loreRulesPromise, plannerPromise, elevationPromise]),
         new Promise<void>((resolve) => setTimeout(() => {
             console.warn('[ContextGatherer] Context gather timeout — proceeding with partial results');
             resolve();
@@ -137,6 +157,20 @@ export async function gatherContext(
     const { relevantLore, relevantRules, rulesManifest } = await loreRulesPromise.catch(() => ({ relevantLore: undefined, relevantRules: [], rulesManifest: '' }));
     const semanticCandidates = await semanticPromise;
     const plannerSceneIds = await plannerPromise;
+    // WO-11: never let elevation failure block the turn — default to empty.
+    const elevation = await elevationPromise.catch(() => ({ scenes: [] as ElevatedScene[], rankedSceneIds: [] as string[] }));
+
+    // WO-12: Slotted RAG — consume WO-11's scoped search results (one search, two
+    // consumers). Pure computation from the ranked IDs + archive index; no second
+    // vector search. The elevated scene IDs are excluded so only non-elevated hits
+    // contribute snippets. Tier-gated (lodSlottedRag: lite false, pro false, max true).
+    // Failure-safe: returns empty on any missing input; never throws.
+    const elevatedSceneIds = new Set(elevation.scenes.map(s => s.sceneId));
+    const slottedRag = gatherSlottedRag(state, {
+        rankedSceneIds: elevation.rankedSceneIds,
+        elevatedSceneIds,
+        chapters: deps.chapters,
+    });
 
     // ─── Pinned Chapter Injection ───
     archiveRecall = await injectPinnedChapters(
@@ -182,5 +216,8 @@ export async function gatherContext(
         semanticFactText,
         relevantRules,
         rulesManifest,
+        elevatedScenes: elevation.scenes,
+        elevatedSceneRankedIds: elevation.rankedSceneIds,
+        slottedRagSnippets: slottedRag.snippets,
     };
 }
