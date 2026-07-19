@@ -1,60 +1,40 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
 import { X, Plus, Users, LayoutGrid, List, CheckSquare, Upload, Download, BookOpen, Trash2, Search, ArrowDownAZ, ArrowUpZA, Sparkles, Images } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
-import { generateNPCPortrait, updateExistingNPCs } from '../services/chatEngine';
+import { updateExistingNPCs } from '../services/chatEngine';
 import { parseNPCsFromLore } from '../services/lore/loreNPCParser';
-import { downloadImageToLocal, uploadImageToLocal } from '../services/infrastructure/assetService';
 import type { NPCEntry, NPCVisualProfile } from '../types';
 import { DEFAULT_VISUAL_PROFILE } from '../types';
 import { toast } from './Toast';
 import { uid } from '../utils/uid';
+import { filterNPCs, type SortOrder } from '../utils/ledgerFilters';
 
 import { NPCListView } from './npc-ledger/NPCListView';
 import { NPCGalleryView } from './npc-ledger/NPCGalleryView';
 import { NPCEditForm } from './npc-ledger/NPCEditForm';
 import { NPCSuggestionsPanel } from './npc-ledger/NPCSuggestionsPanel';
-import { NPCReviewModal, type NPCReviewAction } from './NPCReviewModal';
-import { runNPCReview, type NPCReviewCandidate, type NPCReviewCancelled } from '../services/npc/npcReview';
+import { NPCReviewModal } from './NPCReviewModal';
+import { useNpcReview } from './hooks/useNpcReview';
+import { useNpcPortraits } from './hooks/useNpcPortraits';
 
 export function NPCLedgerModal() {
-    const { npcLedger, npcLedgerOpen, toggleNPCLedger, addNPC, updateNPC, removeNPC, setNPCLedger, addNPCs, restoreNPC, archiveNPC, archiveIndex, npcSuggestions } = useAppStore();
+    const { npcLedger, npcLedgerOpen, toggleNPCLedger, addNPC, updateNPC, removeNPC, setNPCLedger, addNPCs, restoreNPC, npcSuggestions } = useAppStore();
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [isEditing, setIsEditing] = useState(false);
-    const [populating, setPopulating] = useState<{ done: number; total: number } | null>(null);
 
-    // ── AI NPC review (flags likely non-characters; user decides per entry) ──
-    const [reviewOpen, setReviewOpen] = useState(false);
-    const [reviewRunning, setReviewRunning] = useState(false);
-    const [reviewProgress, setReviewProgress] = useState<{ msg: string; done: number; total: number } | null>(null);
-    const [reviewCandidates, setReviewCandidates] = useState<NPCReviewCandidate[] | null>(null);
-    const [reviewFailedBatches, setReviewFailedBatches] = useState(0);
-    const [reviewActions, setReviewActions] = useState<Record<string, NPCReviewAction>>({});
-    const [reviewError, setReviewError] = useState<string | null>(null);
-    const reviewCancelRef = useRef<NPCReviewCancelled>({ cancelled: false });
     const [viewMode, setViewMode] = useState<'list' | 'gallery'>('list');
-    const [isGeneratingImage, setIsGeneratingImage] = useState(false);
     const [isAIUpdating, setIsAIUpdating] = useState(false);
 
     const [selectMode, setSelectMode] = useState(false);
     const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set());
     const [searchQuery, setSearchQuery] = useState('');
-    const [sortOrder, setSortOrder] = useState<'none' | 'az' | 'za'>('none');
+    const [sortOrder, setSortOrder] = useState<SortOrder>('none');
     const importRef = useRef<HTMLInputElement>(null);
 
-    const displayedNPCs = useMemo(() => {
-        let list = npcLedger;
-        if (searchQuery.trim()) {
-            const q = searchQuery.toLowerCase();
-            list = list.filter(n =>
-                n.name.toLowerCase().includes(q) ||
-                n.aliases?.toLowerCase().includes(q) ||
-                n.faction?.toLowerCase().includes(q)
-            );
-        }
-        if (sortOrder === 'az') return [...list].sort((a, b) => a.name.localeCompare(b.name));
-        if (sortOrder === 'za') return [...list].sort((a, b) => b.name.localeCompare(a.name));
-        return list;
-    }, [npcLedger, searchQuery, sortOrder]);
+    const displayedNPCs = useMemo(() => filterNPCs(npcLedger, searchQuery, sortOrder), [npcLedger, searchQuery, sortOrder]);
+
+    const review = useNpcReview();
+    const portraits = useNpcPortraits();
 
     const [form, setForm] = useState<Partial<NPCEntry>>({
         status: 'Alive', voice: '', personality: '', exampleOutput: '',
@@ -214,112 +194,9 @@ export function NPCLedgerModal() {
     };
 
     // ── Portrait / AI ────────────────────────────────────────────────────
-    const handleGeneratePortrait = async () => {
-        const state = useAppStore.getState();
-        const imageConfig = state.getActiveImageEndpoint();
-        if (!imageConfig || !imageConfig.endpoint) { alert('Image AI endpoint is not configured in Settings.'); return; }
-
-        setIsGeneratingImage(true);
-        try {
-            const vp = form.visualProfile || DEFAULT_VISUAL_PROFILE;
-            const appearanceInfo = form.appearance ? `Legacy Notes: ${form.appearance} ` : '';
-            const styleMap: Record<string, string> = {
-                'Realistic': 'High quality, highly detailed realistic digital painting, fantasy art style, masterpiece',
-                'Anime Realistic': 'Highly detailed anime realistic art style, ala Makoto Shinkai, masterpiece, beautiful lighting',
-                'Anime': 'High quality anime art style, ala Kyoto Animation, crisp lines, masterpiece',
-                'Western RPG': 'Western RPG art style, character portrait, ala Baldur\'s Gate 3, highly detailed digital painting',
-                'Chibi': 'High quality chibi art style, cute, fantasy character portrait, masterpiece'
-            };
-            const prompt = `A profile picture portrait of ONE SINGLE PERSON ONLY with a neutral gray background.The character's face, hair, and middle chest are clearly visible. Solo character, no other people, no split screens, no twins. ${styleMap[vp.artStyle] || styleMap['Realistic']}. Name: ${form.name}. Race: ${vp.race}. Gender: ${vp.gender}. Age: ${vp.ageRange}. Build: ${vp.build}. Hair: ${vp.hairStyle}. Eyes: ${vp.eyeColor}. Skin: ${vp.skinTone}. Clothing: ${vp.clothing}. Distinctive marks: ${vp.distinctMarks}. ${appearanceInfo}`;
-            const url = await generateNPCPortrait(imageConfig, prompt);
-            const localPath = await downloadImageToLocal(url, form.name || 'Unknown');
-            setForm(prev => ({ ...prev, portrait: localPath }));
-            if (!isEditing && form.id) updateNPC(form.id, { portrait: localPath });
-        } catch (error: any) {
-            console.error(error);
-            toast.error(`Portrait generation failed: ${error.message}`);
-        } finally {
-            setIsGeneratingImage(false);
-        }
-    };
-
-    // ── Manual portrait upload (user-selected image from disk) ──
-    const handleUploadPortrait = async (file: File) => {
-        setIsGeneratingImage(true);
-        try {
-            const localPath = await uploadImageToLocal(file, form.name || 'Unknown');
-            setForm(prev => ({ ...prev, portrait: localPath }));
-            if (!isEditing && form.id) updateNPC(form.id, { portrait: localPath });
-            toast.success('Portrait uploaded');
-        } catch (error: any) {
-            console.error(error);
-            toast.error(`Portrait upload failed: ${error.message}`);
-        } finally {
-            setIsGeneratingImage(false);
-        }
-    };
-
-    const generateNPCPortraitForId = async (npc: NPCEntry): Promise<string> => {
-        const state = useAppStore.getState();
-        const imageConfig = state.getActiveImageEndpoint();
-        if (!imageConfig || !imageConfig.endpoint) {
-            throw new Error('Image AI endpoint is not configured in Settings.');
-        }
-        const vp = npc.visualProfile || DEFAULT_VISUAL_PROFILE;
-        const appearanceInfo = npc.appearance ? `Legacy Notes: ${npc.appearance} ` : '';
-        const styleMap: Record<string, string> = {
-            'Realistic': 'High quality, highly detailed realistic digital painting, fantasy art style, masterpiece',
-            'Anime Realistic': 'Highly detailed anime realistic art style, ala Makoto Shinkai, masterpiece, beautiful lighting',
-            'Anime': 'High quality anime art style, ala Kyoto Animation, crisp lines, masterpiece',
-            'Western RPG': 'Western RPG art style, character portrait, ala Baldur\'s Gate 3, highly detailed digital painting',
-            'Chibi': 'High quality chibi art style, cute, fantasy character portrait, masterpiece'
-        };
-        const prompt = `A profile picture portrait of ONE SINGLE PERSON ONLY with a neutral gray background.The character's face, hair, and middle chest are clearly visible. Solo character, no other people, no split screens, no twins. ${styleMap[vp.artStyle] || styleMap['Realistic']}. Name: ${npc.name}. Race: ${vp.race}. Gender: ${vp.gender}. Age: ${vp.ageRange}. Build: ${vp.build}. Hair: ${vp.hairStyle}. Eyes: ${vp.eyeColor}. Skin: ${vp.skinTone}. Clothing: ${vp.clothing}. Distinctive marks: ${vp.distinctMarks}. ${appearanceInfo}`;
-        const url = await generateNPCPortrait(imageConfig, prompt);
-        const localPath = await downloadImageToLocal(url, npc.name || 'Unknown');
-        return localPath;
-    };
-
-    const handlePopulateImages = async () => {
-        const state = useAppStore.getState();
-        const imageConfig = state.getActiveImageEndpoint();
-        if (!imageConfig || !imageConfig.endpoint) {
-            toast.warning('No Image Generation AI configured. Add one in Settings → Presets.');
-            return;
-        }
-        const targets = npcLedger.filter(n => !n.portrait && n.appearance?.trim());
-        const skipped = npcLedger.filter(n => !n.portrait && !n.appearance?.trim()).length;
-        if (targets.length === 0) {
-            toast.warning(skipped > 0 ? `No portraits generated — ${skipped} NPC(s) need an appearance description first.` : 'All NPCs already have a portrait.');
-            return;
-        }
-
-        setPopulating({ done: 0, total: targets.length });
-        let ok = 0;
-        let failed = 0;
-        for (let i = 0; i < targets.length; i++) {
-            const target = targets[i];
-            try {
-                const localPath = await generateNPCPortraitForId(target);
-                updateNPC(target.id, { portrait: localPath });
-                if (selectedId === target.id) {
-                    setForm(prev => ({ ...prev, portrait: localPath }));
-                }
-                ok++;
-            } catch (err) {
-                console.error(`Failed to generate portrait for ${target.name}:`, err);
-                failed++;
-            }
-            setPopulating({ done: i + 1, total: targets.length });
-        }
-        setPopulating(null);
-
-        const parts = [`generated ${ok}`];
-        if (failed) parts.push(`${failed} failed`);
-        if (skipped) parts.push(`${skipped} skipped (no appearance)`);
-        if (failed) toast.warning(`Portraits: ${parts.join(', ')}`);
-        else toast.success(`Portraits: ${parts.join(', ')}`);
-    };
+    const handleGeneratePortrait = () => portraits.generateForForm(form, form.id, isEditing, (patch) => setForm(prev => ({ ...prev, ...patch })));
+    const handleUploadPortrait = (file: File) => portraits.uploadForForm(file, form.name || 'Unknown', form.id, isEditing, (patch) => setForm(prev => ({ ...prev, ...patch })));
+    const handlePopulateImages = () => portraits.populateAll(npcLedger, selectedId, (patch) => setForm(prev => ({ ...prev, ...patch })));
 
     const handleAIUpdate = async () => {
         if (!selectedId || !form.name) return;
@@ -334,7 +211,7 @@ export function NPCLedgerModal() {
                 updateNPC(id, patch);
                 setForm(prev => ({ ...prev, ...patch }));
             });
-        } catch (err: any) {
+        } catch (err: unknown) {
             console.error('[NPC Manual AI Update] Error:', err);
             toast.error('AI update failed for this NPC');
         } finally {
@@ -346,91 +223,6 @@ export function NPCLedgerModal() {
         const npc = npcLedger.find(n => n.id === selectedId);
         if (npc) setForm({ ...npc, visualProfile: npc.visualProfile || { ...DEFAULT_VISUAL_PROFILE } });
         setIsEditing(false);
-    };
-
-    const handleStartReview = () => {
-        const state = useAppStore.getState();
-        const provider = state.getActiveUtilityEndpoint() ?? state.getActiveStoryEndpoint();
-        if (!provider) {
-            setReviewError('No AI endpoint configured.');
-            setReviewOpen(true);
-            return;
-        }
-        setReviewOpen(true);
-        setReviewRunning(true);
-        setReviewProgress(null);
-        setReviewCandidates(null);
-        setReviewFailedBatches(0);
-        setReviewActions({});
-        setReviewError(null);
-        reviewCancelRef.current = { cancelled: false };
-
-        runNPCReview(npcLedger, provider, reviewCancelRef.current, (msg, done, total) => {
-            setReviewProgress({ msg, done, total });
-        }).then(result => {
-            setReviewCandidates(result.candidates);
-            setReviewFailedBatches(result.failedBatches);
-            const defaults: Record<string, NPCReviewAction> = {};
-            for (const c of result.candidates) defaults[c.id] = 'archive';
-            setReviewActions(defaults);
-            setReviewRunning(false);
-            setReviewProgress(null);
-        }).catch(err => {
-            if (err?.message === 'NPC review cancelled.') {
-                setReviewOpen(false);
-                setReviewRunning(false);
-                setReviewProgress(null);
-            } else {
-                setReviewError(err?.message || String(err));
-                setReviewRunning(false);
-                setReviewProgress(null);
-            }
-        });
-    };
-
-    const handleStopReview = () => {
-        reviewCancelRef.current.cancelled = true;
-        setReviewOpen(false);
-        setReviewRunning(false);
-        setReviewProgress(null);
-    };
-
-    const handleCloseReview = () => {
-        if (reviewRunning) return;
-        setReviewOpen(false);
-        setReviewCandidates(null);
-        setReviewActions({});
-        setReviewError(null);
-    };
-
-    const handleApplyReview = async () => {
-        const cands = reviewCandidates ?? [];
-        const archiveIds = cands.filter(c => reviewActions[c.id] === 'archive').map(c => c.id);
-        const deleteIds = cands.filter(c => reviewActions[c.id] === 'delete').map(c => c.id);
-
-        const currentTurn = archiveIndex.length;
-        for (const id of archiveIds) {
-            const cand = cands.find(c => c.id === id);
-            archiveNPC(id, currentTurn, cand?.reason || 'Flagged by NPC review');
-        }
-        for (const id of deleteIds) {
-            removeNPC(id);
-        }
-
-        if (selectedId && (archiveIds.includes(selectedId) || deleteIds.includes(selectedId))) {
-            setSelectedId(null);
-            setIsEditing(false);
-        }
-
-        const removedCount = archiveIds.length + deleteIds.length;
-        if (removedCount) {
-            toast.success(`NPC review: removed ${removedCount} NPC(s)`);
-        }
-
-        setReviewOpen(false);
-        setReviewCandidates(null);
-        setReviewActions({});
-        setReviewError(null);
     };
 
     const missingPortraitCount = npcLedger.filter(n => !n.portrait).length;
@@ -491,8 +283,8 @@ export function NPCLedgerModal() {
                                 <Plus size={14} /> New Record
                             </button>
                             <button
-                                onClick={handleStartReview}
-                                disabled={reviewRunning || npcLedger.length === 0}
+                                onClick={review.startReview}
+                                disabled={review.reviewRunning || npcLedger.length === 0}
                                 className="flex-1 flex items-center justify-center gap-1.5 border border-amber-500/30 rounded text-xs uppercase tracking-wider text-amber-400 hover:bg-amber-500/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer animate-pulse-subtle"
                                 title="Run AI review to flag non-character ledger entries"
                             >
@@ -516,12 +308,12 @@ export function NPCLedgerModal() {
                         {missingPortraitCount > 0 && (
                             <button
                                 onClick={handlePopulateImages}
-                                disabled={!!populating}
+                                disabled={!!portraits.populating}
                                 className="w-full flex items-center justify-center gap-1.5 py-1.5 border border-terminal/30 rounded text-[10px] uppercase tracking-wider text-terminal hover:bg-terminal/10 transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
                             >
                                 <Images size={12} className="shrink-0" />
-                                {populating
-                                    ? `Generating ${populating.done}/${populating.total}…`
+                                {portraits.populating
+                                    ? `Generating ${portraits.populating.done}/${portraits.populating.total}…`
                                     : `Populate Images (${missingPortraitCount})`}
                             </button>
                         )}
@@ -565,7 +357,7 @@ export function NPCLedgerModal() {
                         selectedId={selectedId}
                         isEditing={isEditing}
                         isAIUpdating={isAIUpdating}
-                        isGeneratingImage={isGeneratingImage}
+                        isGeneratingImage={portraits.isGeneratingImage}
                         onEdit={() => setIsEditing(true)}
                         onSave={handleSave}
                         onCancel={handleCancelEdit}
@@ -577,17 +369,20 @@ export function NPCLedgerModal() {
                 </div>
             </div>
             <NPCReviewModal
-                open={reviewOpen}
-                running={reviewRunning}
-                progress={reviewProgress}
-                candidates={reviewCandidates}
-                failedBatches={reviewFailedBatches}
-                actions={reviewActions}
-                error={reviewError}
-                onCancel={handleCloseReview}
-                onStop={handleStopReview}
-                onSetAction={(id, action) => setReviewActions(prev => ({ ...prev, [id]: action }))}
-                onApply={handleApplyReview}
+                open={review.reviewOpen}
+                running={review.reviewRunning}
+                progress={review.reviewProgress}
+                candidates={review.reviewCandidates}
+                failedBatches={review.reviewFailedBatches}
+                actions={review.reviewActions}
+                error={review.reviewError}
+                onCancel={review.closeReview}
+                onStop={review.stopReview}
+                onSetAction={review.setReviewAction}
+                onApply={() => review.applyReview({
+                    selectedId,
+                    onClearedSelection: () => { setSelectedId(null); setIsEditing(false); },
+                })}
             />
         </div>
     );

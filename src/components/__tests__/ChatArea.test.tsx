@@ -340,6 +340,31 @@ describe('ChatArea', () => {
         expect(screen.queryByText('Story AI note armed')).not.toBeInTheDocument();
 
     });
+    it('stop button aborts the in-flight turn (abort controller lifecycle)', async () => {
+        const user = userEvent.setup();
+        let capturedAbort: AbortController | null = null;
+        (runTurn as ReturnType<typeof vi.fn>).mockImplementation(
+            (_state: unknown, callbacks: { setStreaming: (v: boolean) => void }, abortController: AbortController) => {
+                capturedAbort = abortController;
+                callbacks.setStreaming(true);
+                return new Promise(() => {});
+            }
+        );
+        render(<ChatArea />);
+        const textarea = screen.getByPlaceholderText('What do you do?');
+        await user.type(textarea, 'Start a turn{Enter}');
+        const stopBtn = textarea.closest('.flex')?.querySelector('button:last-child') as HTMLButtonElement;
+        // While streaming the send button becomes an enabled stop control (input is empty).
+        await waitFor(() => expect(stopBtn.disabled).toBe(false));
+        expect(capturedAbort).not.toBeNull();
+        expect(capturedAbort!.signal.aborted).toBe(false);
+        await user.click(stopBtn);
+        expect(capturedAbort!.signal.aborted).toBe(true);
+        expect(useAppStore.getState().setPipelinePhase).toHaveBeenCalledWith('idle');
+        // Back to idle: the button is a disabled send control again.
+        await waitFor(() => expect(stopBtn.disabled).toBe(true));
+    });
+
     it('force save writes to IndexedDB', async () => {
         const user = userEvent.setup();
         render(<ChatArea />);

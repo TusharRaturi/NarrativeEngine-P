@@ -1,8 +1,10 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, Plus, MapPin, Trash2, Search, Navigation, Link2 } from 'lucide-react';
+import { X, Plus, MapPin, Trash2, Search, Navigation } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import type { LocationEntry, LocationConnection } from '../types';
 import { LocationSuggestionsPanel } from './location-ledger/LocationSuggestionsPanel';
+import { LocationEditForm } from './location-ledger/LocationEditForm';
+import { filterLocations } from '../utils/ledgerFilters';
 
 function newLocationId(): string {
     return `loc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -45,18 +47,7 @@ export function LocationLedgerModal() {
     const [newConnectionBand, setNewConnectionBand] = useState<'adjacent' | 'short' | 'long'>('short');
     const [newConnectionNote, setNewConnectionNote] = useState('');
 
-    const displayed = useMemo(() => {
-        let list = locationLedger;
-        if (searchQuery.trim()) {
-            const q = searchQuery.toLowerCase();
-            list = list.filter(l =>
-                l.name.toLowerCase().includes(q) ||
-                l.aliases?.toLowerCase().includes(q) ||
-                l.broadLocation?.toLowerCase().includes(q)
-            );
-        }
-        return [...list].sort((a, b) => a.name.localeCompare(b.name));
-    }, [locationLedger, searchQuery]);
+    const displayed = useMemo(() => filterLocations(locationLedger, searchQuery), [locationLedger, searchQuery]);
 
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
@@ -163,6 +154,16 @@ export function LocationLedgerModal() {
         if (!selectedId) return;
         const updated = (form.connections ?? []).filter(c => c.toId !== toId);
         setForm(prev => ({ ...prev, connections: updated }));
+    };
+
+    const handleCancelEdit = () => {
+        if (selectedId) {
+            const existing = locationLedger.find(l => l.id === selectedId);
+            if (existing) handleSelect(existing);
+        } else {
+            setSelectedId(null);
+        }
+        setIsEditing(false);
     };
 
     const currentPlace = context.currentPlaceId
@@ -303,240 +304,32 @@ export function LocationLedgerModal() {
                     )}
 
                     {(selectedId || isEditing) && (
-                        <div className="flex-1 overflow-y-auto p-6 space-y-4">
-                            <div className="flex items-center justify-between gap-2 pr-8">
-                                <h2 className="text-terminal text-base font-bold tracking-widest uppercase">
-                                    {isEditing ? (selectedId ? 'Edit Place' : 'New Place') : 'Place Details'}
-                                </h2>
-                                <div className="flex gap-2">
-                                    {!isEditing && selectedId && (
-                                        <>
-                                            <button
-                                                onClick={handleStartEditing}
-                                                className="px-3 py-1.5 border border-border rounded text-[10px] uppercase tracking-wider text-text-dim hover:text-terminal hover:border-terminal transition-colors"
-                                            >
-                                                Edit
-                                            </button>
-                                            <button
-                                                onClick={() => handleSetAsCurrent(form as LocationEntry)}
-                                                disabled={!form.id}
-                                                className="px-3 py-1.5 border border-terminal/30 rounded text-[10px] uppercase tracking-wider text-terminal hover:bg-terminal/10 transition-colors disabled:opacity-30"
-                                            >
-                                                Set as Current
-                                            </button>
-                                        </>
-                                    )}
-                                    {isEditing && (
-                                        <>
-                                            <button
-                                                onClick={() => {
-                                                    if (selectedId) {
-                                                        const existing = locationLedger.find(l => l.id === selectedId);
-                                                        if (existing) handleSelect(existing);
-                                                    } else {
-                                                        setSelectedId(null);
-                                                    }
-                                                    setIsEditing(false);
-                                                }}
-                                                className="px-3 py-1.5 border border-border rounded text-[10px] uppercase tracking-wider text-text-dim hover:text-text-primary transition-colors"
-                                            >
-                                                Cancel
-                                            </button>
-                                            <button
-                                                onClick={handleSave}
-                                                className="px-3 py-1.5 border border-terminal bg-terminal/10 rounded text-[10px] uppercase tracking-wider text-terminal hover:bg-terminal/20 transition-colors"
-                                            >
-                                                Save
-                                            </button>
-                                        </>
-                                    )}
-                                </div>
-                            </div>
-
-                            {/* Name */}
-                            <Field label="Name">
-                                <input
-                                    type="text"
-                                    value={renderedForm.name ?? ''}
-                                    onChange={e => setForm(prev => ({ ...prev, name: e.target.value }))}
-                                    disabled={!isEditing}
-                                    placeholder="Ninja Academy"
-                                    className={inputClass(isEditing)}
-                                />
-                            </Field>
-
-                            {/* Aliases + Broad Location */}
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <Field label="Aliases (comma-separated)">
-                                    <input
-                                        type="text"
-                                        value={renderedForm.aliases ?? ''}
-                                        onChange={e => setForm(prev => ({ ...prev, aliases: e.target.value }))}
-                                        disabled={!isEditing}
-                                        placeholder="the academy, NA"
-                                        className={inputClass(isEditing)}
-                                    />
-                                </Field>
-                                <Field label="Broad Location (region)">
-                                    <input
-                                        type="text"
-                                        value={renderedForm.broadLocation ?? ''}
-                                        onChange={e => setForm(prev => ({ ...prev, broadLocation: e.target.value }))}
-                                        disabled={!isEditing}
-                                        placeholder="Konoha"
-                                        className={inputClass(isEditing)}
-                                    />
-                                </Field>
-                            </div>
-
-                            {/* Description */}
-                            <Field label="Description">
-                                <textarea
-                                    value={renderedForm.description ?? ''}
-                                    onChange={e => setForm(prev => ({ ...prev, description: e.target.value }))}
-                                    disabled={!isEditing}
-                                    rows={2}
-                                    placeholder="1-2 sentences of texture."
-                                    className={`${inputClass(isEditing)} resize-none`}
-                                />
-                            </Field>
-
-                            {/* Status */}
-                            <Field label="Status (optional)">
-                                <input
-                                    type="text"
-                                    value={renderedForm.status ?? ''}
-                                    onChange={e => setForm(prev => ({ ...prev, status: e.target.value }))}
-                                    disabled={!isEditing}
-                                    placeholder="burned down in ch. 12"
-                                    className={inputClass(isEditing)}
-                                />
-                            </Field>
-
-                            {/* Features */}
-                            <Field label="Features / Rooms (comma-separated)">
-                                <input
-                                    type="text"
-                                    value={isEditing ? featuresDraft : (renderedForm.features ?? []).join(', ')}
-                                    onChange={e => setFeaturesDraft(e.target.value)}
-                                    disabled={!isEditing}
-                                    placeholder="Class A, training yard, teacher lounge"
-                                    className={inputClass(isEditing)}
-                                />
-                                {renderedForm.features && renderedForm.features.length > 0 && !isEditing && (
-                                    <div className="flex flex-wrap gap-1 mt-2">
-                                        {renderedForm.features.map((f, i) => (
-                                            <span key={i} className="text-[10px] bg-terminal/10 text-terminal px-1.5 py-0.5 rounded">
-                                                {f}
-                                            </span>
-                                        ))}
-                                    </div>
-                                )}
-                            </Field>
-
-                            {/* Connections */}
-                            <Field label="Connections">
-                                <div className="space-y-2">
-                                    {(renderedForm.connections ?? []).length > 0 && (
-                                        <div className="space-y-1">
-                                            {(renderedForm.connections ?? []).map(c => {
-                                                const other = locationLedger.find(l => l.id === c.toId);
-                                                return (
-                                                    <div key={c.toId} className="flex items-center gap-2 text-xs bg-void border border-border rounded px-2 py-1">
-                                                        <Link2 size={11} className="text-text-dim shrink-0" />
-                                                        <span className="flex-1 truncate">
-                                                            {other?.name ?? c.toId}
-                                                            <span className="text-text-dim text-[10px] ml-1">({c.band ?? 'short'})</span>
-                                                            {c.note && <span className="text-text-dim text-[10px] ml-1">— {c.note}</span>}
-                                                        </span>
-                                                        {isEditing && (
-                                                            <button
-                                                                onClick={() => handleRemoveConnection(c.toId)}
-                                                                className="text-text-dim hover:text-danger shrink-0"
-                                                            >
-                                                                <X size={11} />
-                                                            </button>
-                                                        )}
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    )}
-                                    {isEditing && (
-                                        <div className="flex flex-col sm:flex-row gap-2">
-                                            <select
-                                                value={newConnectionTo}
-                                                onChange={e => setNewConnectionTo(e.target.value)}
-                                                className="flex-1 bg-void border border-border rounded px-2 py-1.5 text-xs text-text-primary"
-                                            >
-                                                <option value="">Select place...</option>
-                                                {locationLedger
-                                                    .filter(l => l.id !== selectedId)
-                                                    .map(l => (
-                                                        <option key={l.id} value={l.id}>{l.name}</option>
-                                                    ))}
-                                            </select>
-                                            <select
-                                                value={newConnectionBand}
-                                                onChange={e => setNewConnectionBand(e.target.value as 'adjacent' | 'short' | 'long')}
-                                                className="bg-void border border-border rounded px-2 py-1.5 text-xs text-text-primary"
-                                            >
-                                                <option value="adjacent">adjacent</option>
-                                                <option value="short">short</option>
-                                                <option value="long">long</option>
-                                            </select>
-                                            <input
-                                                type="text"
-                                                value={newConnectionNote}
-                                                onChange={e => setNewConnectionNote(e.target.value)}
-                                                placeholder="note (optional)"
-                                                className="flex-1 bg-void border border-border rounded px-2 py-1.5 text-xs text-text-primary placeholder:text-text-dim/50"
-                                            />
-                                            <button
-                                                onClick={handleAddConnection}
-                                                disabled={!newConnectionTo}
-                                                className="px-3 py-1.5 border border-terminal/30 rounded text-[10px] uppercase tracking-wider text-terminal disabled:opacity-30"
-                                            >
-                                                Add
-                                            </button>
-                                        </div>
-                                    )}
-                                </div>
-                            </Field>
-
-                            {/* Metadata */}
-                            <div className="grid grid-cols-2 gap-4 text-[10px] text-text-dim">
-                                <div>First seen: <span className="text-text-primary">{renderedForm.firstSeenScene || '—'}</span></div>
-                                <div>Last seen: <span className="text-text-primary">{renderedForm.lastSeenScene || '—'}</span></div>
-                                <div>Source: <span className="text-text-primary">{renderedForm.source ?? 'manual'}</span></div>
-                            </div>
-
-                            {/* Delete (only when editing an existing entry) */}
-                            {isEditing && selectedId && (
-                                <button
-                                    onClick={(e) => handleDelete(selectedId, e)}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 border border-danger/30 text-danger text-[10px] uppercase tracking-wider rounded hover:bg-danger/10 transition-colors"
-                                >
-                                    <Trash2 size={11} /> Delete Place
-                                </button>
-                            )}
-                        </div>
+                        <LocationEditForm
+                            form={form}
+                            setForm={setForm}
+                            renderedForm={renderedForm}
+                            isEditing={isEditing}
+                            selectedId={selectedId}
+                            featuresDraft={featuresDraft}
+                            setFeaturesDraft={setFeaturesDraft}
+                            newConnectionTo={newConnectionTo}
+                            setNewConnectionTo={setNewConnectionTo}
+                            newConnectionBand={newConnectionBand}
+                            setNewConnectionBand={setNewConnectionBand}
+                            newConnectionNote={newConnectionNote}
+                            setNewConnectionNote={setNewConnectionNote}
+                            locationLedger={locationLedger}
+                            onStartEditing={handleStartEditing}
+                            onSetAsCurrent={handleSetAsCurrent}
+                            onCancel={handleCancelEdit}
+                            onSave={handleSave}
+                            onAddConnection={handleAddConnection}
+                            onRemoveConnection={handleRemoveConnection}
+                            onDelete={handleDelete}
+                        />
                     )}
                 </div>
             </div>
         </div>
     );
-}
-
-function Field({ label, children }: { label: string; children: React.ReactNode }) {
-    return (
-        <div>
-            <label className="block text-[10px] uppercase tracking-wider text-text-dim mb-1">{label}</label>
-            {children}
-        </div>
-    );
-}
-
-function inputClass(enabled: boolean): string {
-    return `w-full bg-void border border-border rounded px-2.5 py-1.5 text-xs text-text-primary placeholder:text-text-dim/50 focus:outline-none focus:border-terminal transition-colors ${enabled ? '' : 'opacity-80 cursor-default'}`;
 }
