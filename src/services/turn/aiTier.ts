@@ -7,7 +7,8 @@ export type TierFeature =
   | 'npcUpdate' | 'drivesBackfill' | 'profileScan' | 'inventoryScan' | 'locationScan' | 'locationEnrich' | 'sealChapter'
   | 'sceneStakesClassify'
   | 'heartbeatTick' | 'timeskipRun'
-  | 'arcTick' | 'arcSpawn';
+  | 'arcTick' | 'arcSpawn'
+  | 'directorBrief';
 
 const MATRIX: Record<AiTier, Record<TierFeature, boolean>> = {
     lite: {
@@ -18,6 +19,7 @@ const MATRIX: Record<AiTier, Record<TierFeature, boolean>> = {
         sceneStakesClassify: false,
         heartbeatTick: false, timeskipRun: false,
         arcTick: false, arcSpawn: false,
+        directorBrief: false,
     },
     pro: {
         introEngine: false, planner: true, expandQuery: false, reranker: false, archiveFunnel: true,
@@ -27,6 +29,7 @@ const MATRIX: Record<AiTier, Record<TierFeature, boolean>> = {
         sceneStakesClassify: true,
         heartbeatTick: true, timeskipRun: true,
         arcTick: true, arcSpawn: true,
+        directorBrief: true,
     },
     max: {
         introEngine: true, planner: true, expandQuery: true, reranker: true, archiveFunnel: true,
@@ -36,6 +39,7 @@ const MATRIX: Record<AiTier, Record<TierFeature, boolean>> = {
         sceneStakesClassify: true,
         heartbeatTick: true, timeskipRun: true,
         arcTick: true, arcSpawn: true,
+        directorBrief: true,
     },
 };
 

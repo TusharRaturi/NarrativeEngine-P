@@ -104,6 +104,8 @@ export const defaultSettings: AppSettings = {
     indexingSpeed: 'balanced',
     ttsEnabled: false,
     ttsVoice: 'af_heart',
+    lodSummaryChapters: 7,
+    lodImportanceBonus: 2,
 };
 
 export function applyTheme(theme: 'light' | 'dark' | 'system') {
@@ -320,6 +322,8 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         indexingSpeedPrompted: (raw.indexingSpeedPrompted as boolean) ?? false,
         ttsEnabled: (raw.ttsEnabled as boolean) ?? false,
         ttsVoice: (raw.ttsVoice as string) ?? 'af_heart',
+        lodSummaryChapters: (raw.lodSummaryChapters as number) ?? 7,
+        lodImportanceBonus: (raw.lodImportanceBonus as number) ?? 2,
     };
 }
 

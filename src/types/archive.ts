@@ -55,6 +55,11 @@ export const CHAPTER_SCENE_SOFT_CAP = 25;
 export type ArchiveChapter = {
     chapterId: string;
     title: string;
+    // WO-06: optional synopsis/title-variant fields. Old campaigns hydrate with
+    // these undefined and fall back to `title`/`summary` rendering (WO-08 owns UI).
+    synopsis?: string;
+    abstractTitle?: string;
+    literalTitle?: string;
     sceneRange: [string, string];
     sceneIds: string[];
     summary: string;

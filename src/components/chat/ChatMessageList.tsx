@@ -30,6 +30,8 @@ export function ChatMessageList({
     loadingStatus,
     pipelinePhase,
     streamingStats,
+    directorBriefRunning,
+    onSkipDirectorBrief,
 }: {
     scrollContainerRef: RefObject<HTMLDivElement | null>;
     bottomRef: RefObject<HTMLDivElement | null>;
@@ -45,6 +47,11 @@ export function ChatMessageList({
     loadingStatus: string | null;
     pipelinePhase: PipelinePhase;
     streamingStats: StreamingStats | null;
+    /** WO-05: true while `runDirectorBrief` is in flight — surfaces the
+     *  "Director drafting brief…" status + Skip affordance in GenerationProgress. */
+    directorBriefRunning: boolean;
+    /** WO-05: aborts the Director call only (never the whole turn). */
+    onSkipDirectorBrief: () => void;
 }) {
     const [visibleCount, setVisibleCount] = useState(10);
     const [loadStep, setLoadStep] = useState(10);
@@ -115,7 +122,12 @@ export function ChatMessageList({
             ))}
 
             <UtilityCallStrip />
-            <GenerationProgress phase={pipelinePhase} stats={streamingStats} />
+            <GenerationProgress
+                phase={pipelinePhase}
+                stats={streamingStats}
+                directorBriefRunning={directorBriefRunning}
+                onSkipDirectorBrief={onSkipDirectorBrief}
+            />
 
             {loadingStatus && pipelinePhase === 'idle' && (
                 <div className="flex items-center gap-2 text-terminal text-xs px-4">

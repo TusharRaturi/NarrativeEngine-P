@@ -83,6 +83,9 @@ OUTPUT FORMAT — a single JSON object with the keys ${outputKeys}.
 The "summary" value must be this JSON shape:
 {
     "title": "Short evocative chapter title",
+    "literalTitle": "Concrete factual title, e.g. The Battle at Locust Town",
+    "abstractTitle": "Thematic title, e.g. Old Wounds",
+    "synopsis": "1-2 sentences, ultra-high-level, past tense, covering only this chapter",
     "summary": "3-5 sentence narrative summary of what happened",
     "keywords": ["keyword1", "keyword2"],
     "npcs": ["NPC Name 1", "NPC Name 2"],

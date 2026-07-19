@@ -82,3 +82,13 @@ stabs.json
 # Local trash folder
 TRASH/
 
+# AI context / codebase map docs (regenerated locally by AI agents)
+AI_CODEBASE_MAP.md
+ARCHITECTURE.md
+CLAUDE.md
+AGENTS.md
+FEATURE_INVENTORY.md
+INNOVATIONS.md
+Upgrade/HEIST PLANNING/02_MEMORY_LOD_BRIEFING.md
+Upgrade/HEIST PLANNING/03_HANDOFF_PROMPT.md
+

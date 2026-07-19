@@ -4,6 +4,13 @@ type AnyProvider = EndpointConfig | ProviderConfig;
 
 type ClaudeSystemBlock = { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } };
 
+// WO-09c: local content-block type for Claude text/tool_use/tool_result blocks
+// carrying an optional cache_control marker. Kept local so unrelated public
+// types are not widened.
+type ClaudeContentBlock = { type: 'text'; text: string; cache_control?: { type: 'ephemeral' } }
+    | { type: 'tool_use'; id: string; name: string; input: unknown; cache_control?: { type: 'ephemeral' } }
+    | { type: 'tool_result'; tool_use_id: string; content: string; cache_control?: { type: 'ephemeral' } };
+
 const OPENAI_EFFORT_MAP: Record<ThinkingEffort, string | undefined> = {
     off: undefined, low: 'low', medium: 'medium', high: 'high', max: 'high'
 };
@@ -89,9 +96,9 @@ export function buildChatHeaders(provider: AnyProvider): Record<string, string> 
     return headers;
 }
 
-function transformClaudeMessages(messages: { role: string; content: string | null; name?: string; tool_calls?: unknown[]; tool_call_id?: string; reasoning_content?: string; cache_control?: { type: 'ephemeral' } }[]): { system?: string | ClaudeSystemBlock[]; messages: { role: string; content: string | unknown[] }[] } {
+function transformClaudeMessages(messages: { role: string; content: string | null; name?: string; tool_calls?: unknown[]; tool_call_id?: string; reasoning_content?: string; cache_control?: { type: 'ephemeral' } }[]): { system?: string | ClaudeSystemBlock[]; messages: { role: string; content: string | ClaudeContentBlock[] }[] } {
     const systemBlocks: { text: string; cache_control?: { type: 'ephemeral' } }[] = [];
-    const transformed: { role: string; content: string | unknown[] }[] = [];
+    const transformed: { role: string; content: string | ClaudeContentBlock[] }[] = [];
 
     for (const m of messages) {
         if (m.role === 'system') {
@@ -102,21 +109,43 @@ function transformClaudeMessages(messages: { role: string; content: string | nul
         if (m.role === 'assistant') {
             const tc = (m as { tool_calls?: { id: string; function: { name: string; arguments: string } }[] }).tool_calls;
             if (tc && tc.length > 0) {
-                const content: unknown[] = [];
+                // WO-09c: when the assistant message carries cache_control, the
+                // breakpoint covers the COMPLETE message — put the marker on the
+                // FINAL emitted content block only, so the breakpoint includes all
+                // text and tool_use blocks. Do not duplicate the marker across blocks.
+                const content: ClaudeContentBlock[] = [];
                 if (m.content) content.push({ type: 'text', text: m.content });
                 for (const t of tc) {
                     let input: unknown = {};
                     try { input = JSON.parse(t.function.arguments); } catch { input = { _raw: t.function.arguments }; }
                     content.push({ type: 'tool_use', id: t.id, name: t.function.name, input });
                 }
+                if (m.cache_control && content.length > 0) {
+                    const lastBlock = content[content.length - 1];
+                    (lastBlock as { cache_control?: { type: 'ephemeral' } }).cache_control = m.cache_control;
+                }
                 transformed.push({ role: 'assistant', content });
             } else {
-                transformed.push({ role: 'assistant', content: m.content || '' });
+                // WO-09c: a stamped plain assistant message emits as a single text
+                // content block carrying the marker. An unstamped assistant message
+                // retains the current plain-string representation.
+                if (m.cache_control) {
+                    transformed.push({
+                        role: 'assistant',
+                        content: [{ type: 'text', text: m.content || '', cache_control: m.cache_control }],
+                    });
+                } else {
+                    transformed.push({ role: 'assistant', content: m.content || '' });
+                }
             }
             continue;
         }
 
         if (m.role === 'tool') {
+            // WO-09c: tool-role history messages are not stamped by payloadBuilder
+            // (WO-09c §1 corrects the prior wording — tool-role stamping was not
+            // authorized, not that the type cannot carry the marker). The tool
+            // transformation is unchanged.
             transformed.push({
                 role: 'user',
                 content: [{
@@ -128,10 +157,21 @@ function transformClaudeMessages(messages: { role: string; content: string | nul
             continue;
         }
 
-        transformed.push({ role: m.role, content: m.content || '' });
+        // WO-09c: a stamped `user` message (non-tool) emits as a single text
+        // content block carrying the marker. An unstamped user message retains
+        // the current plain-string representation. The final volatile user
+        // message has no marker in the assembled payload, so it stays plain.
+        if (m.cache_control) {
+            transformed.push({
+                role: m.role,
+                content: [{ type: 'text', text: m.content || '', cache_control: m.cache_control }],
+            });
+        } else {
+            transformed.push({ role: m.role, content: m.content || '' });
+        }
     }
 
-    const result: { system?: string | ClaudeSystemBlock[]; messages: { role: string; content: string | unknown[] }[] } = { messages: transformed };
+    const result: { system?: string | ClaudeSystemBlock[]; messages: { role: string; content: string | ClaudeContentBlock[] }[] } = { messages: transformed };
     if (systemBlocks.length > 0) {
         const hasCacheControl = systemBlocks.some(b => b.cache_control);
         if (hasCacheControl) {

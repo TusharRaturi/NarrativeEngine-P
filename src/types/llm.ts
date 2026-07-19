@@ -107,6 +107,11 @@ export type AppSettings = {
     ttsEnabled?: boolean;            // master toggle; default false
     ttsVoice?: string;               // kokoro voice id, e.g. 'af_heart'; default 'af_heart'
 
+    // LOD history rendering (WO-09). Optional with migrated defaults — old campaigns
+    // hydrate undefined and the payload builder falls back to the defaults below.
+    lodSummaryChapters?: number;     // how many recent sealed chapters render at summary tier; default 7
+    lodImportanceBonus?: number;     // effective-age bonus when a chapter has any importance ≥ 8 scene; default 2
+
     // Two-tier providers (new) — reusable endpoint configs referenced by preset *AIProviderId
     providers: LLMProvider[];
 

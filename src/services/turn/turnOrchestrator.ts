@@ -14,6 +14,8 @@ import { gatherContext } from './contextGatherer';
 import { tierAllows } from './aiTier';
 import { extractAndStripSceneStakes } from './sceneStakesTag';
 import { capturePendingTurnSnapshot } from './pendingCommit';
+import { buildWatchdogDossier } from './directorWatchdog';
+import { runDirectorBrief, lastAssistantContent } from './directorBrief';
 
 const MAX_TOOL_CALLS_PER_TURN = 5;
 
@@ -40,6 +42,12 @@ export type TurnCallbacks = {
     /** Stage a GM-proposed inventory change for user confirmation (Phase 6). The
      *  proposal does not mutate inventory until the user confirms it in the UI. */
     stageInventoryProposal?: (proposal: InventoryProposal) => void;
+    /** WO-05: Director phase UI hook. Fires 'running' just before the Director
+     *  call begins and 'done' after it settles (success, abort, timeout, or
+     *  parse-failure — `runDirectorBrief` always returns). The UI uses this to
+     *  show "Director drafting brief…" + a Skip affordance that aborts only the
+     *  Director call (via `TurnState.directorSkipController`), never the turn. */
+    onDirectorBriefPhase?: (phase: 'running' | 'done') => void;
 };
 
 export type TurnState = {
@@ -81,6 +89,12 @@ export type TurnState = {
     /** Confirmed Ask GM meta-guidance. Volatile only; it is never added to story history. */
     nextTurnOocBrief?: string;
     semanticFacts?: SemanticFact[];
+    /** WO-05: Skip handle for the Director Brief call only. Aborting this
+     *  controller cancels `runDirectorBrief` (the turn proceeds without a
+     *  Brief) WITHOUT aborting the outer turn `AbortController`. The orchestrator
+     *  combines this signal with the turn's abort signal via `AbortSignal.any`
+     *  so an outer stop still aborts the Director (preserves WO-04 behavior). */
+    directorSkipController?: AbortController | null;
 };
 
 
@@ -214,6 +228,68 @@ export async function runTurn(
 
     callbacks.setPipelinePhase?.('building-prompt');
     callbacks.setLoadingStatus?.('Architecting AI Prompt...');
+
+    // Director Watchdog (WO-03): compute the deterministic dossier at payload-build time from
+    // the SAME inputs the payload is about to consume (history, npcLedger, onStageNpcIds).
+    // Per invariant 1, this is NOT a post-turn computation — it rides alongside the payload
+    // build so the nudge reflects the visible window the model is about to see. The nudge
+    // lands adjacent to GM_REMINDER in the final user message (below the cache boundary) so
+    // it never perturbs the cached prefix (payloadBuilder enforces this). All tiers get the
+    // nudge — no tier gate per WO-03 §3.
+    const watchdogDossier = buildWatchdogDossier({
+        messages: state.messages,
+        npcLedger,
+        onStageNpcIds: state.onStageNpcIds ?? [],
+    });
+    const watchdogNudge = watchdogDossier.nudgeText ?? undefined;
+
+    // Director Brief (WO-04): one blocking LLM call on pro/max that audits the last GM turn
+    // and issues a Writer Brief for the next turn. Runs after context gathering (so the
+    // dossier + last assistant message are settled) and before buildPayload (so the Brief
+    // can ride below the cache boundary in the final user message). Gated by
+    // tierAllows(tier, 'directorBrief') — lite never calls. Graceful on timeout/abort/
+    // parse-failure/any error: runDirectorBrief returns null and the turn continues with
+    // just the watchdog nudge (buildPayload suppresses the nudge only when a Brief string
+    // is actually passed). Computed once per (campaignId, userMessage) — a swipe/regenerate
+    // with the same user input reuses the cached Brief. The cache is cleared on campaign
+    // switch (invariant 7) — `clearDirectorBriefCache` is wired into setActiveCampaign.
+    //
+    // WO-05: the Director call's abort signal is `AbortSignal.any([outerSignal, skipSignal])`.
+    // The outer `abortController` (whole-turn stop) still aborts the Director; the optional
+    // `state.directorSkipController` (UI "Skip" button) aborts ONLY the Director. Either way
+    // `runDirectorBrief` catches internally and returns null, so the turn proceeds. The
+    // `onDirectorBriefPhase` callback toggles the UI's "Director drafting brief…" state.
+    let directorBrief: string | null = null;
+    if (tierAllows(settings.aiTier, 'directorBrief')) {
+        const skipSignal = state.directorSkipController?.signal;
+        const directorSignal = skipSignal
+            ? AbortSignal.any([abortController.signal, skipSignal])
+            : abortController.signal;
+        callbacks.onDirectorBriefPhase?.('running');
+        try {
+            directorBrief = await runDirectorBrief({
+                provider,
+                dossierText: watchdogDossier.dossierText,
+                lastAssistant: lastAssistantContent(state.messages),
+                userMessage: finalInput,
+                npcLedger,
+                onStageNpcIds: state.onStageNpcIds,
+                timeline: state.timeline,
+                campaignId: state.activeCampaignId,
+                getAuxiliaryProvider: state.getFreshAuxiliaryProvider,
+                signal: directorSignal,
+            });
+        } catch (err) {
+            // Defensive: runDirectorBrief is expected to never throw (it catches
+            // internally and returns null), but if a future refactor breaks that
+            // contract we must not poison the turn. Log and proceed without a Brief.
+            console.warn('[DirectorBrief] unexpected throw (suppressed):', err);
+            directorBrief = null;
+        } finally {
+            callbacks.onDirectorBriefPhase?.('done');
+        }
+    }
+
     const payloadResult = buildPayload(
         settings,
         context,
@@ -240,6 +316,8 @@ export async function runTurn(
         undefined, // plannerEventTypes — recomputed inside buildWorld
         useAppStore.getState().locationLedger,
         state.nextTurnOocBrief,
+        watchdogNudge,
+        directorBrief ?? undefined,
     );
 
     const payload = payloadResult.messages;

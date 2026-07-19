@@ -133,6 +133,7 @@ export function ChatArea() {
     const {
         isStreaming, loadingStatus, pendingProposal, setPendingProposal,
         handleSend, handleStop,
+        directorBriefRunning, handleSkipDirectorBrief,
     } = useChatOperations({
         input,
         setInput,
@@ -214,6 +215,8 @@ export function ChatArea() {
                 loadingStatus={loadingStatus}
                 pipelinePhase={pipelinePhase}
                 streamingStats={streamingStats}
+                directorBriefRunning={directorBriefRunning}
+                onSkipDirectorBrief={handleSkipDirectorBrief}
             />
 
             <ChatActionStrip

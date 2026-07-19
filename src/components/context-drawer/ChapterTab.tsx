@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { BookOpen, Plus, Loader2 } from 'lucide-react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { BookOpen, Plus, Loader2, Sparkles } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { api } from '../../services/llm/apiClient';
 import { ChapterCard } from './ChapterCard';
 import { ResolvedStatePanel } from './ResolvedStatePanel';
 import { runCombinedSeal } from '../../services/turn/postTurnPipeline';
+import { backfillChapterSynopses, chaptersNeedingSynopsis } from '../../services/archive-memory/synopsisBackfill';
 import { toast } from '../Toast';
 import type { ArchiveChapter } from '../../types';
 
@@ -20,6 +21,10 @@ export const ChapterTab: React.FC = () => {
     const [expandedId, setExpandedId] = useState<string | null>(null);
     const [isRegenerating, setIsRegenerating] = useState<string | null>(null);
     const [isCreating, setIsCreating] = useState(false);
+    // WO-07: synopsis backfill progress. `null` = idle; otherwise {done,total}.
+    const [backfillProgress, setBackfillProgress] = useState<{ done: number; total: number } | null>(null);
+    // AbortController for the in-flight backfill. Aborted on unmount or campaign switch.
+    const backfillAbortRef = useRef<AbortController | null>(null);
 
     const refreshChapters = useCallback(async () => {
         if (!activeCampaignId) return;
@@ -34,6 +39,14 @@ export const ChapterTab: React.FC = () => {
     useEffect(() => {
         refreshChapters();
     }, [refreshChapters]);
+
+    // WO-07: abort the in-flight backfill when ChapterTab unmounts (e.g. drawer closed).
+    useEffect(() => {
+        return () => {
+            backfillAbortRef.current?.abort();
+            backfillAbortRef.current = null;
+        };
+    }, []);
 
     const handleSeal = useCallback(async () => {
         if (!activeCampaignId) return;
@@ -96,6 +109,69 @@ export const ChapterTab: React.FC = () => {
         }
     }, [activeCampaignId, refreshChapters, getActiveSummarizerEndpoint]);
 
+    // WO-07: user-triggered synopsis backfill for sealed chapters missing `synopsis`.
+    // Sequential calls (no parallel) so progress is predictable and token spend is
+    // visible. Aborts on unmount (cleanup effect) or campaign switch (isActive guard)
+    // — already-patched chapters stay patched, the loop just stops.
+    const handleBackfillSynopses = useCallback(async () => {
+        if (!activeCampaignId) return;
+        const provider = getActiveSummarizerEndpoint();
+        if (!provider || !provider.endpoint) {
+            toast.error('No summarizer AI configured');
+            return;
+        }
+
+        // Abort any prior in-flight backfill (defensive — button is disabled while running).
+        backfillAbortRef.current?.abort();
+        const ac = new AbortController();
+        backfillAbortRef.current = ac;
+
+        const targets = chaptersNeedingSynopsis(chapters);
+        setBackfillProgress({ done: 0, total: targets.length });
+
+        try {
+            const result = await backfillChapterSynopses({
+                chapters,
+                provider,
+                patch: async (chapterId, fields) => {
+                    await api.chapters.update(activeCampaignId, chapterId, fields as Partial<ArchiveChapter>);
+                },
+                // Campaign-ID guard: read from the live store so a switch mid-run aborts.
+                isActive: () => useAppStore.getState().activeCampaignId === activeCampaignId,
+                signal: ac.signal,
+                onProgress: (done, total) => setBackfillProgress({ done, total }),
+            });
+
+            // If the campaign switched or the component unmounted, drop the final
+            // refresh — the new campaign's tab owns its own state.
+            if (ac.signal.aborted || useAppStore.getState().activeCampaignId !== activeCampaignId) {
+                return;
+            }
+
+            await refreshChapters();
+            const okCount = result.patched.filter(p => p.ok).length;
+            if (result.aborted) {
+                toast.warning(`Synopsis backfill stopped — ${okCount} chapter${okCount === 1 ? '' : 's'} patched.`);
+            } else if (okCount === 0 && result.skipped.length === 0) {
+                toast.warning('No synopses generated — try again or check the summarizer AI.');
+            } else {
+                const skipMsg = result.skipped.length > 0 ? ` (${result.skipped.length} skipped — no summary)` : '';
+                toast.success(`Generated ${okCount} synopsis${okCount === 1 ? '' : 'es'}${skipMsg}.`);
+            }
+        } catch (err) {
+            console.error(err);
+            if (!ac.signal.aborted && useAppStore.getState().activeCampaignId === activeCampaignId) {
+                toast.error('Synopsis backfill failed');
+            }
+        } finally {
+            // Only clear progress if this is still the active backfill (not superseded).
+            if (backfillAbortRef.current === ac) {
+                backfillAbortRef.current = null;
+                setBackfillProgress(null);
+            }
+        }
+    }, [activeCampaignId, chapters, refreshChapters, getActiveSummarizerEndpoint]);
+
     const handleRename = useCallback(async (chapterId: string, newTitle: string) => {
         if (!activeCampaignId) return;
         await api.chapters.update(activeCampaignId, chapterId, { title: newTitle });
@@ -154,6 +230,12 @@ export const ChapterTab: React.FC = () => {
         }
     }, [activeCampaignId, refreshChapters]);
 
+    // WO-07: button visibility — only show when ≥1 sealed chapter lacks `synopsis`.
+    const missingSynopsisCount = useMemo(
+        () => chaptersNeedingSynopsis(chapters).length,
+        [chapters]
+    );
+
     return (
         <div className="flex flex-col h-full">
             <div className="flex items-center justify-between mb-4 px-1">
@@ -178,6 +260,28 @@ export const ChapterTab: React.FC = () => {
                     <span>New</span>
                 </button>
             </div>
+
+            {missingSynopsisCount > 0 && (
+                <div className="mb-3 px-1">
+                    <button
+                        onClick={handleBackfillSynopses}
+                        disabled={backfillProgress !== null}
+                        className="w-full flex items-center justify-center space-x-2 px-3 py-2 rounded bg-amber-400/10 border border-amber-400/30 text-amber-400 hover:bg-amber-400/20 transition-colors text-[10px] font-bold uppercase tracking-wider disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                        {backfillProgress !== null ? (
+                            <>
+                                <Loader2 size={12} className="animate-spin" />
+                                <span>Generating synopses… {backfillProgress.done}/{backfillProgress.total}</span>
+                            </>
+                        ) : (
+                            <>
+                                <Sparkles size={12} />
+                                <span>Generate missing synopses ({missingSynopsisCount})</span>
+                            </>
+                        )}
+                    </button>
+                </div>
+            )}
 
             <div className="flex-1 overflow-y-auto pr-1 space-y-2 custom-scrollbar">
                 <ResolvedStatePanel />

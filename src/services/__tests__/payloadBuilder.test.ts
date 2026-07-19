@@ -747,6 +747,96 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
         expect(firstSystem.content as string).toContain('thinking');
     });
 
+    // ── WO-01: Writer CoT injection (Item 1) ──────────────────────────────────
+    it('WRITER_COT present in stable content when model name is deepseek-r1-distill', () => {
+        const reasoningSettings = {
+            ...baseSettings(),
+            activePresetId: 'preset_reasoning',
+            providers: [{ id: 'prov_reasoning', modelName: 'deepseek-r1-distill' }],
+            presets: [{ id: 'preset_reasoning', storyAIProviderId: 'prov_reasoning' }],
+        } as unknown as AppSettings;
+
+        const result = buildPayload(reasoningSettings, baseContext(), [], 'Hello');
+        const firstSystem = result.messages[0];
+        expect(firstSystem.content as string).toContain('[WRITER REASONING FRAMEWORK]');
+        expect(firstSystem.content as string).toContain('Step 1 — Deconstruct');
+        expect(firstSystem.content as string).toContain('Step 6 — Final audit');
+    });
+
+    it('WRITER_COT absent from stable content when model name is gpt-4o', () => {
+        const normalSettings = {
+            ...baseSettings(),
+            activePresetId: 'preset_normal',
+            providers: [{ id: 'prov_normal', modelName: 'gpt-4o' }],
+            presets: [{ id: 'preset_normal', storyAIProviderId: 'prov_normal' }],
+        } as unknown as AppSettings;
+
+        const result = buildPayload(normalSettings, baseContext(), [], 'Hello');
+        const firstSystem = result.messages[0];
+        expect(firstSystem.content as string).not.toContain('[WRITER REASONING FRAMEWORK]');
+        // Existing thinking-block reminder must also be absent for non-reasoning models.
+        expect(firstSystem.content as string).not.toContain("If you use a 'thinking' or 'reasoning' block");
+    });
+
+    it('CoT invocation line present in final user message when reasoning model', () => {
+        const reasoningSettings = {
+            ...baseSettings(),
+            activePresetId: 'preset_reasoning',
+            providers: [{ id: 'prov_reasoning', modelName: 'deepseek-r1-distill' }],
+            presets: [{ id: 'preset_reasoning', storyAIProviderId: 'prov_reasoning' }],
+        } as unknown as AppSettings;
+
+        const result = buildPayload(reasoningSettings, baseContext(), [], 'Hello');
+        const finalUser = result.messages[result.messages.length - 1];
+        expect(finalUser.role).toBe('user');
+        expect(finalUser.content as string).toContain(
+            'Work through the [WRITER REASONING FRAMEWORK] in your thinking before writing.',
+        );
+        // The invocation line must precede the GM_REMINDER (cache-below ordering per WO spec).
+        const content = finalUser.content as string;
+        const cotIdx = content.indexOf('Work through the [WRITER REASONING FRAMEWORK]');
+        const reminderIdx = content.indexOf('[GM REMINDER:');
+        expect(cotIdx).toBeGreaterThan(-1);
+        expect(reminderIdx).toBeGreaterThan(cotIdx);
+    });
+
+    it('CoT invocation line absent from final user message when non-reasoning model (gpt-4o)', () => {
+        const normalSettings = {
+            ...baseSettings(),
+            activePresetId: 'preset_normal',
+            providers: [{ id: 'prov_normal', modelName: 'gpt-4o' }],
+            presets: [{ id: 'preset_normal', storyAIProviderId: 'prov_normal' }],
+        } as unknown as AppSettings;
+
+        const result = buildPayload(normalSettings, baseContext(), [], 'Hello');
+        const finalUser = result.messages[result.messages.length - 1];
+        expect(finalUser.content as string).not.toContain('[WRITER REASONING FRAMEWORK]');
+    });
+
+    it('non-reasoning final user message is byte-identical to pre-WO-01 payload (no CoT, no invocation line)', () => {
+        // Same inputs, only the model name differs. The final user message MUST be byte-identical
+        // to what buildPayload produced before WO-01 — i.e. the CoT nudge slot collapses to '' and
+        // filter(Boolean) drops it, leaving the original 4-element join (volatileBlock, GM_REMINDER,
+        // askGmBrief, userMessage).
+        const normalSettings = {
+            ...baseSettings(),
+            activePresetId: 'preset_normal',
+            providers: [{ id: 'prov_normal', modelName: 'gpt-4o' }],
+            presets: [{ id: 'preset_normal', storyAIProviderId: 'prov_normal' }],
+        } as unknown as AppSettings;
+
+        const result = buildPayload(normalSettings, baseContext(), [], 'Hello');
+        const finalUser = result.messages[result.messages.length - 1];
+        // Reconstruct the pre-WO-01 finalUserContent: volatile + GM_REMINDER + (no askGmBrief) + userMessage.
+        // buildPayload with empty history + empty context still emits world + volatile blocks; the only
+        // assertion that matters here is that the CoT invocation line is NOT between them.
+        const content = finalUser.content as string;
+        expect(content).not.toContain('Work through the [WRITER REASONING FRAMEWORK]');
+        // GM_REMINDER + userMessage both still present in original order.
+        expect(content).toContain('[GM REMINDER:');
+        expect(content.endsWith('Hello')).toBe(true);
+    });
+
     it('tool-mode (diceFairnessActive false) preserves user Action Resolution rules — no swap', () => {
         const customRules = '### Action Resolution\n\nRoll 2d6. 7 is mixed, 12 is crit, 2 is fumble.';
         const ctx = {
@@ -1248,5 +1338,245 @@ describe('buildPayload — divergence reserved in world budget', () => {
             t => !t.included && typeof t.reason === 'string' && t.reason.includes('divergence reserve')
         );
         expect(reserveTrace).toBeDefined();
+    });
+});
+
+// ── Scenario 14: Director Watchdog nudge (WO-03) ────────────────────────────────
+//
+// Verifies the nudge lands adjacent to GM_REMINDER in the final user message, is
+// suppressed when a Director Brief is present, is omitted when no nudge is passed,
+// and is byte-identical to the pre-WO-03 payload in every cached-prefix slot.
+describe('buildPayload — Director Watchdog nudge (WO-03)', () => {
+    const NUDGE = '[STAGE NOTE: Ingrid has been silent 3 turns — must act or speak this scene.]';
+
+    /** Cached-prefix bytes: every message carrying cache_control: ephemeral, joined.
+     *  Used to assert the nudge never perturbs the cached prefix (invariant 2). */
+    function cachedPrefixBytes(messages: import('../llm/llmService').OpenAIMessage[]): string {
+        return messages
+            .filter(m => (m as unknown as { cache_control?: { type: string } }).cache_control?.type === 'ephemeral')
+            .map(m => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
+            .join('\n----CACHE-BOUNDARY----\n');
+    }
+
+    /** Final user message content (where the nudge rides, below the cache boundary). */
+    function finalUserContent(messages: import('../llm/llmService').OpenAIMessage[]): string {
+        const last = messages[messages.length - 1];
+        return last && last.role === 'user' && typeof last.content === 'string' ? last.content : '';
+    }
+
+    /** Positional-arg helper: buildPayload has 4 required params (settings, context,
+     *  history, userMessage), then 22 optional params ending at `nextTurnOocBrief`,
+     *  then `watchdogNudge` (position 26), then `directorBrief` (position 27). This
+     *  spreads 22 `undefined`s so the nudge/brief land in the right slots without
+     *  every call site having to count commas. */
+    function buildWithNudge(watchdogNudge?: string, directorBrief?: string) {
+        return buildPayload(
+            baseSettings(), baseContext(), [], 'Hello world',
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            watchdogNudge, directorBrief,
+        );
+    }
+
+    it('nudge is present in the final user message when provided', () => {
+        const result = buildWithNudge(NUDGE);
+        const content = finalUserContent(result.messages);
+        expect(content).toContain(NUDGE);
+    });
+
+    it('nudge sits adjacent to GM_REMINDER (between GM_REMINDER and the user message)', () => {
+        const result = buildWithNudge(NUDGE);
+        const content = finalUserContent(result.messages);
+        const reminderIdx = content.indexOf('[GM REMINDER');
+        const nudgeIdx = content.indexOf(NUDGE);
+        const userMsgIdx = content.indexOf('Hello world');
+        expect(reminderIdx).toBeGreaterThanOrEqual(0);
+        expect(nudgeIdx).toBeGreaterThan(reminderIdx);
+        expect(userMsgIdx).toBeGreaterThan(nudgeIdx);
+    });
+
+    it('nudge is omitted when no watchdogNudge is passed (byte-identical to pre-WO-03)', () => {
+        const withUndefined = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const content = finalUserContent(withUndefined.messages);
+        expect(content).not.toContain('[STAGE NOTE');
+        // No Watchdog trace when no nudge is surfaced.
+        const watchdogTrace = (withUndefined.trace ?? []).find(t => t.source === 'Watchdog');
+        expect(watchdogTrace).toBeUndefined();
+    });
+
+    it('nudge is suppressed when directorBrief is also provided (Brief supersedes it)', () => {
+        const result = buildWithNudge(NUDGE, 'BRIEF_TEXT');
+        const content = finalUserContent(result.messages);
+        expect(content).not.toContain(NUDGE);
+        // No Watchdog trace when the nudge is suppressed by the Brief.
+        const watchdogTrace = (result.trace ?? []).find(t => t.source === 'Watchdog');
+        expect(watchdogTrace).toBeUndefined();
+    });
+
+    it('nudge never perturbs the cached prefix (invariant 2)', () => {
+        const withoutNudge = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const withNudge = buildWithNudge(NUDGE);
+        expect(cachedPrefixBytes(withNudge.messages)).toBe(cachedPrefixBytes(withoutNudge.messages));
+    });
+
+    it('adds a Watchdog trace entry (source: "Watchdog") when nudge is surfaced', () => {
+        const result = buildWithNudge(NUDGE);
+        const watchdogTrace = (result.trace ?? []).find(t => t.source === 'Watchdog');
+        expect(watchdogTrace).toBeDefined();
+        expect(watchdogTrace!.included).toBe(true);
+        expect(watchdogTrace!.classification).toBe('world_context');
+        expect(watchdogTrace!.position).toBe('user');
+        expect(watchdogTrace!.preview).toBe(NUDGE);
+    });
+
+    it('does NOT add a Watchdog trace in non-debug mode', () => {
+        const settings = { ...baseSettings(), debugMode: false } as unknown as AppSettings;
+        const result = buildPayload(
+            settings, baseContext(), [], 'Hello world',
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            NUDGE,
+        );
+        // Trace is undefined entirely in non-debug mode (createTraceCollector gate).
+        expect(result.trace).toBeUndefined();
+    });
+});
+
+// ── Scenario 15: Director Brief injection (WO-04) ────────────────────────────────
+//
+// Verifies the Brief rides in the final user message (below the cache boundary),
+// placed BEFORE GM_REMINDER; the watchdog nudge is suppressed when the Brief is
+// present (WO-03 §4 supersession rule, re-asserted here for the WO-04 path); the
+// Brief never perturbs the cached prefix (invariant 2); a Director trace entry
+// is added when the Brief is surfaced; and exactly one of {Watchdog, Director}
+// traces appears (never both, never neither-when-surfaced).
+describe('buildPayload — Director Brief (WO-04)', () => {
+    const NUDGE = '[STAGE NOTE: Ingrid has been silent 3 turns — must act or speak this scene.]';
+    const BRIEF = 'WRITER BRIEF\n- [MANDATORY] Ingrid must speak first this scene.\n- [SUGGESTION] Give Kai a real answer.';
+
+    /** Cached-prefix bytes: every message carrying cache_control: ephemeral, joined. */
+    function cachedPrefixBytes(messages: import('../llm/llmService').OpenAIMessage[]): string {
+        return messages
+            .filter(m => (m as unknown as { cache_control?: { type: string } }).cache_control?.type === 'ephemeral')
+            .map(m => (typeof m.content === 'string' ? m.content : JSON.stringify(m.content)))
+            .join('\n----CACHE-BOUNDARY----\n');
+    }
+
+    /** Final user message content (where the Brief rides, below the cache boundary). */
+    function finalUserContent(messages: import('../llm/llmService').OpenAIMessage[]): string {
+        const last = messages[messages.length - 1];
+        return last && last.role === 'user' && typeof last.content === 'string' ? last.content : '';
+    }
+
+    /** Positional-arg helper: same shape as WO-03's buildWithNudge, plus the Brief slot. */
+    function buildWithBrief(watchdogNudge?: string, directorBrief?: string) {
+        return buildPayload(
+            baseSettings(), baseContext(), [], 'Hello world',
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            watchdogNudge, directorBrief,
+        );
+    }
+
+    it('Brief is present in the final user message wrapped as [DIRECTOR BRIEF] block', () => {
+        const result = buildWithBrief(undefined, BRIEF);
+        const content = finalUserContent(result.messages);
+        expect(content).toContain('[DIRECTOR BRIEF]');
+        expect(content).toContain(BRIEF);
+    });
+
+    it('Brief sits BEFORE GM_REMINDER (the GM reads the audit directives first)', () => {
+        const result = buildWithBrief(undefined, BRIEF);
+        const content = finalUserContent(result.messages);
+        const briefIdx = content.indexOf('[DIRECTOR BRIEF]');
+        const reminderIdx = content.indexOf('[GM REMINDER');
+        const userMsgIdx = content.indexOf('Hello world');
+        expect(briefIdx).toBeGreaterThanOrEqual(0);
+        expect(reminderIdx).toBeGreaterThan(briefIdx);
+        expect(userMsgIdx).toBeGreaterThan(reminderIdx);
+    });
+
+    it('Brief is omitted when no directorBrief is passed (byte-identical to pre-WO-04)', () => {
+        const withoutBrief = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const content = finalUserContent(withoutBrief.messages);
+        expect(content).not.toContain('[DIRECTOR BRIEF]');
+        // No Director trace when no Brief is surfaced.
+        const directorTrace = (withoutBrief.trace ?? []).find(t => t.source === 'Director');
+        expect(directorTrace).toBeUndefined();
+    });
+
+    it('Brief suppresses the watchdog nudge even when both are passed (WO-03 §4 supersession)', () => {
+        const result = buildWithBrief(NUDGE, BRIEF);
+        const content = finalUserContent(result.messages);
+        // Brief present, nudge absent.
+        expect(content).toContain('[DIRECTOR BRIEF]');
+        expect(content).not.toContain(NUDGE);
+        // No Watchdog trace when the nudge is suppressed by the Brief.
+        const watchdogTrace = (result.trace ?? []).find(t => t.source === 'Watchdog');
+        expect(watchdogTrace).toBeUndefined();
+    });
+
+    it('exactly one of {Watchdog, Director} traces appears (Director wins when both inputs are passed)', () => {
+        const result = buildWithBrief(NUDGE, BRIEF);
+        const sources = (result.trace ?? []).map(t => t.source);
+        expect(sources).toContain('Director');
+        expect(sources).not.toContain('Watchdog');
+    });
+
+    it('exactly one of {Watchdog, Director} traces appears (Watchdog wins when only nudge is passed)', () => {
+        const result = buildWithBrief(NUDGE);
+        const sources = (result.trace ?? []).map(t => t.source);
+        expect(sources).toContain('Watchdog');
+        expect(sources).not.toContain('Director');
+    });
+
+    it('no Watchdog or Director trace appears when neither is passed', () => {
+        const result = buildWithBrief();
+        const sources = (result.trace ?? []).map(t => t.source);
+        expect(sources).not.toContain('Watchdog');
+        expect(sources).not.toContain('Director');
+    });
+
+    it('Brief never perturbs the cached prefix (invariant 2)', () => {
+        const withoutBrief = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const withBrief = buildWithBrief(undefined, BRIEF);
+        expect(cachedPrefixBytes(withBrief.messages)).toBe(cachedPrefixBytes(withoutBrief.messages));
+    });
+
+    it('adds a Director trace entry (source: "Director") when Brief is surfaced', () => {
+        const result = buildWithBrief(undefined, BRIEF);
+        const directorTrace = (result.trace ?? []).find(t => t.source === 'Director');
+        expect(directorTrace).toBeDefined();
+        expect(directorTrace!.included).toBe(true);
+        expect(directorTrace!.classification).toBe('world_context');
+        expect(directorTrace!.position).toBe('user');
+        // Preview includes the [DIRECTOR BRIEF] wrapper.
+        expect(directorTrace!.preview).toContain('[DIRECTOR BRIEF]');
+        expect(directorTrace!.preview).toContain(BRIEF);
+    });
+
+    it('does NOT add a Director trace in non-debug mode', () => {
+        const settings = { ...baseSettings(), debugMode: false } as unknown as AppSettings;
+        const result = buildPayload(
+            settings, baseContext(), [], 'Hello world',
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+            undefined, BRIEF,
+        );
+        // Trace is undefined entirely in non-debug mode (createTraceCollector gate).
+        expect(result.trace).toBeUndefined();
+    });
+
+    it('Brief with empty-string directorBrief does not render the block (treated as absent)', () => {
+        const result = buildWithBrief(undefined, '');
+        const content = finalUserContent(result.messages);
+        expect(content).not.toContain('[DIRECTOR BRIEF]');
+        // No Director trace for an empty Brief.
+        const directorTrace = (result.trace ?? []).find(t => t.source === 'Director');
+        expect(directorTrace).toBeUndefined();
     });
 });

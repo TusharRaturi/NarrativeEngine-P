@@ -8,6 +8,13 @@ import { truncateScenesToBudget, CHAPTER_SUMMARY_TOKEN_BUDGET } from './shared';
 
 export type ChapterSummaryOutput = {
     title: string;
+    // WO-06: optional synopsis/title-variant fields. Ride the existing
+    // ...result.summary spread into the chapters PATCH (Option A placement).
+    // Missing → undefined silently (old-output + manual-summary compat).
+    // Present-but-empty/wrong-type → undefined with one compact warning.
+    synopsis?: string;
+    abstractTitle?: string;
+    literalTitle?: string;
     summary: string;
     keywords: string[];
     npcs: string[];
@@ -84,6 +91,24 @@ export function parseChapterSummaryOutput(raw: string): ChapterSummaryOutput | n
 
         if (Array.isArray(parsed.summary)) parsed.summary = parsed.summary.join('\n');
         if (Array.isArray(parsed.tone)) parsed.tone = parsed.tone.join(', ');
+
+        // WO-06: validate the three optional synopsis/title-variant fields independently.
+        // Missing → stay undefined silently (old-output and manual-summary compatibility).
+        // Present but empty or wrong type → coerce to undefined with one compact warning.
+        // Present and a non-empty string → trim and preserve.
+        const OPTIONAL_STRING_FIELDS: (keyof ChapterSummaryOutput)[] = [
+            'synopsis', 'abstractTitle', 'literalTitle',
+        ];
+        for (const field of OPTIONAL_STRING_FIELDS) {
+            if (!(field in parsed)) continue;
+            const v = parsed[field];
+            if (typeof v !== 'string' || v.trim() === '') {
+                console.warn(`[ChapterSummary] Optional field "${field}" present but empty/wrong-type — coerced to undefined`);
+                delete parsed[field];
+                continue;
+            }
+            parsed[field] = v.trim();
+        }
 
         return parsed as ChapterSummaryOutput;
     } catch (e) {

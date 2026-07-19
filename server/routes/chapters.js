@@ -56,7 +56,10 @@ export function createChaptersRouter() {
         const allowed = [
             'title', 'summary', 'keywords', 'npcs',
             'majorEvents', 'unresolvedThreads', 'tone', 'themes', 'invalidated',
-            'sceneIds'
+            'sceneIds',
+            // WO-06: optional synopsis/title-variant fields. Persistence rides
+            // the existing ...result.summary spread in postTurnPipeline.ts.
+            'synopsis', 'abstractTitle', 'literalTitle'
         ];
         for (const key of allowed) {
             if (req.body[key] !== undefined) {

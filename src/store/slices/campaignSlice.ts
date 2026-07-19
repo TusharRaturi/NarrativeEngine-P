@@ -376,6 +376,16 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
             } catch (e) {
                 console.warn('[CampaignSwitch] commit failed:', e);
             }
+            // WO-04 invariant 7: the Director Brief once-per-input cache is keyed
+            // by (campaignId, userMessage). Clear it on campaign switch so a brief
+            // computed for the old campaign never leaks into the new campaign's
+            // first turn. Lazy import mirrors the pendingCommit import above.
+            try {
+                const { clearDirectorBriefCache } = await import('../../services/turn/directorBrief');
+                clearDirectorBriefCache();
+            } catch (e) {
+                console.warn('[CampaignSwitch] clearDirectorBriefCache failed:', e);
+            }
         }
 
         // Flush any pending campaign state save for the OLD campaign before switching.

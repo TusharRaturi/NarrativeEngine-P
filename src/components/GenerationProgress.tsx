@@ -29,9 +29,16 @@ function formatElapsed(ms: number): string {
 type Props = {
     phase: PipelinePhase;
     stats: StreamingStats | null;
+    /** WO-05: true while `runDirectorBrief` is in flight. Surfaces a
+     *  "Director drafting brief…" amber pulse (mirrors the existing
+     *  "Checking notes..." treatment) + a small bordered Skip button that
+     *  aborts the Director call only (never the whole turn). */
+    directorBriefRunning?: boolean;
+    /** WO-05: aborts the Director call only. */
+    onSkipDirectorBrief?: () => void;
 };
 
-export function GenerationProgress({ phase, stats }: Props) {
+export function GenerationProgress({ phase, stats, directorBriefRunning, onSkipDirectorBrief }: Props) {
     const gatherStages = useGatherStages();
 
     if (phase === 'idle') return null;
@@ -90,6 +97,26 @@ export function GenerationProgress({ phase, stats }: Props) {
             {isCheckingNotes && (
                 <span className="text-[9px] uppercase tracking-wider text-amber-500/80 animate-pulse-slow ml-1">
                     Checking notes...
+                </span>
+            )}
+
+            {/* WO-05: Director Brief in flight — mirror the "Checking notes..."
+                amber pulse treatment and add a small bordered Skip button that
+                aborts the Director call only (styled like UtilityCallStrip's
+                EXTEND +1m button so no new visual pattern is introduced). */}
+            {directorBriefRunning && (
+                <span className="flex items-center gap-1.5 ml-1">
+                    <span className="text-[9px] uppercase tracking-wider text-amber-500/80 animate-pulse-slow">
+                        Director drafting brief…
+                    </span>
+                    {onSkipDirectorBrief && (
+                        <button
+                            onClick={onSkipDirectorBrief}
+                            className="shrink-0 text-[9px] uppercase tracking-wider font-bold px-2 py-1 border rounded transition-colors border-amber-500/40 text-amber-500/80 hover:text-amber-500 hover:border-amber-500 hover:bg-amber-500/10 min-h-[28px]"
+                        >
+                            Skip
+                        </button>
+                    )}
                 </span>
             )}
 

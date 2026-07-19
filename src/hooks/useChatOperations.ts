@@ -68,6 +68,13 @@ export function useChatOperations({
     const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
     // Phase 6: GM-proposed inventory change awaiting user confirmation.
     const [pendingProposal, setPendingProposal] = useState<InventoryProposal | null>(null);
+    // WO-05: Director Brief UI state. `directorBriefRunning` toggles the
+    // "Director drafting brief…" status + Skip affordance in GenerationProgress.
+    // `directorAbortRef` is the abort handle for the Director call ONLY — aborting
+    // it does NOT abort the turn's `abortControllerRef`. The orchestrator combines
+    // both signals via `AbortSignal.any` so an outer Stop still aborts the Director.
+    const [directorBriefRunning, setDirectorBriefRunning] = useState(false);
+    const directorAbortRef = useRef<AbortController | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const streamStartRef = useRef<number>(0);
 
@@ -120,6 +127,11 @@ export function useChatOperations({
         }
 
         abortControllerRef.current = new AbortController();
+        // WO-05: fresh skip handle for this turn's Director call. Cleared on
+        // turn end (handleStop / phase 'done') so a stale abort never leaks
+        // into the next turn. The orchestrator combines this signal with the
+        // turn's abort signal via `AbortSignal.any`.
+        directorAbortRef.current = new AbortController();
 
         const storeSnapshot = useAppStore.getState();
 
@@ -175,6 +187,7 @@ export function useChatOperations({
                 return aux?.modelName ? aux : useAppStore.getState().getActiveStoryEndpoint();
             },
             nextTurnOocBrief: useAskGmBrief,
+            directorSkipController: directorAbortRef.current,
         }, {
             onCheckingNotes: setIsCheckingNotes,
             addMessage: storeSnapshot.addMessage,
@@ -196,6 +209,16 @@ export function useChatOperations({
             archiveNPC: storeSnapshot.archiveNPC,
             restoreNPC: storeSnapshot.restoreNPC,
             stageInventoryProposal: (proposal) => setPendingProposal(proposal),
+            onDirectorBriefPhase: (phase) => {
+                // 'running' → show "Director drafting brief…" + Skip; 'done' → hide.
+                // The flag toggles true on start and false on settle (success,
+                // timeout, abort, parse-failure — `runDirectorBrief` always returns).
+                setDirectorBriefRunning(phase === 'running');
+                if (phase === 'done') {
+                    // Drop the skip handle so a stale abort never fires after settle.
+                    directorAbortRef.current = null;
+                }
+            },
         }, abortControllerRef.current);
 
         if (activeCampaignId) {
@@ -215,7 +238,31 @@ export function useChatOperations({
         setIsCheckingNotes(false);
         setLoadingStatus(null);
         setPipelinePhase('idle');
+        // WO-05: clear Director UI state on a full Stop. The outer abort already
+        // cancels the Director via `AbortSignal.any`; this just resets the flag +
+        // drops the stale skip handle. `onDirectorBriefPhase('done')` may also fire
+        // from the orchestrator's `finally`, but the outer-stop path can short-
+        // circuit before reaching it, so reset here too.
+        setDirectorBriefRunning(false);
+        directorAbortRef.current = null;
         debouncedSaveCampaignState();
+    };
+
+    /** WO-05: Skip the in-flight Director Brief call only. Aborts the Director
+     *  signal without aborting the turn's `AbortController`; the orchestrator's
+     *  `AbortSignal.any` resolves the combined signal, `runDirectorBrief` catches
+     *  internally and returns null, and the turn continues without a Brief.
+     *  No-op when no Director call is in flight. */
+    const handleSkipDirectorBrief = () => {
+        if (directorAbortRef.current) {
+            directorAbortRef.current.abort();
+            directorAbortRef.current = null;
+            // The orchestrator's `finally` fires `onDirectorBriefPhase('done')`,
+            // which clears `directorBriefRunning`. Set false here too as a hedge
+            // in case the orchestrator path never reaches the finally (it does,
+            // but this keeps the UI honest if a future refactor changes that).
+            setDirectorBriefRunning(false);
+        }
     };
 
     return {
@@ -225,5 +272,7 @@ export function useChatOperations({
         setPendingProposal,
         handleSend,
         handleStop,
+        directorBriefRunning,
+        handleSkipDirectorBrief,
     };
 }
