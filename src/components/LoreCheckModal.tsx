@@ -37,6 +37,7 @@ export function LoreCheckModal() {
     useEffect(() => {
         if (open) {
             openedAtRef.current = Date.now();
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setStage('hint');
             setHint('');
             setCategories([]);

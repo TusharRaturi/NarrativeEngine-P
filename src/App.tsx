@@ -78,6 +78,7 @@ export default function App() {
 
     if (!activeCampaignId) {
       // No campaign active — hub will be shown, nothing to hydrate
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setCampaignLoaded(true);
       return;
     }

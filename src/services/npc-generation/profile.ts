@@ -110,7 +110,9 @@ export async function generateNPCProfile(
             voiceDirective,
         });
 
-        const { parsed } = await sendMessageAndParseJson(provider, [{ role: 'user', content: renderPrompt }], 'NPC Generator');
+        const { parsed: rawParsed } = await sendMessageAndParseJson(provider, [{ role: 'user', content: renderPrompt }], 'NPC Generator');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parsed = rawParsed as any;
 
         const newEntry: NPCEntry = {
             id: uid(),
@@ -223,7 +225,9 @@ ${recentHistory}
 [END SCENE]`;
 
     try {
-        const { parsed } = await sendMessageAndParseJson(provider, [{ role: 'user', content: prompt }], 'NPC Propose');
+        const { parsed: rawParsed } = await sendMessageAndParseJson(provider, [{ role: 'user', content: prompt }], 'NPC Propose');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parsed = rawParsed as any;
         const candidateGroups = Array.isArray(parsed.candidateGroups)
             ? (parsed.candidateGroups as unknown[]).map(g => String(g).toLowerCase().trim()).filter(Boolean)
             : [];

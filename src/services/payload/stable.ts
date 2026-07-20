@@ -63,9 +63,11 @@ export function buildStable(opts: {
     // lives in the roll_dice tool description (toolHandlers.ts). This fixes the issue where
     // enabling the dice tool silently nuked non-d20 campaign rules.
     const effectiveRules = context.rulesRaw || DEFAULT_RULES;
+    const rulesTotalTokens = countTokens(effectiveRules);
+    const rulesThreshold = Math.floor(rulesBudget * 1.2);
 
     const hasRulesRAG = (context.rulesChunks?.length ?? 0) > 0;
-    if (hasRulesRAG && relevantRules && relevantRules.length > 0) {
+    if (hasRulesRAG && relevantRules && relevantRules.length > 0 && rulesTotalTokens > rulesThreshold) {
         let rulesTokens = 0;
         const acceptedChunks: LoreChunk[] = [];
         for (const chunk of relevantRules) {

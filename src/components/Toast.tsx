@@ -22,6 +22,7 @@ interface ToastStore {
 
 let _seq = 0;
 
+// eslint-disable-next-line react-refresh/only-export-components
 export const useToastStore = create<ToastStore>((set, get) => ({
   toasts: [],
 
@@ -48,6 +49,7 @@ export const useToastStore = create<ToastStore>((set, get) => ({
 }));
 
 /** Convenience helpers — importable anywhere, no hooks needed */
+// eslint-disable-next-line react-refresh/only-export-components
 export const toast = {
   success: (msg: string) => useToastStore.getState().add('success', msg),
   error: (msg: string) => useToastStore.getState().add('error', msg),

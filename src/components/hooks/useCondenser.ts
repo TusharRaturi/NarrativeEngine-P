@@ -15,7 +15,7 @@ export function useCondenser(deps: UseCondenserDeps) {
         if (newIndex !== deps.condenser.condensedUpToIndex) {
             deps.setCondensed(newIndex);
         }
-    }, [deps.messages, deps.condenser.condensedUpToIndex, deps.setCondensed]);
+    }, [deps]);
 
     return { triggerCondense };
 }

@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import type { AppSettings, LLMProvider, AIPreset, ApiFormat, AiTier } from '../../types';
 import { set as idbSet } from 'idb-keyval';
 import { encryptSettingsProviders } from '../../services/infrastructure/settingsCrypto';

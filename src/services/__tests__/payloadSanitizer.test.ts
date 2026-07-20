@@ -4,7 +4,7 @@ import { sanitizePayloadForApi } from '../lib/payloadSanitizer';
 
 const user = (content: string) => ({ role: 'user', content });
 const assistant = (content: string) => ({ role: 'assistant', content });
-const assistantWithTools = (calls: any[]) => ({ role: 'assistant', content: null, tool_calls: calls });
+const assistantWithTools = (calls: unknown[]) => ({ role: 'assistant', content: null, tool_calls: calls });
 const toolMsg = (id: string, result: string) => ({ role: 'tool', tool_call_id: id, content: result });
 const validCall = (id: string, name = 'query_campaign_lore') => ({
     type: 'function', id, function: { name, arguments: '{}' },

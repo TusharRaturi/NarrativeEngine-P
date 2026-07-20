@@ -26,6 +26,9 @@ export type ChatMessage = {
         id: string;
         type: 'function';
         function: { name: string; arguments: string };
+        /** Gemini-only: echoed back verbatim on replay, or the next request 400s with
+         *  "missing a thought_signature". Absent/ignored for Claude and OpenAI-compatible providers. */
+        thoughtSignature?: string;
     }[];
     tool_call_id?: string;
     reasoning_content?: string;

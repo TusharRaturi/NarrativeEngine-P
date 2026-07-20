@@ -9,7 +9,7 @@ import {
     minifySelectedProfile,
 } from '../../services/turn/contextMinifier';
 import { toast } from '../Toast';
-import type { EndpointConfig, ProviderConfig, InventoryItemCategory, InventoryItem } from '../../types';
+import type { EndpointConfig, ProviderConfig, InventoryItemCategory, InventoryItem, CharacterProfile } from '../../types';
 
 const ALL_CATS: (InventoryItemCategory | 'all' | 'equipped')[] = ['all', 'equipped', 'weapon', 'armor', 'consumable', 'currency', 'key', 'misc'];
 const DISPLAY_LABEL: Record<string, string> = {
@@ -32,9 +32,9 @@ function SceneTag({ lastScene }: { lastScene: string }) {
     return <span className="text-terminal/70">Last updated: Scene #{lastScene}</span>;
 }
 
-function TokenGauge({ items, profile }: { items: InventoryItem[]; profile: any }) {
-    const stub = countTokens(minifyBookkeepingStub(profile, items));
-    const full = countTokens(minifySelectedInventory(items, ['weapon', 'armor', 'consumable', 'currency', 'key', 'misc', 'equipped']) + '\n' + minifySelectedProfile(profile, ALL_PROFILE_FIELDS));
+function TokenGauge({ items, profile }: { items: InventoryItem[]; profile: unknown }) {
+    const stub = countTokens(minifyBookkeepingStub(profile as CharacterProfile, items));
+    const full = countTokens(minifySelectedInventory(items, ['weapon', 'armor', 'consumable', 'currency', 'key', 'misc', 'equipped']) + '\n' + minifySelectedProfile(profile as CharacterProfile, ALL_PROFILE_FIELDS));
     return (
         <div className="flex items-center justify-between text-[9px] text-text-dim/50">
             <span>Stub: {stub}t</span>
@@ -175,8 +175,8 @@ export function BookkeepingTab() {
         try {
             const provider = getActiveStoryEndpoint();
             if (!provider) return;
-            const newProfile = await scanCharacterProfile(provider as ProviderConfig | EndpointConfig, messages, characterProfileData as any);
-            setCharacterProfileData(newProfile as any);
+            const newProfile = await scanCharacterProfile(provider as ProviderConfig | EndpointConfig, messages, characterProfileData as unknown as CharacterProfile);
+            setCharacterProfileData(newProfile as unknown as CharacterProfile);
             updateContext({ characterProfileLastScene: getCurrentSceneId() });
         } catch (e) {
             console.error('Failed to scan character profile:', e);
@@ -232,7 +232,7 @@ export function BookkeepingTab() {
         return list.sort((a, b) => a.name.localeCompare(b.name));
     }, [inventoryItems, activeTab, search]);
 
-    const profile = characterProfileData as any;
+    const profile = characterProfileData as unknown as CharacterProfile;
 
     return (
         <div className="px-4 py-4 space-y-4">
@@ -373,8 +373,8 @@ export function BookkeepingTab() {
                                 <input
                                     className="flex-1 bg-transparent border-b border-border/50 hover:border-border focus:border-terminal outline-none text-text-primary text-[11px] px-1"
                                     type={f.type || 'text'}
-                                    value={String(profile[f.k] ?? '')}
-                                    onChange={(e) => setCharacterProfileData({ ...profile, [f.k]: f.type === 'number' ? Number(e.target.value) : e.target.value })}
+                                    value={String((profile as Record<string, unknown>)[f.k] ?? '')}
+                                    onChange={(e) => setCharacterProfileData({ ...profile, [f.k]: f.type === 'number' ? Number(e.target.value) : e.target.value } as unknown as CharacterProfile)}
                                 />
                             </div>
                         ))}
@@ -399,8 +399,8 @@ export function BookkeepingTab() {
                                 <label className="text-[9px] text-text-dim/60">{k[0].toUpperCase() + k.slice(1)} <span className="text-text-dim/30">(comma-separated)</span></label>
                                 <input
                                     className="w-full bg-transparent border-b border-border/50 hover:border-border focus:border-terminal outline-none text-text-primary text-[11px] px-1"
-                                    value={(profile[k] ?? []).join(', ')}
-                                    onChange={(e) => setCharacterProfileData({ ...profile, [k]: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) })}
+                                    value={(((profile as Record<string, unknown>)[k] as string[]) ?? []).join(', ')}
+                                    onChange={(e) => setCharacterProfileData({ ...profile, [k]: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) } as unknown as CharacterProfile)}
                                 />
                             </div>
                         ))}

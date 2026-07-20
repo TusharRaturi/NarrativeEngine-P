@@ -215,7 +215,9 @@ RESPOND ONLY WITH VALID JSON. NO MARKDOWN FORMATTING. NO EXPLANATIONS.`;
     }];
 
     try {
-        const { parsed } = await sendMessageAndParseJson(provider, messages, 'NPC Updater', 'npc-update');
+        const { parsed: rawParsed } = await sendMessageAndParseJson(provider, messages, 'NPC Updater', 'npc-update');
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const parsed = rawParsed as any;
 
         const findTarget = (name: string) => npcsToCheck.find(n =>
             n.name?.toLowerCase() === name.toLowerCase() ||

@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { Edit2, Check, Pin, PinOff, ChevronDown, ChevronUp, Trash2, Sparkles, Loader2, Users, X, Link2 } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import type { DivergenceCategory, DivergenceEntry, NPCEntry } from '../../../types';
@@ -188,7 +188,6 @@ function KnownByEditor({ entry, npcLedger, onApply, onClose }: {
 export function FactsView() {
     const divergenceRegister = useAppStore(s => s.divergenceRegister);
     const chapters = useAppStore(s => s.chapters);
-    const settings = useAppStore(s => s.settings);
     const deleteDivergenceFact = useAppStore(s => s.deleteDivergenceFact);
     const toggleDivergenceChapter = useAppStore(s => s.toggleDivergenceChapter);
     const toggleDivergenceCategory = useAppStore(s => s.toggleDivergenceCategory);
@@ -254,9 +253,14 @@ export function FactsView() {
         ? topicClusters.groups.reduce((sum, g) => sum + g.factIds.length, 0)
         : 0;
     const isStale = topicClusters && topicClusters.generatedFromFactCount !== totalFacts;
-    const minutesAgo = topicClusters
-        ? Math.round((Date.now() - new Date(topicClusters.generatedAt).getTime()) / 60_000)
-        : null;
+
+    const [now] = useState(() => Date.now());
+
+    const minutesAgo = useMemo(() => {
+        return topicClusters
+            ? Math.round((now - new Date(topicClusters.generatedAt).getTime()) / 60_000)
+            : null;
+    }, [topicClusters, now]);
 
     // By-subject grouping (WO-11.2) — computed from existing data, no AI needed.
     const subjectGroups = groupDivergencesBySubject(unpinnedEntries);
@@ -291,7 +295,7 @@ export function FactsView() {
         setClustering(true);
         setClusterError(null);
         try {
-            const clusters = await runFactClustering(reg, utilityProvider, settings.contextLimit || 8192);
+            const clusters = await runFactClustering(reg, utilityProvider);
             setTopicClusters(clusters);
         } catch (err) {
             setClusterError(err instanceof Error ? err.message : 'Clustering failed.');
@@ -314,7 +318,7 @@ export function FactsView() {
         setSimError(null);
         simCancelRef.current = { cancelled: false };
 
-        assignSubjectTokens(reg, utilityProvider, settings.contextLimit || 8192, simCancelRef.current, setSimStatus)
+        assignSubjectTokens(reg, utilityProvider, simCancelRef.current, setSimStatus)
             .then(result => {
                 if (result.updates.length > 0) {
                     applySubjectTokens(result.updates);

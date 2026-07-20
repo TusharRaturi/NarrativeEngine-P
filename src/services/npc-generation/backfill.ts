@@ -44,7 +44,9 @@ RESPOND ONLY WITH VALID JSON. NO MARKDOWN FORMATTING. NO EXPLANATIONS.
         ];
 
         try {
-            const { parsed } = await sendMessageAndParseJson(provider, messages, `NPC Drives Backfill/${npc.name}`, 'npc-drives-backfill');
+            const { parsed: rawParsed } = await sendMessageAndParseJson(provider, messages, `NPC Drives Backfill/${npc.name}`, 'npc-drives-backfill');
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            const parsed = rawParsed as any;
 
             const patch: Partial<NPCEntry> = {
                 drives: {

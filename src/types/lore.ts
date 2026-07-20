@@ -46,6 +46,7 @@ export type RuleChunkMeta = {
     hasEmbedding?: boolean;
     modelId?: string;
     version?: number;
+    llmGenerated?: boolean;
 };
 
 export type WorldLoreItem = {

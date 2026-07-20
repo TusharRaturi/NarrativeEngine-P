@@ -58,6 +58,7 @@ export const ResolvedStatePanel: React.FC = () => {
             const openChapter = chapters.find(c => !c.sealedAt) || chapters[chapters.length - 1];
             const event = await api.timeline.add(activeCampaignId, {
                 subject: form.subject.trim(),
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 predicate: form.predicate as any,
                 object: form.object.trim(),
                 summary: form.summary.trim() || `${form.subject.trim()} ${form.predicate} ${form.object.trim()}`,
@@ -76,6 +77,7 @@ export const ResolvedStatePanel: React.FC = () => {
                 toast.success('Event added');
             }
         } catch (err) {
+            console.error(err);
             toast.error('Failed to add event');
         } finally {
             setIsAdding(false);

@@ -672,7 +672,8 @@ export function NPCEditForm({
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                const { [targetId]: _, ...rest } = form.relations || {};
+                                                const rest = { ...form.relations };
+                                                delete rest[targetId];
                                                 setForm({ ...form, relations: rest });
                                             }}
                                             className="text-danger/60 hover:text-danger p-1 shrink-0"

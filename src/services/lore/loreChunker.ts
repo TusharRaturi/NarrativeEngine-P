@@ -234,7 +234,7 @@ function assignGroups(chunks: LoreChunk[]) {
     }
 }
 
-export function chunkLoreFile(markdown: string): LoreChunk[] {
+export function chunkLoreFile(markdown: string, disableHeuristics = false): LoreChunk[] {
     const normalizedMarkdown = markdown.replace(/\\(#{2,3})\s*/g, '\n$1 ');
     const lines = normalizedMarkdown.split(/\r?\n/);
     const chunks: LoreChunk[] = [];
@@ -291,7 +291,7 @@ export function chunkLoreFile(markdown: string): LoreChunk[] {
             const priority = ragHint?.priority ?? assignPriority(category, alwaysInclude);
 
             // If hint provides triggers, prepend them to auto-extracted keywords
-            const autoKeywords = extractTriggerKeywords(currentHeader, content);
+            const autoKeywords = disableHeuristics ? [] : extractTriggerKeywords(currentHeader, content);
             const triggerKeywords = ragHint?.triggers.length
                 ? [...new Set([...ragHint.triggers, ...autoKeywords])]
                 : autoKeywords;
@@ -347,7 +347,7 @@ export function chunkLoreFile(markdown: string): LoreChunk[] {
             content: preamble,
             tokens: countTokens(title + '\n' + preamble),
             alwaysInclude: true,
-            triggerKeywords: extractTriggerKeywords(title, preamble),
+            triggerKeywords: disableHeuristics ? [] : extractTriggerKeywords(title, preamble),
             scanDepth: 3,
             category: 'world_overview',
             linkedEntities: [],
@@ -392,7 +392,7 @@ export function chunkLoreFile(markdown: string): LoreChunk[] {
                 windows.push(currentWindow.join(''));
             }
 
-            const parentKeywords = extractTriggerKeywords(chunk.header, chunk.content);
+            const parentKeywords = disableHeuristics ? [] : extractTriggerKeywords(chunk.header, chunk.content);
             for (let wi = 0; wi < windows.length; wi++) {
                 const subContent = windows[wi];
                 const subId = `${chunk.id}#w${wi}`;

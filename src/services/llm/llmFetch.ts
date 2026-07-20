@@ -9,15 +9,23 @@ import { API_BASE } from '../../lib/apiBase';
  * which is exactly what the proxy forwards.
  */
 export async function llmFetch(target: string, init?: RequestInit): Promise<Response> {
-    return fetch(`${API_BASE}/llm/proxy`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-            target,
-            method: init?.method ?? 'GET',
-            headers: init?.headers ?? {},
-            body: typeof init?.body === 'string' ? init.body : undefined,
-        }),
-        signal: init?.signal ?? undefined,
-    });
+    console.log('[llmFetch] Executing fetch to proxy with target:', target);
+    try {
+        const res = await fetch(`${API_BASE}/llm/proxy`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                target,
+                method: init?.method ?? 'GET',
+                headers: init?.headers ?? {},
+                body: typeof init?.body === 'string' ? init.body : undefined,
+            }),
+            signal: init?.signal ?? undefined,
+        });
+        console.log('[llmFetch] Proxy returned status:', res.status);
+        return res;
+    } catch (err) {
+        console.error('[llmFetch] Browser fetch threw error:', err);
+        throw err;
+    }
 }

@@ -14,8 +14,8 @@ import { answerOocQuestion, OOC_READ_ONLY_TOOLS } from '../oocService';
 
 const snapshot: OocCampaignSnapshot = {
     campaignId: 'campaign-1',
-    provider: { endpoint: 'http://llm.local', apiKey: '', modelName: 'test' } as any,
-    context: { canonStateActive: true, canonState: 'The party is in Blackwater.', sceneNoteActive: false, sceneNote: '', currentFeature: null, worldVibe: '', characterProfile: { identity: {}, activeTraits: [] }, inventoryItems: [], notebookActive: false, notebook: [] } as any,
+    provider: { endpoint: 'http://llm.local', apiKey: '', modelName: 'test' } as unknown as OocCampaignSnapshot['provider'],
+    context: { canonStateActive: true, canonState: 'The party is in Blackwater.', sceneNoteActive: false, sceneNote: '', currentFeature: null, worldVibe: '', characterProfile: { identity: {}, activeTraits: [] }, inventoryItems: [], notebookActive: false, notebook: [] } as unknown as OocCampaignSnapshot['context'],
     messages: [{ id: 'latest', role: 'assistant', content: 'Default reply', timestamp: 1, pendingCommit: true, swipeActiveIndex: 1, swipeSet: [{ id: 'a', text: 'Old swipe', sceneStakes: 'calm', tagPresent: false }, { id: 'b', text: 'Visible latest swipe', sceneStakes: 'calm', tagPresent: false }] }],
     semanticFacts: [{ id: 'fact-1', subject: 'Mira', predicate: 'holds', object: 'the key', importance: 8, sceneId: '001', timestamp: 1 }],
     loreChunks: [], archiveIndex: [], npcLedger: [],

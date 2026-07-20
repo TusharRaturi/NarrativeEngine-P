@@ -190,6 +190,13 @@ export async function appendScene(campaignId, payload) {
         } else {
             openChapter.sceneRange[1] = sceneId;
             openChapter.sceneCount++;
+            if (openChapter.sceneIds) {
+                if (!openChapter.sceneIds.includes(sceneId)) {
+                    openChapter.sceneIds.push(sceneId);
+                }
+            } else {
+                openChapter.sceneIds = [sceneId];
+            }
         }
         writeChaptersAt(cp, chapters);
     });

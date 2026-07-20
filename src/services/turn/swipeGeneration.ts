@@ -3,6 +3,7 @@ import type { EndpointConfig, ProviderConfig } from '../../types';
 import type { OpenAIMessage } from '../llm/llmService';
 import { sendMessage } from '../chatEngine';
 import { sanitizePayloadForApi } from '../lib/payloadSanitizer';
+import { getApiFormat, isGeminiFamilyModel } from '../../utils/llmApiHelper';
 import { extractAndStripSceneStakes } from './sceneStakesTag';
 import { uid } from '../../utils/uid';
 
@@ -15,7 +16,8 @@ export const SWIPE_SYSTEM_LINE =
 
 export interface SwipeGenerationOptions {
     provider: LLMProvider | EndpointConfig | ProviderConfig;
-    cachedPayload: OpenAIMessage[];     // final completion callback's currentPayload (with tool history)
+    /** The raw snapshot captured from the active turn (usually has 1-2 tool calls trailing). */
+    cachedPayload: OpenAIMessage[];
     modelName?: string;
     temperature: number;                // slider value (base + offset)
     abortSignal?: AbortSignal;
@@ -38,7 +40,8 @@ export function generateSwipeVariant(
     const { provider, cachedPayload, modelName, temperature, abortSignal, guidance } = opts;
 
     // Sanitize with allowTools=false (swipes 2–5 never get tools).
-    const sanitized = sanitizePayloadForApi(cachedPayload, false, modelName);
+    const isGeminiAPI = getApiFormat(provider) === 'gemini' || isGeminiFamilyModel(provider);
+    const sanitized = sanitizePayloadForApi(cachedPayload, false, modelName, isGeminiAPI);
 
     // Build the tail system messages: the no-tools line, then optional guidance.
     const tailMessages: OpenAIMessage[] = [

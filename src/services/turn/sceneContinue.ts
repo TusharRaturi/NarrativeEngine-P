@@ -2,6 +2,7 @@ import type { LLMProvider, SceneStakes, EndpointConfig, ProviderConfig, Sampling
 import type { OpenAIMessage } from '../llm/llmService';
 import { sendMessage } from '../chatEngine';
 import { sanitizePayloadForApi } from '../lib/payloadSanitizer';
+import { getApiFormat, isGeminiFamilyModel } from '../../utils/llmApiHelper';
 import { extractAndStripSceneStakes } from './sceneStakesTag';
 import { getToolDefinitions } from './toolHandlers';
 import { resolveToolHandler } from './toolRegistry';
@@ -95,8 +96,9 @@ export function buildSceneContinueRequest(opts: {
     directive: string;
     allowDiceTool: boolean;
     modelName?: string;
+    isGemini?: boolean;
 }): OpenAIMessage[] {
-    const sanitized = sanitizePayloadForApi([...opts.basePayload], opts.allowDiceTool, opts.modelName);
+    const sanitized = sanitizePayloadForApi([...opts.basePayload], opts.allowDiceTool, opts.modelName, opts.isGemini);
     const request: OpenAIMessage[] = [...sanitized];
     if (opts.assistantText !== null) {
         request.push({ role: 'assistant', content: opts.assistantText });
@@ -160,6 +162,7 @@ export function generateSceneContinuation(
         directive,
         allowDiceTool,
         modelName,
+        isGemini: getApiFormat(provider) === 'gemini' || isGeminiFamilyModel(provider),
     });
 
     // Accumulated text across tool-call continuations (mirrors orchestrator's accumulatedContent).
@@ -218,7 +221,6 @@ export function generateSceneContinuation(
                             arguments: toolCall.arguments,
                             loreChunks: [],
                             notebook: [],
-                            diceSystem: undefined,
                         });
 
                         // Accumulate the pre-tool-call text (mirrors orchestrator's append mode).
@@ -238,6 +240,9 @@ export function generateSceneContinuation(
                                 id: toolCall.id,
                                 type: 'function' as const,
                                 function: { name: toolCall.name, arguments: toolCall.arguments },
+                                // Gemini-specific: must be echoed back verbatim or the next request
+                                // 400s with "missing a thought_signature". No-op for other providers.
+                                ...(toolCall.thoughtSignature ? { thoughtSignature: toolCall.thoughtSignature } : {}),
                             }],
                         } as OpenAIMessage);
                         currentPayload.push({

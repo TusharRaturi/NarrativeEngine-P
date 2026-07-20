@@ -18,6 +18,7 @@ export function BackupModal() {
 
     useEffect(() => {
         if (backupModalOpen && activeCampaignId) loadBackups();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [backupModalOpen, activeCampaignId]);
 
     useEffect(() => {

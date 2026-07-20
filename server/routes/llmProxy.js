@@ -1,6 +1,28 @@
 import { Router } from 'express';
 import { Readable } from 'stream';
+import { exec } from 'child_process';
+import { promisify } from 'util';
 import { wrapAsync } from '../lib/asyncHandler.js';
+
+const execAsync = promisify(exec);
+let cachedGcloudToken = null;
+let gcloudTokenExpiry = 0;
+
+async function getGcloudToken() {
+    if (cachedGcloudToken && Date.now() < gcloudTokenExpiry) {
+        return cachedGcloudToken;
+    }
+    try {
+        const { stdout } = await execAsync('gcloud auth print-access-token');
+        cachedGcloudToken = stdout.trim();
+        // Tokens are valid for 1 hour. Cache for 45 minutes (2700000 ms)
+        gcloudTokenExpiry = Date.now() + 2700000;
+        return cachedGcloudToken;
+    } catch (err) {
+        console.error('[LLM Proxy] Failed to fetch gcloud token:', err.message);
+        throw err;
+    }
+}
 
 export function createLLMProxyRouter() {
     const router = Router();
@@ -25,15 +47,48 @@ export function createLLMProxyRouter() {
             if (!res.writableEnded) controller.abort();
         });
 
+        // Intercept magic 'gcloud' API key and substitute real token
+        const authKey = Object.keys(headers).find(k => k.toLowerCase() === 'authorization');
+        if (authKey && typeof headers[authKey] === 'string' && headers[authKey].toLowerCase() === 'bearer gcloud') {
+            try {
+                const realToken = await getGcloudToken();
+                headers[authKey] = `Bearer ${realToken}`;
+            } catch (err) {
+                res.status(401).json({ error: `Auto-gcloud auth failed: ${err.message}` });
+                return;
+            }
+        }
+
         let upstream;
         try {
+            console.log(`[LLM Proxy] Fetching upstream: ${method} ${target}`);
+            console.log(`[LLM Proxy] Headers:`, JSON.stringify(headers));
             upstream = await fetch(target, {
                 method,
                 headers,
                 body: method === 'GET' || method === 'HEAD' ? undefined : body,
                 signal: controller.signal,
             });
+            
+            // If the cached token was rejected, clear the cache and try exactly once more
+            if (upstream.status === 401 && authKey && headers[authKey].startsWith('Bearer ')) {
+                console.log(`[LLM Proxy] Upstream returned 401. Invalidating gcloud token cache and retrying...`);
+                cachedGcloudToken = null;
+                gcloudTokenExpiry = 0;
+                const freshToken = await getGcloudToken();
+                headers[authKey] = `Bearer ${freshToken}`;
+                
+                upstream = await fetch(target, {
+                    method,
+                    headers,
+                    body: method === 'GET' || method === 'HEAD' ? undefined : body,
+                    signal: controller.signal,
+                });
+            }
+            
+            console.log(`[LLM Proxy] Upstream responded with status: ${upstream.status}`);
         } catch (err) {
+            console.error(`[LLM Proxy] Upstream fetch threw error:`, err);
             if (controller.signal.aborted) return; // client went away; nothing to send
             res.status(502).json({ error: `Upstream fetch failed: ${err.message}` });
             return;

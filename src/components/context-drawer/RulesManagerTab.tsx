@@ -3,7 +3,7 @@ import { X, Plus, RotateCcw } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import type { LoreChunk, RuleChunkMeta } from '../../types';
 import { chunkLoreFile } from '../../services/lore/loreChunker';
-import { indexRules, deriveDefaultMeta, type IndexingProgress } from '../../services/rules/rulesIndexer';
+import { indexRules, deriveDefaultMeta } from '../../services/rules/rulesIndexer';
 
 type ChunkWithMeta = {
     chunk: LoreChunk;
@@ -16,10 +16,12 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
     const activeCampaignId = useAppStore((s) => s.activeCampaignId);
     const settings = useAppStore((s) => s.settings);
     const getUtilityEndpoint = useAppStore((s) => s.getActiveUtilityEndpoint);
+    const isIndexingRules = useAppStore((s) => s.isIndexingRules);
+    const indexingRulesProgress = useAppStore((s) => s.indexingRulesProgress);
+    const setIsIndexingRules = useAppStore((s) => s.setIsIndexingRules);
+    const setIndexingRulesProgress = useAppStore((s) => s.setIndexingRulesProgress);
 
     const [chunksWithMeta, setChunksWithMeta] = useState<ChunkWithMeta[]>([]);
-    const [indexing, setIndexing] = useState(false);
-    const [progress, setProgress] = useState<IndexingProgress | null>(null);
     const [newKeyword, setNewKeyword] = useState<Record<string, string>>({});
     const [newSecondary, setNewSecondary] = useState<Record<string, string>>({});
     const [confirmRegenId, setConfirmRegenId] = useState<string | null>(null);
@@ -29,7 +31,7 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
             setChunksWithMeta([]);
             return;
         }
-        const chunks = chunkLoreFile(context.rulesRaw);
+        const chunks = chunkLoreFile(context.rulesRaw, true);
         const meta = context.rulesChunkMeta ?? {};
         const combined: ChunkWithMeta[] = chunks.map(chunk => ({
             chunk,
@@ -39,22 +41,22 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
     }, [context.rulesRaw, context.rulesChunkMeta]);
 
     useEffect(() => {
-        parseChunks();
+        Promise.resolve().then(() => parseChunks());
     }, [parseChunks]);
 
     const runIndex = async () => {
         if (!activeCampaignId || !context.rulesRaw) return;
-        setIndexing(true);
+        setIsIndexingRules(true);
         try {
             const utilityEndpoint = getUtilityEndpoint();
             const autoGen = settings.autoGenerateRuleKeywords ?? true;
             const result = await indexRules(
                 activeCampaignId,
                 context.rulesRaw,
-                context.rulesChunkMeta,
+                context.rulesChunkMeta || {},
                 utilityEndpoint?.endpoint ? utilityEndpoint : undefined,
                 autoGen,
-                (p) => setProgress(p)
+                (p) => setIndexingRulesProgress(p)
             );
             updateContext({ rulesChunkMeta: result.chunkMeta });
             const combined: ChunkWithMeta[] = result.chunks.map(chunk => ({
@@ -65,8 +67,8 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
         } catch (e) {
             console.warn('[RulesManager] Indexing failed:', e);
         } finally {
-            setIndexing(false);
-            setProgress(null);
+            setIsIndexingRules(false);
+            setIndexingRulesProgress(null);
         }
     };
 
@@ -120,6 +122,11 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
     const bulkDisableAll = () => {
         if (chunksWithMeta.length === 0) return;
         persistBulk(() => []);
+    };
+
+    const resetAllOverrides = () => {
+        if (!window.confirm("Are you sure you want to reset all rule overrides and keywords back to defaults?")) return;
+        updateContext({ rulesChunkMeta: {} });
     };
 
     const bulkModeIsOn = (mode: 'vector' | 'keyword' | 'always') =>
@@ -319,6 +326,7 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
 
     const totalTokens = chunksWithMeta.reduce((sum, c) => sum + c.chunk.tokens, 0);
     const rulesBudget = Math.floor((settings.contextLimit || 8192) * (settings.rulesBudgetPct ?? 0.10));
+    const rulesThreshold = Math.floor(rulesBudget * 1.2);
 
     return (
         <div className="px-4 py-4 space-y-4 font-mono">
@@ -335,33 +343,33 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
 
             <div className="text-[9px] text-text-dim/70 space-y-1">
                 <div>Total rules: {totalTokens} tokens across {chunksWithMeta.length} chunks</div>
-                <div>RAG budget: {rulesBudget} tokens/turn (threshold: {Math.floor(rulesBudget * 1.2)} tokens)</div>
+                <div>RAG budget: {rulesBudget} tokens/turn (threshold: {rulesThreshold} tokens)</div>
             </div>
 
             <button
                 onClick={runIndex}
-                disabled={indexing || !context.rulesRaw}
+                disabled={isIndexingRules || !context.rulesRaw}
                 className={`w-full py-2 text-[10px] uppercase tracking-wider font-bold rounded transition-colors ${
-                    indexing
+                    isIndexingRules
                         ? 'bg-surface text-text-dim cursor-not-allowed'
                         : 'bg-terminal/10 text-terminal hover:bg-terminal/20'
                 }`}
             >
-                {indexing
-                    ? `Indexing... ${progress ? `${progress.current}/${progress.total} (${progress.phase})` : ''}`
+                {isIndexingRules
+                    ? `Indexing... ${indexingRulesProgress ? `${indexingRulesProgress.current}/${indexingRulesProgress.total} (${indexingRulesProgress.phase})` : ''}`
                     : 'Re-index Rules'}
             </button>
 
-            {indexing && progress && (
+            {isIndexingRules && indexingRulesProgress && (
                 <div className="h-1 bg-void-lighter rounded overflow-hidden">
                     <div
                         className="h-full bg-terminal transition-all duration-200"
-                        style={{ width: `${progress.total > 0 ? (progress.current / progress.total) * 100 : 0}%` }}
+                        style={{ width: `${indexingRulesProgress.total > 0 ? (indexingRulesProgress.current / indexingRulesProgress.total) * 100 : 0}%` }}
                     />
                 </div>
             )}
 
-            {chunksWithMeta.length > 0 && (
+            {chunksWithMeta.length > 0 && totalTokens > rulesThreshold && (
                 <div className="flex items-center gap-1.5 pt-1">
                     <span className="text-[8px] text-text-dim/60 uppercase tracking-wider shrink-0">Bulk:</span>
                     {(['vector', 'keyword', 'always'] as const).map(mode => {
@@ -388,6 +396,13 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
                     >
                         Disable All
                     </button>
+                    <button
+                        onClick={resetAllOverrides}
+                        title="Reset all manual overrides to default rule states"
+                        className="flex-1 py-1.5 md:py-1 text-[9px] uppercase tracking-wider rounded bg-surface text-text-dim hover:text-terminal hover:bg-terminal/10 border border-transparent hover:border-terminal/20 transition-colors"
+                    >
+                        Reset Overrides
+                    </button>
                 </div>
             )}
 
@@ -395,6 +410,23 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
                 <p className="text-text-dim/50 text-xs text-center mt-8">
                     No rules to manage. Paste rules in the System tab first.
                 </p>
+            ) : totalTokens <= rulesThreshold ? (
+                <div className="mt-4">
+                    <div className="bg-terminal/10 border border-terminal/30 rounded p-4 mb-4">
+                        <div className="text-terminal text-[11px] font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-terminal animate-pulse" />
+                            Verbatim Injection Active
+                        </div>
+                        <p className="text-text-primary text-[10px] mb-3 leading-relaxed">
+                            Your ruleset ({totalTokens} tokens) easily fits within the RAG threshold ({rulesThreshold} tokens). 
+                            The entire text below will be sent verbatim every turn, bypassing keyword search! 
+                            Keyword editing will unlock automatically if the ruleset grows larger than the threshold.
+                        </p>
+                        <div className="bg-void/50 border border-border rounded p-3 max-h-[500px] overflow-y-auto whitespace-pre-wrap text-[10px] font-mono text-text-dim/80">
+                            {context.rulesRaw}
+                        </div>
+                    </div>
+                </div>
             ) : (
                 <div className="space-y-3">
                     {alwaysChunks.length > 0 && (

@@ -338,8 +338,8 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
     const alwaysChunks = chunksWithMeta.filter(c => c.meta.activationModes.includes('always'));
     const conditionalChunks = chunksWithMeta.filter(c => !c.meta.activationModes.includes('always'));
 
-    const totalTokens = chunksWithMeta.reduce((sum, c) => sum + c.chunk.tokens, 0);
     const rulesBudget = Math.floor((settings.contextLimit || 8192) * (settings.rulesBudgetPct ?? 0.10));
+    const rulesThreshold = Math.floor(rulesBudget * 1.2);
 
     return (
         <div className="px-4 py-4 space-y-4">
@@ -356,7 +356,7 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
 
             <div className="text-[9px] text-text-dim/70 space-y-1">
                 <div>Total rules: {totalTokens} tokens across {chunksWithMeta.length} chunks</div>
-                <div>RAG budget: {rulesBudget} tokens/turn (threshold: {Math.floor(rulesBudget * 1.2)} tokens)</div>
+                <div>RAG budget: {rulesBudget} tokens/turn (threshold: {rulesThreshold} tokens)</div>
             </div>
 
             <button
@@ -382,7 +382,7 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
                 </div>
             )}
 
-            {chunksWithMeta.length > 0 && (
+            {chunksWithMeta.length > 0 && totalTokens > rulesThreshold && (
                 <div className="flex items-center gap-1.5">
                     <span className="text-[8px] text-text-dim/60 uppercase tracking-wider shrink-0">Bulk:</span>
                     {(['vector', 'keyword', 'always'] as const).map(mode => {
@@ -416,6 +416,23 @@ export function RulesManagerTab({ onBack }: { onBack?: () => void }) {
                 <p className="text-text-dim/50 text-xs text-center mt-8">
                     No rules to manage. Paste rules in the System tab first.
                 </p>
+            ) : totalTokens <= rulesThreshold ? (
+                <div className="mt-4">
+                    <div className="bg-terminal/10 border border-terminal/30 rounded p-4 mb-4">
+                        <div className="text-terminal text-[11px] font-bold uppercase tracking-wider mb-2 flex items-center gap-2">
+                            <div className="w-1.5 h-1.5 rounded-full bg-terminal animate-pulse" />
+                            Verbatim Injection Active
+                        </div>
+                        <p className="text-text-primary text-[10px] mb-3 leading-relaxed">
+                            Your ruleset ({totalTokens} tokens) easily fits within the RAG threshold ({rulesThreshold} tokens). 
+                            The entire text below will be sent verbatim every turn, bypassing keyword search! 
+                            Keyword editing will unlock automatically if the ruleset grows larger than the threshold.
+                        </p>
+                        <div className="bg-void/50 border border-border rounded p-3 max-h-[500px] overflow-y-auto whitespace-pre-wrap text-[10px] font-mono text-text-dim/80">
+                            {context.rulesRaw}
+                        </div>
+                    </div>
+                </div>
             ) : (
                 <div className="space-y-3">
                     {alwaysChunks.length > 0 && (

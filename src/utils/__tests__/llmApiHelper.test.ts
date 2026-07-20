@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildChatBody } from '../llmApiHelper';
+import { buildChatBody, isVertexOpenAiEndpoint, extractStreamThoughtSignature } from '../llmApiHelper';
 import { buildPayload } from '../../services/payload/payloadBuilder';
 import type { EndpointConfig, GameContext, AppSettings, ChatMessage, ArchiveChapter, ArchiveIndexEntry } from '../../types';
 
@@ -113,7 +113,6 @@ describe('buildChatBody — cache_control handling', () => {
         expect(si.parts[0].text).toContain('You are a GM.');
     });
 });
-
 // ─────────────────────────────────────────────────────────────────────────────
 // WO-09c — Provider-wire cache proof.
 //
@@ -389,5 +388,128 @@ describe('WO-09c — Claude wire preserves history breakpoints', () => {
             expect(lodSystemBlock).toBeDefined();
             expect(breakpointConvIdx).toBeGreaterThan(-1);
         });
+    });
+});
+
+describe('Gemini — thought signatures in buildChatBody', () => {
+    it('Gemini: tool calls with thoughtSignature map to snake_case thought_signature in the request body', () => {
+        const geminiProvider: EndpointConfig = {
+            id: 'test-gemini',
+            name: 'Gemini',
+            endpoint: 'https://generativelanguage.googleapis.com',
+            modelName: 'gemini-2.0-flash',
+            apiKey: 'test-key',
+            apiFormat: 'gemini',
+        };
+        const messages = [
+            { role: 'user', content: 'Use the tool' },
+            {
+                role: 'assistant',
+                content: 'Thinking...',
+                tool_calls: [
+                    {
+                        id: 'tc-1',
+                        type: 'function' as const,
+                        function: { name: 'test_tool', arguments: '{"foo":"bar"}' },
+                        thoughtSignature: 'encrypted-signature-token',
+                    }
+                ]
+            }
+        ];
+        const body = buildChatBody(geminiProvider, messages, { stream: false });
+        const contents = body.contents as { role: string; parts: { functionCall?: { name: string; args: Record<string, unknown> }; thought_signature?: string; thoughtSignature?: string }[] }[];
+        expect(contents).toBeDefined();
+        const modelTurn = contents.find(c => c.role === 'model');
+        expect(modelTurn).toBeDefined();
+        const fcPart = modelTurn!.parts.find(p => p.functionCall);
+        expect(fcPart).toBeDefined();
+        expect(fcPart!.thought_signature).toBe('encrypted-signature-token');
+        expect(fcPart.thoughtSignature).toBeUndefined();
+    });
+
+    it('Gemini: tool calls without thoughtSignature use skip_thought_signature_validator in snake_case', () => {
+        const geminiProvider: EndpointConfig = {
+            id: 'test-gemini',
+            name: 'Gemini',
+            endpoint: 'https://generativelanguage.googleapis.com',
+            modelName: 'gemini-2.0-flash',
+            apiKey: 'test-key',
+            apiFormat: 'gemini',
+        };
+        const messages = [
+            {
+                role: 'assistant',
+                content: '',
+                tool_calls: [
+                    {
+                        id: 'tc-2',
+                        type: 'function' as const,
+                        function: { name: 'test_tool_2', arguments: '{}' }
+                    }
+                ]
+            }
+        ];
+        const body = buildChatBody(geminiProvider, messages, { stream: false });
+        const contents = body.contents as { role: string; parts: { functionCall?: { name: string; args: Record<string, unknown> }; thought_signature?: string; thoughtSignature?: string }[] }[];
+        const modelTurn = contents.find(c => c.role === 'model');
+        const fcPart = modelTurn!.parts.find(p => p.functionCall);
+        expect(fcPart!.thought_signature).toBe('skip_thought_signature_validator');
+    });
+});
+
+describe('extractStreamThoughtSignature', () => {
+    const geminiProvider: EndpointConfig = {
+        id: 'test-gemini',
+        name: 'Gemini',
+        endpoint: 'https://generativelanguage.googleapis.com',
+        modelName: 'gemini-2.0-flash',
+        apiKey: 'test-key',
+        apiFormat: 'gemini',
+    };
+
+    it('extracts thought signature when in camelCase', () => {
+        const chunk = {
+            candidates: [
+                {
+                    content: {
+                        parts: [
+                            { text: 'Some thinking...' },
+                            { thoughtSignature: 'camel-sig-123' }
+                        ]
+                    }
+                }
+            ]
+        };
+        const sig = extractStreamThoughtSignature(chunk, geminiProvider);
+        expect(sig).toBe('camel-sig-123');
+    });
+
+    it('extracts thought signature when in snake_case', () => {
+        const chunk = {
+            candidates: [
+                {
+                    content: {
+                        parts: [
+                            { text: 'Some more thinking...' },
+                            { thought_signature: 'snake-sig-456' }
+                        ]
+                    }
+                }
+            ]
+        };
+        const sig = extractStreamThoughtSignature(chunk, geminiProvider);
+        expect(sig).toBe('snake-sig-456');
+    });
+});
+
+describe('isVertexOpenAiEndpoint', () => {
+    it('detects Gemini Enterprise / Vertex OpenAI-compatible base URLs', () => {
+        expect(isVertexOpenAiEndpoint(
+            'https://aiplatform.googleapis.com/v1/projects/rpg-project-502720/locations/global/endpoints/openapi',
+        )).toBe(true);
+    });
+
+    it('does not match AI Studio Gemini URLs', () => {
+        expect(isVertexOpenAiEndpoint('https://generativelanguage.googleapis.com/v1beta')).toBe(false);
     });
 });

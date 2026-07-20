@@ -57,11 +57,9 @@ export function RegenerateSheet({
     useEffect(() => {
         if (messageId) {
             openedAtRef.current = Date.now();
-            setTempOffset(getSessionOffset());
             // Reset guidance when opening for a new message
-            setGuidance('');
         }
-    }, [messageId, getSessionOffset]);
+    }, [messageId]);
 
     if (!messageId || !msg) return null;
 

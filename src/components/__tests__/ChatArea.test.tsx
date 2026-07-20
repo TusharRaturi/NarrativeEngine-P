@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { ChatArea } from '../ChatArea';
 import type { ChatMessage, AppSettings, GameContext, CondenserState } from '../../types';
@@ -101,7 +101,7 @@ vi.mock('../../store/useAppStore', () => {
     const subscribe = vi.fn(() => vi.fn());
     const getState = vi.fn(() => state);
     const useAppStore = Object.assign(
-        (selector: any) => {
+        (selector: unknown) => {
             const result = selector(state);
             return result;
         },
@@ -264,7 +264,7 @@ describe('ChatArea', () => {
     it('shows streaming indicator when isStreaming is true', () => {
         const state = useAppStore.getState();
         state.messages = [makeMessage({ role: 'user', content: 'Hi' })];
-        (runTurn as ReturnType<typeof vi.fn>).mockImplementation(async (_s: any, _c: any, _ac: any) => {
+        (runTurn as ReturnType<typeof vi.fn>).mockImplementation(async () => {
             state.messages.push(makeMessage({ role: 'assistant', content: 'streaming...' }));
         });
         render(<ChatArea />);

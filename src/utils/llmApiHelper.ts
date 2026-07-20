@@ -47,6 +47,25 @@ export function detectFormatFromEndpoint(endpoint: string): ApiFormat | null {
     return null;
 }
 
+/** Gemini Enterprise / Vertex AI OpenAI-compatible endpoints expose chat/completions, not GET /models. */
+export function isVertexOpenAiEndpoint(endpoint: string): boolean {
+    try {
+        const normalized = endpoint.toLowerCase();
+        return normalized.includes('aiplatform.googleapis.com') && normalized.includes('/endpoints/openapi');
+    } catch {
+        return false;
+    }
+}
+
+/** Native Vertex AI endpoints (not OpenAI-compatible proxy) */
+export function isVertexNativeEndpoint(endpoint: string): boolean {
+    return endpoint.toLowerCase().includes('aiplatform.googleapis.com') && !isVertexOpenAiEndpoint(endpoint);
+}
+
+export function isGeminiFamilyModel(provider: AnyProvider): boolean {
+    return /gemini|gemma|nano banana/i.test(provider.modelName || '');
+}
+
 export function getBaseUrl(provider: AnyProvider): string {
     let base = provider.endpoint.replace(/\/+$/, '');
     const format = getApiFormat(provider);
@@ -88,8 +107,9 @@ export function buildChatHeaders(provider: AnyProvider): Record<string, string> 
             headers['x-api-key'] = provider.apiKey;
             headers['anthropic-version'] = '2023-06-01';
         }
-    } else if (format === 'gemini') {
-        // Gemini auth goes in URL param, not headers — remove Content-Type for GET-style endpoints
+    } else if (format === 'gemini' && !isVertexNativeEndpoint(provider.endpoint)) {
+        // Gemini AI Studio auth goes in URL param, not headers.
+        // Vertex AI native Gemini auth expects standard Bearer token.
     } else if (provider.apiKey) {
         headers['Authorization'] = `Bearer ${provider.apiKey}`;
     }
@@ -188,45 +208,56 @@ function transformClaudeMessages(messages: { role: string; content: string | nul
 }
 
 function transformGeminiMessages(messages: { role: string; content: string | null; tool_calls?: unknown[]; tool_call_id?: string; name?: string; reasoning_content?: string; cache_control?: { type: 'ephemeral' } }[]): { systemInstruction?: { parts: { text: string }[] }; contents: { role: string; parts: unknown[] }[] } {
-    const systemParts: string[] = [];
-    const contents: { role: string; parts: unknown[] }[] = [];
-
-    for (const m of messages) {
-        if (m.role === 'system') {
-            systemParts.push(m.content || '');
-            continue;
-        }
-
-        if (m.role === 'assistant') {
-            const tc = (m as { tool_calls?: { id: string; function: { name: string; arguments: string } }[] }).tool_calls;
-            const parts: unknown[] = [];
-            if (m.content) parts.push({ text: m.content });
-            if (tc && tc.length > 0) {
-                for (const t of tc) {
-                    let args: Record<string, unknown> = {};
-                    try { args = JSON.parse(t.function.arguments); } catch { args = { _raw: t.function.arguments }; }
-                    parts.push({ functionCall: { name: t.function.name, args } });
-                }
-            }
-            contents.push({ role: 'model', parts });
-            continue;
-        }
-
-        if (m.role === 'tool') {
-            const fName = m.name || '';
-            contents.push({
-                role: 'function',
-                parts: [{ functionResponse: { name: fName, response: { content: m.content || '' } } }],
-            });
-            continue;
-        }
-
-        contents.push({ role: m.role, parts: [{ text: m.content || '' }] });
+  const systemParts: string[] = [];
+  const contents: { role: string; parts: unknown[] }[] = [];
+  for (const m of messages) {
+    if (m.role === 'system') {
+      systemParts.push(m.content || '');
+      continue;
     }
-
-    const result: { systemInstruction?: { parts: { text: string }[] }; contents: { role: string; parts: unknown[] }[] } = { contents };
-    if (systemParts.length > 0) result.systemInstruction = { parts: [{ text: systemParts.join('\n\n') }] };
-    return result;
+    if (m.role === 'assistant') {
+      const tc = (m as { tool_calls?: { id: string; function: { name: string; arguments: string }; thoughtSignature?: string }[] }).tool_calls;
+      const parts: unknown[] = [];
+      if (m.content) parts.push({ text: m.content });
+      if (tc && tc.length > 0) {
+        for (const t of tc) {
+          let args: Record<string, unknown> = {};
+          try { args = JSON.parse(t.function.arguments); } catch { args = { _raw: t.function.arguments }; }
+          const part: Record<string, unknown> = { functionCall: { name: t.function.name, args } };
+          // Must echo back the exact signature Gemini issued for this call, or the
+          // next request 400s with "Function call is missing a thought_signature".
+          if (t.thoughtSignature) {
+            part.thought_signature = t.thoughtSignature;
+          } else {
+            // Last-resort escape hatch documented by Google for functionCall parts
+            // that have no real signature (legacy history saved before signature
+            // capture, or history migrated from a non-Gemini model). The validator
+            // accepts the literal string 'skip_thought_signature_validator'. This
+            // degrades model performance per Google's docs, so it is intentionally
+            // only a fallback — new turns captured via extractStreamThoughtSignature
+            // (see llmService.ts) carry a real signature and never hit this branch.
+            // Ref: https://ai.google.dev/gemini-api/docs/thought-signatures
+            part.thought_signature = 'skip_thought_signature_validator';
+          }
+          parts.push(part);
+        }
+      }
+      contents.push({ role: 'model', parts });
+      continue;
+    }
+    if (m.role === 'tool') {
+      const fName = m.name || '';
+      contents.push({
+        role: 'function',
+        parts: [{ functionResponse: { name: fName, response: { content: m.content || '' } } }],
+      });
+      continue;
+    }
+    contents.push({ role: m.role, parts: [{ text: m.content || '' }] });
+  }
+  const result: { systemInstruction?: { parts: { text: string }[] }; contents: { role: string; parts: unknown[] }[] } = { contents };
+  if (systemParts.length > 0) result.systemInstruction = { parts: [{ text: systemParts.join('\n\n') }] };
+  return result;
 }
 
 function transformGeminiTools(tools: unknown[]): unknown[] {
@@ -284,12 +315,19 @@ export function buildChatBody(
 
         const genConfig: Record<string, unknown> = {};
         genConfig.maxOutputTokens = options?.sampling?.max_tokens ?? options?.max_tokens ?? 8192;
-        if (options?.temperature !== undefined) genConfig.temperature = options.temperature;
-        else if (options?.sampling?.temperature !== undefined) genConfig.temperature = options.sampling.temperature;
-        if (options?.sampling?.top_p !== undefined) genConfig.topP = options.sampling.top_p;
-        if (options?.sampling?.top_k !== undefined) genConfig.topK = options.sampling.top_k;
-        if (options?.sampling?.frequency_penalty !== undefined) genConfig.frequencyPenalty = options.sampling.frequency_penalty;
-        if (options?.sampling?.presence_penalty !== undefined) genConfig.presencePenalty = options.sampling.presence_penalty;
+        
+        // Gemini 3.0+ models have deprecated temperature and top* parameters.
+        // We only append them for older models (1.0/1.5/2.0/2.5).
+        const isGemini3Plus = provider.modelName && provider.modelName.includes('gemini-3');
+        
+        if (!isGemini3Plus) {
+            if (options?.temperature !== undefined) genConfig.temperature = options.temperature;
+            else if (options?.sampling?.temperature !== undefined) genConfig.temperature = options.sampling.temperature;
+            if (options?.sampling?.top_p !== undefined) genConfig.topP = options.sampling.top_p;
+            if (options?.sampling?.top_k !== undefined) genConfig.topK = options.sampling.top_k;
+            if (options?.sampling?.frequency_penalty !== undefined) genConfig.frequencyPenalty = options.sampling.frequency_penalty;
+            if (options?.sampling?.presence_penalty !== undefined) genConfig.presencePenalty = options.sampling.presence_penalty;
+        }
 
         if (effort && effort !== 'off') {
             const budget = GEMINI_LEVEL_MAP[effort];
@@ -416,32 +454,61 @@ export function extractStreamDelta(data: unknown, provider: AnyProvider): string
     return openai?.choices?.[0]?.delta?.content ?? '';
 }
 
-export function extractStreamToolCall(data: unknown, provider: AnyProvider): { id: string; name: string; arguments: string } | null {
+export function extractStreamToolCall(data: unknown, provider: AnyProvider): { id: string; name: string; arguments: string; thoughtSignature?: string } | null {
     const format = getApiFormat(provider);
-
     if (format === 'claude') {
-        const claude = data as { type?: string; content_block?: { type?: string; id?: string; name?: string }; delta?: { type?: string; partial_json?: string } };
-        if (claude.type === 'content_block_start' && claude.content_block?.type === 'tool_use') {
-            return { id: claude.content_block.id || '', name: claude.content_block.name || '', arguments: '' };
-        }
-        if (claude.type === 'content_block_delta' && claude.delta?.type === 'input_json_delta' && claude.delta.partial_json) {
-            return { id: '', name: '', arguments: claude.delta.partial_json };
+        const claude = data as { content_block?: { type: string; id: string; name: string; input: unknown }; };
+        const block = claude.content_block;
+        if (block && block.type === 'tool_use') {
+            return { id: block.id, name: block.name, arguments: JSON.stringify(block.input) };
         }
         return null;
     }
-
     if (format === 'gemini') {
-        const gemini = data as { candidates?: { content?: { parts?: { functionCall?: { name: string; args: Record<string, unknown> } }[] } }[] };
-        const fc = gemini?.candidates?.[0]?.content?.parts?.find(p => (p as { functionCall?: unknown }).functionCall);
+        const gemini = data as { candidates?: { content?: { parts?: { functionCall?: { name: string; args: Record<string, unknown> }; thoughtSignature?: string; thought_signature?: string }[] } }[] };
+        const fc = gemini?.candidates?.[0]?.content?.parts?.find(p => p?.functionCall);
         if (fc) {
-            const fCall = (fc as { functionCall: { name: string; args: Record<string, unknown> } }).functionCall;
-            return { id: `gemini_${Date.now()}`, name: fCall.name, arguments: JSON.stringify(fCall.args) };
+            const sig = fc.thoughtSignature || fc.thought_signature;
+            return {
+                id: `gemini_${Date.now()}`,
+                name: fc.functionCall?.name || '',
+                arguments: JSON.stringify(fc.functionCall?.args || {}),
+                thoughtSignature: sig,
+            };
         }
         return null;
     }
-
-    const openai = data as { choices?: { delta?: { tool_calls?: { id?: string; function?: { name?: string; arguments?: string } }[] } }[] };
-    const tc = openai?.choices?.[0]?.delta?.tool_calls?.[0];
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const tc = ((data as any)?.choices?.[0]?.delta as any)?.tool_calls?.[0];
     if (!tc) return null;
     return { id: tc.id || '', name: tc.function?.name || '', arguments: tc.function?.arguments || '' };
+}
+
+/**
+ * Scans EVERY part of a Gemini streamed chunk for a thoughtSignature, independent of whether
+ * that chunk also happens to carry the functionCall. This matters because Gemini frequently
+ * streams the signature-bearing part in a DIFFERENT SSE event than the one containing the
+ * functionCall itself (per Google's docs: "signatures are metadata that can be attached to any
+ * part... such as living inside functionCall parts OR THE FINAL PART of a response"). Relying
+ * only on extractStreamToolCall's co-location check silently drops the signature whenever it
+ * lands on its own part/chunk — which is exactly what causes the "missing a thought_signature"
+ * 400 even for brand-new tool calls the app itself generated this session.
+ *
+ * Callers should call this on EVERY parsed chunk (not just chunks where extractStreamToolCall
+ * returns non-null) and keep the last non-empty value seen across the whole stream.
+ */
+export function extractStreamThoughtSignature(data: unknown, provider: AnyProvider): string | undefined {
+    if (getApiFormat(provider) !== 'gemini') return undefined;
+    const gemini = data as { candidates?: { content?: { parts?: { thoughtSignature?: string; thought_signature?: string }[] } }[] };
+    const parts = gemini?.candidates?.[0]?.content?.parts;
+    if (!parts) return undefined;
+    for (const part of parts) {
+        if (part) {
+            const sig = part.thoughtSignature || part.thought_signature;
+            if (typeof sig === 'string' && sig) {
+                return sig;
+            }
+        }
+    }
+    return undefined;
 }

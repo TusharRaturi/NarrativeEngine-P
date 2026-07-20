@@ -75,6 +75,7 @@ export function ChatArea() {
 
     // A brief belongs to this in-memory chat session and one campaign only.
     useEffect(() => {
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setArmedAskGmBrief(current => current?.campaignId === activeCampaignId ? current : null);
     }, [activeCampaignId]);
 
@@ -99,6 +100,7 @@ export function ChatArea() {
 
     useEffect(() => {
         if (composerInjection != null) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setInput(composerInjection);
             consumeComposerInjection();
             inputRef.current?.focus();

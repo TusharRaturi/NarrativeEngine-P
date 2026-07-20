@@ -1,4 +1,4 @@
-import { ScrollText, Settings2, Sparkles } from 'lucide-react';
+import { ScrollText, Settings2, Sparkles, Loader2 } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { PayloadTraceView } from '../PayloadTraceView';
 import { SceneNoteEditor } from '../SceneNoteEditor';
@@ -9,6 +9,8 @@ export function RulesTab({ onOpenManager }: { onOpenManager?: () => void }) {
     const context = useAppStore((s) => s.context);
     const updateContext = useAppStore((s) => s.updateContext);
     const settings = useAppStore((s) => s.settings);
+    const isIndexingRules = useAppStore((s) => s.isIndexingRules);
+    const indexingRulesProgress = useAppStore((s) => s.indexingRulesProgress);
 
     const rulesBudgetPct = settings.rulesBudgetPct ?? 0.10;
     const contextLimit = settings.contextLimit || 8192;
@@ -47,6 +49,18 @@ export function RulesTab({ onOpenManager }: { onOpenManager?: () => void }) {
                     rows={6}
                     className="w-full bg-void border border-border px-3 py-2 text-xs text-text-primary placeholder:text-text-dim/40 font-mono resize-y"
                 />
+                {isIndexingRules && (
+                    <div className="mt-2 flex items-center gap-2 text-[10px] text-terminal bg-terminal/10 border border-terminal/20 px-2 py-1.5 rounded-sm font-mono">
+                        <Loader2 size={12} className="animate-spin" />
+                        <span>
+                            {indexingRulesProgress?.phase === 'keyword-extraction'
+                                ? `Generating AI Keywords: ${indexingRulesProgress.current}/${indexingRulesProgress.total}...`
+                                : indexingRulesProgress?.phase === 'embedding'
+                                    ? `Embedding rules: ${indexingRulesProgress.current}/${indexingRulesProgress.total}...`
+                                    : 'Indexing rules...'}
+                        </span>
+                    </div>
+                )}
                 <div className="flex items-center justify-between mt-1 text-[10px] font-mono text-text-dim">
                     <span>{tokenCount.toLocaleString()} tok</span>
                     <span className={ragActive ? 'text-terminal font-bold' : 'text-text-dim/60'}>

@@ -1,46 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { deriveDefaultMeta, extractHeaderKeywords, extractBoldKeywords } from '../rules/rulesIndexer';
 import { retrieveRelevantRules } from '../rules/rulesRetriever';
 import { buildPayload } from '../payload/payloadBuilder';
 import type { LoreChunk, RuleChunkMeta, GameContext, AppSettings } from '../../types';
-
-describe('Rules Indexer Helpers', () => {
-    it('extracts keywords from headers and bold text correctly', () => {
-        const header = '## Combat Movement Check';
-        const content = 'When moving through **difficult terrain**, make an **athletics** check.';
-        
-        const headerKws = extractHeaderKeywords(header);
-        const boldKws = extractBoldKeywords(content);
-        
-        expect(headerKws).toContain('combat');
-        expect(headerKws).toContain('move');
-        expect(headerKws).toContain('check');
-        
-        expect(boldKws).toContain('difficult terrain');
-        expect(boldKws).toContain('athletics');
-    });
-
-    it('derives default metadata correctly', () => {
-        const chunk: LoreChunk = {
-            id: 'rule-combat',
-            header: '## Combat Rules',
-            content: 'Always roll a **d20** for attacks.',
-            tokens: 15,
-            priority: 8,
-            triggerKeywords: ['attack'],
-            secondaryKeywords: ['sword'],
-        };
-        
-        const meta = deriveDefaultMeta(chunk);
-        expect(meta.id).toBe('rule-combat');
-        expect(meta.priority).toBe(8);
-        expect(meta.activationModes).toContain('vector');
-        expect(meta.triggerKeywords).toContain('attack');
-        expect(meta.triggerKeywords).toContain('combat');
-        expect(meta.triggerKeywords).toContain('d20');
-        expect(meta.secondaryKeywords).toContain('sword');
-    });
-});
 
 describe('Rules Retriever Scoring & Matching', () => {
     const mockChunks: LoreChunk[] = [

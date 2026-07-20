@@ -2,7 +2,8 @@ import type { ArchiveChapter, ProviderConfig, EndpointConfig } from '../../types
 import { countTokens } from '../infrastructure/tokenizer';
 import { extractJson } from '../infrastructure/jsonExtract';
 import { llmCall } from '../../utils/llmCall';
-import { truncateScenesToBudget, CHAPTER_SUMMARY_TOKEN_BUDGET } from './shared';
+import { chunkScenesToBudget, CHAPTER_SUMMARY_TOKEN_BUDGET } from './shared';
+import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 
 // ─── Chapter Summary Generator ───
 
@@ -29,8 +30,7 @@ function buildChapterSummaryPrompt(
     scenes: { sceneId: string; content: string }[],
     headerIndex: string
 ): string {
-    const truncated = truncateScenesToBudget(scenes, CHAPTER_SUMMARY_TOKEN_BUDGET);
-    const sceneContent = truncated.map(s => `--- SCENE ${s.sceneId} ---\n${s.content}`).join('\n\n');
+    const sceneContent = scenes.map(s => `--- SCENE ${s.sceneId} ---\n${s.content}`).join('\n\n');
     const sceneRangeStr = `${chapter.sceneRange[0]} to ${chapter.sceneRange[1]}`;
 
     return [
@@ -64,6 +64,39 @@ function buildChapterSummaryPrompt(
         '',
         'SCENE CONTENT:',
         sceneContent,
+    ].join('\n');
+}
+
+function buildStitchSummaryPrompt(
+    partialSummaries: ChapterSummaryOutput[],
+    chapterTitle: string
+): string {
+    const summariesText = partialSummaries.map((s, i) => `--- CHUNK ${i + 1} SUMMARY ---\n${JSON.stringify(s, null, 2)}`).join('\n\n');
+    return [
+        'You are a TTRPG campaign archivist.',
+        'I have a long chapter broken into chunks. The AI has already generated a summary for each chunk.',
+        'Your task is to synthesize these partial chunk summaries into ONE final, cohesive chapter summary.',
+        '',
+        `CHAPTER: "${chapterTitle || 'Untitled'}"`,
+        '',
+        'PARTIAL CHUNK SUMMARIES:',
+        summariesText,
+        '',
+        'OUTPUT FORMAT — respond with a JSON object:',
+        '{',
+        '    "title": "Short evocative chapter title",',
+        '    "summary": "4-8 bullet points covering key events, each on its own line starting with `- `",',
+        '    "keywords": ["keyword1", "keyword2", ...],',
+        '    "npcs": ["NPC Name 1", "NPC Name 2", ...],',
+        '    "majorEvents": ["Event description 1", "Event description 2"],',
+        '    "unresolvedThreads": ["Thread 1", "Thread 2"],',
+        '    "tone": "one of: combat-heavy, exploration, social, mystery, political, emotional, mixed",',
+        '    "themes": ["theme1", "theme2"]',
+        '}',
+        '',
+        'RULES:',
+        '- Combine all the major characters, events, and threads from the chunks.',
+        '- The narrative summary should cover the beginning, middle, and end of the chapter seamlessly.',
     ].join('\n');
 }
 
@@ -122,27 +155,64 @@ export async function generateChapterSummary(
     chapter: ArchiveChapter,
     scenes: { sceneId: string; content: string }[],
     headerIndex: string,
-    maxRetries = 1
+    maxRetries = 1,
+    contextLimit?: number
 ): Promise<ChapterSummaryOutput | null> {
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        const prompt = attempt === 0
-            ? buildChapterSummaryPrompt(chapter, scenes, headerIndex)
-            : buildChapterSummaryPrompt(chapter, scenes, headerIndex) +
-            '\n\nPREVIOUS ATTEMPT FAILED. Output ONLY valid JSON with all required fields.';
+    const budget = contextLimit && contextLimit > 0 ? contextLimit : CHAPTER_SUMMARY_TOKEN_BUDGET;
+    const chunks = chunkScenesToBudget(scenes, budget);
 
-        console.log(`[SaveFileEngine] Generating Chapter Summary... (Attempt ${attempt + 1})`, {
-            chapterId: chapter.chapterId,
-            sceneCount: scenes.length,
-            promptTokens: countTokens(prompt)
-        });
+    if (chunks.length === 0) return null;
 
-        const output = await llmCall(provider, prompt, { priority: 'low' });
-        const result = parseChapterSummaryOutput(output);
+    const partialSummaries: ChapterSummaryOutput[] = [];
 
-        if (result) {
-            return result;
+    for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
+        const chunkScenes = chunks[chunkIdx];
+        let chunkResult: ChapterSummaryOutput | null = null;
+
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            const prompt = attempt === 0
+                ? buildChapterSummaryPrompt(chapter, chunkScenes, headerIndex)
+                : buildChapterSummaryPrompt(chapter, chunkScenes, headerIndex) +
+                '\n\nPREVIOUS ATTEMPT FAILED. Output ONLY valid JSON with all required fields.';
+
+            console.log(`[SaveFileEngine] Generating Chapter Summary Chunk ${chunkIdx + 1}/${chunks.length}... (Attempt ${attempt + 1})`, {
+                chapterId: chapter.chapterId,
+                sceneCount: chunkScenes.length,
+                promptTokens: countTokens(prompt)
+            });
+
+            const output = await llmCall(provider, prompt, { priority: 'low', timeoutMs: AI_CALL_TIMEOUT_MS });
+            const result = parseChapterSummaryOutput(output);
+
+            if (result) {
+                chunkResult = result;
+                break;
+            }
+            console.warn(`[SaveFileEngine] Chapter Summary Chunk ${chunkIdx + 1} attempt ${attempt + 1} failed parsing`);
         }
-        console.warn(`[SaveFileEngine] Chapter Summary attempt ${attempt + 1} failed parsing`);
+
+        if (chunkResult) {
+            partialSummaries.push(chunkResult);
+        }
+    }
+
+    if (partialSummaries.length === 0) return null;
+
+    if (chunks.length === 1) {
+        return partialSummaries[0];
+    }
+
+    // Stitch chunks together
+    console.log(`[SaveFileEngine] Stitching ${partialSummaries.length} partial summaries...`);
+    const stitchPrompt = buildStitchSummaryPrompt(partialSummaries, chapter.title);
+
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const output = await llmCall(provider, stitchPrompt, { priority: 'low', maxTokens: 1000, trackingLabel: 'chapter-seal-stitch', timeoutMs: AI_CALL_TIMEOUT_MS });
+        const finalResult = parseChapterSummaryOutput(output);
+        if (finalResult) {
+            return finalResult;
+        }
+        console.warn(`[SaveFileEngine] Stitch attempt ${attempt + 1} failed parsing`);
     }
 
     return null;

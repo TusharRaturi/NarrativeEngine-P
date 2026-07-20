@@ -28,7 +28,7 @@ function makeEntry(overrides: Partial<LocationEntry> = {}): LocationEntry {
     };
 }
 
-const baseRaw = (overrides: any = {}) => ({
+const baseRaw = (overrides: Record<string, unknown> = {}) => ({
     current: { place: 'unclear', feature: null },
     newPlaces: [],
     updates: [],

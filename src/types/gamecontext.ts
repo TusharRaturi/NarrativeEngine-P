@@ -200,6 +200,7 @@ export type GameContext = {
     npcIntroConfig?: NpcIntroConfig;        // config block
     rulesChunkMeta?: Record<string, RuleChunkMeta>;
     rulesChunks?: LoreChunk[];
+    rulesRawHash?: string;
     // ---- NPC Agency & Combat / Tier contexts ----
     agencyTick?: number;          // monotonic tick counter (heartbeat/timeskip advance it)
     agencyHeartbeatDC?: number;   // escalating-DC pity timer (mirrors surpriseDC)
@@ -457,6 +458,7 @@ export function migrateLegacyContext(ctx: Partial<GameContext>): GameContext {
         rulesRaw: '',
         rulesChunkMeta: {},
         rulesChunks: [],
+        rulesRawHash: '',
         canonState: '',
         headerIndex: '',
         starter: '',

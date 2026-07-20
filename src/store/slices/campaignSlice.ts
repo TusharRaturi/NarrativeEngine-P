@@ -1,4 +1,5 @@
 import type { StateCreator } from 'zustand';
+import type { IndexingProgress } from '../../services/rules/rulesIndexer';
 import type { ArchiveChapter, ChatMessage, CondenserState, GameContext, LoreChunk, ArchiveIndexEntry, NPCEntry, NpcSuggestion, SemanticFact, EntityEntry, TimelineEvent, InventoryItem, CharacterProfile, PinnedExcerpt, LocationEntry, LocationSuggestion } from '../../types';
 import { DEFAULT_CHARACTER_PROFILE, DEFAULT_INVENTORY, migrateLegacyContext, buildDefaultDiceSystem } from '../../types';
 import { toast } from '../../components/Toast';
@@ -352,6 +353,11 @@ export type CampaignSlice = {
     setAutoBookkeepingInterval: (n: number) => void;
     resetBookkeepingTurnCounter: () => void;
     incrementBookkeepingTurnCounter: () => number;
+
+    isIndexingRules: boolean;
+    setIsIndexingRules: (isIndexing: boolean) => void;
+    indexingRulesProgress: IndexingProgress | null;
+    setIndexingRulesProgress: (progress: IndexingProgress | null) => void;
 };
 
 // ── Combined state needed for cross-slice access ───────────────────────
@@ -707,5 +713,10 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
         set({ bookkeepingTurnCounter: current } as Partial<CampaignDeps>);
         return current;
     },
-    }; // end of returned slice object
-}; // end of createCampaignSlice
+
+    isIndexingRules: false,
+    setIsIndexingRules: (isIndexing) => set({ isIndexingRules: isIndexing } as Partial<CampaignDeps>),
+    indexingRulesProgress: null,
+    setIndexingRulesProgress: (progress) => set({ indexingRulesProgress: progress } as Partial<CampaignDeps>),
+    };
+};

@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import React, { useRef } from 'react';
 import { AlertCircle, RotateCw } from 'lucide-react';
 import type { ChatMessage, DebugSection } from '../types';
 import { DebugPayloadView } from './DebugPayloadView';
@@ -83,8 +83,8 @@ export function MessageBubble({
         thinkingBlock = msg.reasoning_content.trim();
     }
 
-    const parsedArgs = (msg as any).parsedArgs;
-    const hasSummary = msg.role === 'tool' && parsedArgs && Array.isArray(parsedArgs.summary);
+    const parsedArgs = (msg as unknown as Record<string, unknown>).parsedArgs;
+    const hasSummary = msg.role === 'tool' && !!parsedArgs && Array.isArray((parsedArgs as Record<string, unknown>).summary);
     const hasDebug = debugMode === true && !!msg.debugPayload;
 
     // ── TTS playback (Kokoro, local) — chunked + highlight-synced + controllable ──
@@ -227,7 +227,7 @@ export function MessageBubble({
                         <div className="mt-2 pl-3 border-l-2 border-terminal/30 text-[10px] text-text-dim">
                             <div className="uppercase tracking-widest text-terminal/60 mb-1">Generated Output:</div>
                             <ul className="list-disc leading-tight space-y-1">
-                                {(parsedArgs.summary as any[]).map((s: any, i: number) => (
+                                {((parsedArgs as Record<string, unknown>)?.summary as unknown[]).map((s: unknown, i: number) => (
                                     <li key={i}>{typeof s === 'string' ? s : String(s)}</li>
                                 ))}
                             </ul>

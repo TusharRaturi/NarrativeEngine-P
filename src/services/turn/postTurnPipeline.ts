@@ -38,6 +38,7 @@ const PRESENT_HEADER_RE = /👥\s*\[Present\]\s*(.+)/i;
  * campaign-id check and merges the patch into whatever `s.context` is
  * currently active).
  */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 function makeGuarded<T extends (...args: any[]) => void>(
     fn: T,
     activeCampaignId: string,
@@ -415,7 +416,7 @@ async function runArchiveTrack(
                     });
                     const s = useAppStore.getState();
                     if (s.activeCampaignId === activeCampaignId && 'setCharacterProfileData' in s) {
-                        (s as any).setCharacterProfileData(newProfile);
+                        (s as { setCharacterProfileData: (p: typeof newProfile) => void }).setCharacterProfileData(newProfile);
                     }
                     console.log(`[Auto Bookkeeping] Profile sheet updated at scene #${sceneId}`);
                 }).catch(err => console.warn('[Auto Bookkeeping] Profile scan failed:', err));
@@ -450,7 +451,7 @@ async function runArchiveTrack(
                     });
                     const s = useAppStore.getState();
                     if (s.activeCampaignId === activeCampaignId && 'setInventoryItems' in s) {
-                        (s as any).setInventoryItems(newItems);
+                        (s as { setInventoryItems: (p: typeof newItems) => void }).setInventoryItems(newItems);
                     }
                     console.log(`[Auto Bookkeeping] Inventory updated at scene #${sceneId}`);
                 }).catch(err => console.warn('[Auto Bookkeeping] Inventory scan failed:', err));
@@ -522,9 +523,10 @@ export async function runCombinedSeal(
 ): Promise<void> {
     const startNum = parseInt(chapter.sceneRange[0], 10);
     const endNum = parseInt(chapter.sceneRange[1], 10);
-    const sceneIds = chapter.sceneIds?.length > 0
+    const expectedCount = endNum - startNum + 1;
+    const sceneIds = (chapter.sceneIds?.length === expectedCount)
         ? chapter.sceneIds
-        : Array.from({ length: endNum - startNum + 1 }, (_, i) =>
+        : Array.from({ length: expectedCount }, (_, i) =>
             String(startNum + i).padStart(3, '0')
         );
 
@@ -553,7 +555,7 @@ export async function runCombinedSeal(
     const effectiveScanBudget = scanBudgetSetting > 0 ? scanBudgetSetting : Math.round(contextLimit * 0.75);
 
     const result = await sealChapterCombined(
-        provider as any,
+        provider as Parameters<typeof sealChapterCombined>[0],
         scenes,
         chapter.chapterId,
         chapter.title,
@@ -561,7 +563,8 @@ export async function runCombinedSeal(
         npcData,
         2,
         effectiveScanBudget,
-        indexEntries.length > 0 ? indexEntries : undefined
+        indexEntries.length > 0 ? indexEntries : undefined,
+        contextLimit
     );
 
     if (result.divergenceParseError && !result.summary && !result.divergences.length) {
@@ -574,7 +577,7 @@ export async function runCombinedSeal(
     }
 
     if (result.summary) {
-        const patch: Record<string, any> = {
+        const patch: Record<string, unknown> = {
             ...result.summary,
             invalidated: false,
             sceneIds,
@@ -585,7 +588,7 @@ export async function runCombinedSeal(
         await api.chapters.update(activeCampaignId, chapter.chapterId, patch);
     } else if (setSealedAt || result.divergences.length > 0) {
         // Even without summary, persist sceneIds
-        await api.chapters.update(activeCampaignId, chapter.chapterId, { sceneIds } as any);
+        await api.chapters.update(activeCampaignId, chapter.chapterId, { sceneIds } as unknown as Parameters<typeof api.chapters.update>[2]);
     }
 
     if (result.divergences.length > 0) {

@@ -15,7 +15,7 @@ type LoreTextareaProps = {
 
 export function LoreTextarea({ value, onChange, placeholder, rows, category, className, minRows }: LoreTextareaProps) {
     const [loading, setLoading] = useState<'format' | 'expand' | null>(null);
-    const undoRef = useRef<string | null>(null);
+    const [undoText, setUndoText] = useState<string | null>(null);
     const undoTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     const handleAI = useCallback(async (mode: 'format' | 'expand') => {
@@ -26,7 +26,7 @@ export function LoreTextarea({ value, onChange, placeholder, rows, category, cla
         }
 
         setLoading(mode);
-        undoRef.current = value;
+        setUndoText(value);
 
         try {
             const fn = mode === 'format' ? formatLoreText : expandLoreText;
@@ -37,7 +37,7 @@ export function LoreTextarea({ value, onChange, placeholder, rows, category, cla
             toast.success(`Text ${mode === 'format' ? 'formatted' : 'expanded'}. Undo available for 8s.`);
 
             undoTimerRef.current = setTimeout(() => {
-                undoRef.current = null;
+                setUndoText(null);
             }, 8000);
         } catch (err) {
             if (err instanceof AuxNotConfiguredError) {
@@ -51,16 +51,16 @@ export function LoreTextarea({ value, onChange, placeholder, rows, category, cla
     }, [value, category, onChange]);
 
     const handleUndo = useCallback(() => {
-        if (undoRef.current !== null) {
-            onChange(undoRef.current);
-            undoRef.current = null;
+        if (undoText !== null) {
+            onChange(undoText);
+            setUndoText(null);
             if (undoTimerRef.current) clearTimeout(undoTimerRef.current);
             toast.info('Undone.');
         }
-    }, [onChange]);
+    }, [onChange, undoText]);
 
     const isDisabled = loading !== null;
-    const showUndo = undoRef.current !== null;
+    const showUndo = undoText !== null;
 
     return (
         <div className="relative">

@@ -97,10 +97,8 @@ async function runInner(
     const body = buildChatBody(
         provider,
         [{ role: 'user', content: prompt }],
-        { stream: false, max_tokens: opts?.maxTokens, thinkingEffort: resolvedEffort }
+        { stream: false, max_tokens: opts?.maxTokens, thinkingEffort: resolvedEffort, temperature: opts?.temperature }
     );
-
-    if (opts?.temperature !== undefined) body.temperature = opts.temperature;
 
     const priority = opts?.priority ?? 'normal';
     const queue = getQueueForEndpoint(provider.endpoint);

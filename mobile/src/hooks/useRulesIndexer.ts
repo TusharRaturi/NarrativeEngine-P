@@ -6,6 +6,7 @@ import { countTokens } from '../services/infrastructure';
 export function useRulesIndexer() {
     const rulesRaw = useAppStore((s) => s.context.rulesRaw);
     const rulesChunkMeta = useAppStore((s) => s.context.rulesChunkMeta);
+    const rulesRawHash = useAppStore((s) => s.context.rulesRawHash);
     const updateContext = useAppStore((s) => s.updateContext);
     const activeCampaignId = useAppStore((s) => s.activeCampaignId);
     const settings = useAppStore((s) => s.settings);
@@ -19,12 +20,15 @@ export function useRulesIndexer() {
     const rulesChunkMetaRef = useRef(rulesChunkMeta);
     rulesChunkMetaRef.current = rulesChunkMeta;
 
+    useEffect(() => {
+        lastIndexedHash.current = rulesRawHash || '';
+    }, [rulesRawHash]);
+
     const runIndex = useCallback(async () => {
         if (!activeCampaignId || !rulesRaw || indexingRef.current) return;
 
         const threshold = computeRulesThreshold(contextLimit, rulesBudgetPct);
         const tokenCount = countTokens(rulesRaw);
-        if (tokenCount <= threshold) return;
 
         const hash = `${rulesRaw.length}_${tokenCount}_${rulesRaw.slice(0, 200)}`;
         if (hash === lastIndexedHash.current) return;
@@ -41,7 +45,7 @@ export function useRulesIndexer() {
                 utilityEndpoint?.endpoint ? utilityEndpoint : undefined,
                 autoGenerate,
             );
-            updateContext({ rulesChunkMeta: result.chunkMeta });
+            updateContext({ rulesChunkMeta: result.chunkMeta, rulesRawHash: hash });
             console.log(`[RulesIndexer] Auto-indexed ${result.chunks.length} rule chunks(s)`);
         } catch (e) {
             console.warn('[RulesIndexer] Auto-indexing failed:', e);

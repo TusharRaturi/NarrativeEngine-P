@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import type { ChatMessage } from '../../types';
 import { useTtsStatus } from '../../services/tts/useTtsStatus';
 import { KokoroBuffer } from '../../services/tts/kokoroBuffer';
@@ -24,23 +24,18 @@ export function useTtsPlayback(msg: ChatMessage, markdownContent: string) {
     const [generatedChunks, setGeneratedChunks] = useState(0);
     const [hasCache, setHasCache] = useState(false);
 
-    const bufferRef = useRef<KokoroBuffer | null>(null);
-    if (!bufferRef.current) {
-        bufferRef.current = new KokoroBuffer({
-            setLoading: setTtsLoading,
-            setPlaying: setTtsPlaying,
-            setPaused: setTtsPaused,
-            setFinished: setTtsFinished,
-            setActiveSentenceIdx,
-            setActiveWordIdx,
-            setTotalChunks,
-            setGeneratedChunks,
-            setHasCache,
-            setPlaybackRate,
-        });
-    }
-    const buffer = bufferRef.current;
-
+    const [buffer] = useState(() => new KokoroBuffer({
+        setLoading: setTtsLoading,
+        setPlaying: setTtsPlaying,
+        setPaused: setTtsPaused,
+        setFinished: setTtsFinished,
+        setActiveSentenceIdx,
+        setActiveWordIdx,
+        setTotalChunks,
+        setGeneratedChunks,
+        setHasCache,
+        setPlaybackRate,
+    }));
     // Cleanup on unmount
     useEffect(() => {
         return () => buffer.destroy();

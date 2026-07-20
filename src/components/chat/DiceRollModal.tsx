@@ -31,6 +31,7 @@ export function DiceRollModal() {
 
     useEffect(() => {
         if (open) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setDieTypeId(diceSystem.dieTypes[0]?.id ?? '');
             setRollDef(defaultRollDef);
             openedAtRef.current = Date.now();

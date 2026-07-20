@@ -9,7 +9,6 @@ export type ClusteringCancelled = { cancelled: boolean };
 export async function runFactClustering(
     register: DivergenceRegister,
     utilityProvider: EndpointConfig | ProviderConfig,
-    contextLimit: number = 8192,
     cancel: ClusteringCancelled = { cancelled: false },
     onStatus: (msg: string) => void = () => {},
 ): Promise<TopicClusters> {
@@ -36,7 +35,7 @@ RULES:
 {"groups":[{"name":"Yuki","factIds":["id1","id2"]},{"name":"Reaper Contract","factIds":["id3"]}]}`;
 
     const promptTokens = countTokens(prompt);
-    const maxTokens = Math.floor(contextLimit * 0.75);
+    const maxTokens = 8192;
 
     const modelName = (utilityProvider as EndpointConfig).modelName || utilityProvider.endpoint;
     console.log(
@@ -197,7 +196,6 @@ export function deriveSubjectTokenUpdates(
 export async function assignSubjectTokens(
     register: DivergenceRegister,
     utilityProvider: EndpointConfig | ProviderConfig,
-    contextLimit: number,
     cancel: ClusteringCancelled,
     onStatus: (msg: string) => void,
 ): Promise<AssignSubjectTokensResult> {
@@ -206,7 +204,7 @@ export async function assignSubjectTokens(
     }
 
     onStatus('Grouping facts by subject…');
-    const clusters = await runFactClustering(register, utilityProvider, contextLimit, cancel, onStatus);
+    const clusters = await runFactClustering(register, utilityProvider, cancel, onStatus);
     if (cancel.cancelled) throw new Error('Find Similarity cancelled.');
 
     const updates = deriveSubjectTokenUpdates(register, clusters);

@@ -52,11 +52,14 @@ export function AdvancedTab() {
     }, []);
 
     useEffect(() => {
-        if (!activeCampaignId) {
-            setEmbedStatus(null);
-            return;
-        }
         let cancelled = false;
+        if (!activeCampaignId) {
+            // We can't update state synchronously here, so defer it to the microtask queue
+            Promise.resolve().then(() => {
+                if (!cancelled) setEmbedStatus(null);
+            });
+            return () => { cancelled = true; };
+        }
         getEmbeddingStatus(activeCampaignId)
             .then(status => { if (!cancelled) setEmbedStatus(status); })
             .catch(() => { if (!cancelled) setEmbedStatus(null); });

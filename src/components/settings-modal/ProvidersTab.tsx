@@ -95,6 +95,7 @@ export function ProvidersTab() {
         setIsTesting(true);
         setTestResult(null);
         const result = await testConnection(activeProvider);
+        console.log('[ProvidersTab] handleTest result:', result);
         setTestResult(result);
         setIsTesting(false);
         if (result.ok) {

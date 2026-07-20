@@ -38,11 +38,15 @@ async function generateChapterSummaryAsync(
 
         const scenes = await api.archive.fetchScenes(campaignId, sceneIds);
 
+        const contextLimit = useAppStore.getState().settings.contextLimit;
+
         const summaryResult = await generateChapterSummary(
             provider as EndpointConfig | ProviderConfig,
             chapter,
             scenes,
-            headerIndex
+            headerIndex,
+            1, // maxRetries
+            contextLimit
         );
 
         if (summaryResult) {

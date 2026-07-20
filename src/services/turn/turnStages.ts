@@ -27,6 +27,7 @@ import { resolveLootDrop } from '../engine/lootEngine';
 import { buildOneShotDirective } from '../oneshot/oneShotEvents';
 import { toast } from '../../components/Toast';
 import { sanitizePayloadForApi } from '../lib/payloadSanitizer';
+import { getApiFormat, isGeminiFamilyModel } from '../../utils/llmApiHelper';
 import { getToolDefinitions } from './toolHandlers';
 import { resolveToolHandler } from './toolRegistry';
 import { gatherContext } from './contextGatherer';
@@ -444,7 +445,7 @@ export async function runGenerationStage(
     let accumulatedContent = '';
     const armed = state.armedRoll;
 
-    const executeTurn = async (currentPayload: any[], toolCallCount = 0, apiRetryCount = 0, existingMsgId?: string) => {
+    const executeTurn = async (currentPayload: import('../chatEngine').OpenAIMessage[], toolCallCount = 0, apiRetryCount = 0, existingMsgId?: string) => {
         if (abortController.signal.aborted) return;
 
         const assistantMsgId = existingMsgId ?? uid();
@@ -458,7 +459,9 @@ export async function runGenerationStage(
         callbacks.setStreaming(true);
 
         const allowTools = toolCallCount < MAX_TOOL_CALLS_PER_TURN && apiRetryCount < 2;
-        const requestPayload = sanitizePayloadForApi(currentPayload, allowTools, provider?.modelName);
+        const apiFormat = getApiFormat(providerSafe);
+        const isGeminiAPI = isGeminiFamilyModel(providerSafe.modelName) || apiFormat === 'gemini';
+        const requestPayload = sanitizePayloadForApi(currentPayload, allowTools, provider?.modelName, isGeminiAPI);
 
         // Dice tool availability is decoupled from pool mode (diceFairnessActive).
         // Pool mode = pre-rolled numbers injected; tool mode = AI calls roll_dice on demand.
@@ -513,7 +516,8 @@ export async function runGenerationStage(
                         tool_calls: [{
                             id: toolCall.id,
                             type: 'function' as const,
-                            function: { name: toolName, arguments: toolCall.arguments }
+                            function: { name: toolName, arguments: toolCall.arguments },
+                            ...(toolCall.thoughtSignature ? { thoughtSignature: toolCall.thoughtSignature } : {})
                         }],
                         ...(reasoningContent ? { reasoning_content: reasoningContent } : {})
                     });
@@ -522,7 +526,12 @@ export async function runGenerationStage(
                         role: 'assistant',
                         content: engineText || "",
                         reasoning_content: reasoningContent || undefined,
-                        tool_calls: [{ id: toolCall.id, type: 'function', function: { name: toolName, arguments: toolCall.arguments } }]
+                        tool_calls: [{ 
+                            id: toolCall.id, 
+                            type: 'function', 
+                            function: { name: toolName, arguments: toolCall.arguments },
+                            ...(toolCall.thoughtSignature ? { thoughtSignature: toolCall.thoughtSignature } : {})
+                        }]
                     } as unknown as import('../chatEngine').OpenAIMessage);
 
                     if (dispatchResult.traceResult) {

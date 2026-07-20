@@ -35,6 +35,7 @@ export function VaultSection() {
       toast.success('Vault exported - share the .nevault file and password separately');
       setExportPassword('');
     } catch (e) {
+      console.error(e);
       toast.error('Export failed');
     } finally {
       setIsExporting(false);
@@ -66,6 +67,7 @@ export function VaultSection() {
           setImportPassword('');
           if (fileInputRef.current) fileInputRef.current.value = '';
         } catch (err) {
+          console.error(err);
           toast.error('Import failed - wrong password or corrupted file');
         } finally {
           setIsImporting(false);
@@ -77,6 +79,7 @@ export function VaultSection() {
       };
       reader.readAsArrayBuffer(file);
     } catch (e) {
+      console.error(e);
       toast.error('Failed to read file');
       setIsImporting(false);
     }

@@ -17,60 +17,9 @@ const STOP_WORDS = new Set([
     'before', 'after', 'during', 'without', 'again', 'because', 'under',
 ]);
 
-function stemSimple(word: string): string {
-    return word
-        .toLowerCase()
-        .replace(/[^a-z0-9]/g, '')
-        .replace(/(ing|ed|tion|ment|ness|ity|ous|ive|ful|less|able|ible|al|ly|er|est|s)$/, '')
-        .slice(0, 20);
-}
-
-function extractHeaderKeywords(header: string): string[] {
-    const words = header
-        .replace(/^\s*#{1,6}\s+/, '')
-        .split(/[\s/—–\-:]+/)
-        .map(w => stemSimple(w))
-        .filter(w => w.length > 2 && !STOP_WORDS.has(w));
-    return [...new Set(words)];
-}
-
-function extractBoldKeywords(content: string): string[] {
-    const keywords = new Set<string>();
-    const boldRegex = /\*\*([^*]+)\*\*/g;
-    let match;
-    while ((match = boldRegex.exec(content)) !== null) {
-        const term = match[1].trim();
-        if (term.length < 3 || term.length > 40) continue;
-        const lower = term.toLowerCase();
-        if (STOP_WORDS.has(lower)) continue;
-        const words = lower.split(/\s+/);
-        if (words.length <= 3) {
-            keywords.add(lower);
-            for (const w of words) {
-                const s = stemSimple(w);
-                if (s.length > 2 && !STOP_WORDS.has(s)) keywords.add(s);
-            }
-        }
-    }
-    const italicRegex = /\*([^*]+)\*/g;
-    while ((match = italicRegex.exec(content)) !== null) {
-        const term = match[1].trim();
-        if (term.length < 3 || term.length > 40) continue;
-        if (/^[A-Z]/.test(term) && !/^[A-Z]+$/.test(term)) {
-            keywords.add(term.toLowerCase());
-        }
-    }
-    return Array.from(keywords);
-}
-
 function deriveDefaultMeta(chunk: LoreChunk, existingMeta?: RuleChunkMeta): RuleChunkMeta {
-    const headerKws = extractHeaderKeywords(chunk.header);
-    const boldKws = extractBoldKeywords(chunk.content);
-    // chunk.triggerKeywords already includes hint triggers (prepended by loreChunker)
-    const hintTriggers = chunk.triggerKeywords.filter(k =>
-        !headerKws.includes(k) && !boldKws.includes(k)
-    );
-    const merged = [...new Set([...hintTriggers, ...headerKws, ...boldKws])].slice(0, 15);
+    const hintTriggers = chunk.triggerKeywords || [];
+    const merged = [...new Set([...hintTriggers])].slice(0, 15);
 
     // ragMode from hint is authoritative; fall back to alwaysInclude/priority heuristic
     let defaultModes: ('vector' | 'keyword' | 'always')[];
@@ -215,7 +164,7 @@ export async function indexRules(
     if (autoGenerateKeywords && utilityEndpoint?.endpoint) {
         const chunksNeedingLLM = chunks.filter(c => {
             const meta = chunkMeta[c.id];
-            return meta && !meta.keywordsUserEdited && (!meta.triggerKeywords || meta.triggerKeywords.length < 3);
+            return meta && !meta.keywordsUserEdited && !meta.llmGenerated;
         });
 
         onProgress?.({ phase: 'keyword-extraction', current: 0, total: chunksNeedingLLM.length });
@@ -228,15 +177,13 @@ export async function indexRules(
             const result = await extractKeywordsViaLLM(chunk, utilityEndpoint);
             const meta = chunkMeta[chunk.id];
             if (meta && result.primary.length > 0) {
-                const headerKws = extractHeaderKeywords(chunk.header);
-                const boldKws = extractBoldKeywords(chunk.content);
                 const merged = [...new Set([
-                    ...result.primary.map(k => k.toLowerCase()),
-                    ...headerKws,
-                    ...boldKws,
+                    ...chunk.triggerKeywords,
+                    ...result.primary.map(k => k.toLowerCase())
                 ])].slice(0, 15);
                 meta.triggerKeywords = merged;
                 meta.secondaryKeywords = result.secondary.map(k => k.toLowerCase()).slice(0, 5);
+                meta.llmGenerated = true;
             }
             extractedCount++;
             onProgress?.({ phase: 'keyword-extraction', current: extractedCount, total: chunksNeedingLLM.length });
@@ -252,4 +199,4 @@ export function computeRulesThreshold(contextLimit: number, rulesBudgetPct: numb
     return Math.floor(rulesBudget * 1.2);
 }
 
-export { deriveDefaultMeta, extractHeaderKeywords, extractBoldKeywords };
+export { deriveDefaultMeta };

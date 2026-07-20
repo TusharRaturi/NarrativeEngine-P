@@ -51,7 +51,7 @@ function streamOnce(
     onChunk: (text: string) => void,
     signal?: AbortSignal,
     tools?: unknown[],
-): Promise<{ text: string; toolCall?: { id: string; name: string; arguments: string } }> {
+): Promise<{ text: string; toolCall?: { id: string; name: string; arguments: string; thoughtSignature?: string } }> {
     if (!snapshot.provider?.endpoint) return Promise.reject(new Error('No story endpoint is configured.'));
     return new Promise((resolve, reject) => sendMessage(
         snapshot.provider!, messages, onChunk,
@@ -105,7 +105,12 @@ export async function answerOocQuestion(request: OocAnswerRequest): Promise<OocA
     archiveSearched = true;
     const finalMessages: OpenAIMessage[] = [
         ...initial,
-        { role: 'assistant', content: first.text || null, tool_calls: [{ id: first.toolCall.id, type: 'function', function: { name: first.toolCall.name, arguments: first.toolCall.arguments } }] },
+        { role: 'assistant', content: first.text || null, tool_calls: [{
+            id: first.toolCall.id,
+            type: 'function',
+            function: { name: first.toolCall.name, arguments: first.toolCall.arguments },
+            ...(first.toolCall.thoughtSignature ? { thoughtSignature: first.toolCall.thoughtSignature } : {}),
+        }] },
         { role: 'tool', tool_call_id: first.toolCall.id, content: result.text || 'No matching campaign records were found.' },
     ];
     const final = await streamOnce(snapshot, finalMessages, onChunk, signal, undefined);

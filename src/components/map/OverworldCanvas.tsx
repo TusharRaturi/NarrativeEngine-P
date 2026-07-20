@@ -96,26 +96,25 @@ export function OverworldCanvas() {
     const panStart = useRef({ x: 0, y: 0 });
     const containerStart = useRef({ x: 0, y: 0 });
     const deadRef = useRef(false);
+    const [pixiReady, setPixiReady] = useState(false);
     const texturesRef = useRef<Record<string, Texture>>({});
     const propsRef = useRef<Record<string, Texture>>({});
     const displacementRef = useRef<Sprite | null>(null);
     const pinContainerRef = useRef<Container | null>(null);
-    const isPinModeRef = useRef(false);
-    const [pixiReady, setPixiReady] = useState(false);
+    const [isPinMode, setIsPinMode] = useState(false);
+    const [pendingPin, setPendingPin] = useState<{ x: number, y: number, screenX: number, screenY: number } | null>(null);
     const [pinLabelDraft, setPinLabelDraft] = useState('');
 
     const overworldMap = useAppStore(s => s.overworldMap);
     const playerPosition = useAppStore(s => s.playerPosition);
     const setPlayerPosition = useAppStore(s => s.setPlayerPosition);
-    const isPinMode = useAppStore(s => s.isPinMode);
-    const pendingPin = useAppStore(s => s.pendingPin);
-    const setPendingPin = useAppStore(s => s.setPendingPin);
+    const isPinModeStore = useAppStore(s => s.isPinMode);
     const addPin = useAppStore(s => s.addPin);
     const pins = useAppStore(s => s.overworldMap?.pins ?? []);
     const activeCampaignId = useAppStore(s => s.activeCampaignId);
 
-    useEffect(() => { isPinModeRef.current = isPinMode; }, [isPinMode]);
-    useEffect(() => { if (pendingPin === null) setPinLabelDraft(''); }, [pendingPin]);
+    useEffect(() => { Promise.resolve().then(() => setIsPinMode(isPinModeStore)); }, [isPinModeStore]);
+    useEffect(() => { if (pendingPin === null) Promise.resolve().then(() => setPinLabelDraft('')); }, [pendingPin]);
 
     useEffect(() => {
         if (!containerRef.current) return;
@@ -179,8 +178,8 @@ export function OverworldCanvas() {
 
                 if (gridCol < 0 || gridCol >= w || gridRow < 0 || gridRow >= h) return;
 
-                if (isPinModeRef.current) {
-                    setPendingPin({ x: gridCol, y: gridRow });
+                if (isPinMode) {
+                    setPendingPin({ x: gridCol, y: gridRow, screenX: e.clientX, screenY: e.clientY });
                 } else {
                     setPlayerPosition({ x: gridCol, y: gridRow });
                 }
@@ -188,7 +187,7 @@ export function OverworldCanvas() {
 
             app.canvas.addEventListener('contextmenu', (e: MouseEvent) => {
                 e.preventDefault();
-                if (isPinModeRef.current) return;
+                if (isPinMode) return;
                 const rect = app.canvas.getBoundingClientRect();
                 const localX = (e.clientX - rect.left - world.x) / world.scale.x;
                 const localY = (e.clientY - rect.top - world.y) / world.scale.y;
@@ -209,6 +208,20 @@ export function OverworldCanvas() {
                 const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
                 const newScale = Math.max(0.3, Math.min(5, world.scale.x * zoomFactor));
                 const rect = app.canvas.getBoundingClientRect();
+                if (isPinMode && !isPanning.current) {
+                    setIsPinMode(false);
+                    const rawX = e.clientX - rect.left;
+                    const rawY = e.clientY - rect.top;
+
+                    const wx = (rawX - world.x) / world.scale.x;
+                    const wy = (rawY - world.y) / world.scale.y;
+
+                    const cx = Math.floor(wx / cellSizeRef.current);
+                    const cy = Math.floor(wy / cellSizeRef.current);
+
+                    setPendingPin({ x: cx, y: cy, screenX: e.clientX, screenY: e.clientY });
+                    return;
+                }
                 const mouseX = e.clientX - rect.left;
                 const mouseY = e.clientY - rect.top;
                 const wx = (mouseX - world.x) / world.scale.x;
@@ -239,7 +252,7 @@ export function OverworldCanvas() {
                 const cactus = await Assets.load({ src: DESERT_TILES.CACTUS, data: { scaleMode: 'nearest' } });
                 const palm = await Assets.load({ src: DESERT_TILES.PALM, data: { scaleMode: 'nearest' } });
 
-                const getTile = (base: any, tx: number, ty: number) => {
+                const getTile = (base: Texture, tx: number, ty: number) => {
                     return new Texture({
                         source: base.source,
                         frame: new Rectangle(tx * 16, ty * 16, 16, 16)
@@ -311,13 +324,13 @@ export function OverworldCanvas() {
             deadRef.current = true;
             setPixiReady(false);
             if (appRef.current) {
-                try { appRef.current.destroy(true); } catch {}
+                try { appRef.current.destroy(true); } catch { /* ignore */ }
             }
             appRef.current = null;
             worldRef.current = null;
             playerRef.current = null;
         };
-    }, []);
+    }, [isPinMode, setPlayerPosition]);
 
     useEffect(() => {
         if (!pixiReady || !worldRef.current || !overworldMap) return;
@@ -606,67 +619,60 @@ export function OverworldCanvas() {
                 style={{ cursor: isPinMode ? 'crosshair' : 'default' }}
             />
 
-            {pendingPin !== null && (() => {
-                const world = worldRef.current;
-                const cs = cellSizeRef.current;
-                let ox = 0, oy = 0;
-                if (world && cs > 0) {
-                    ox = pendingPin.x * cs * world.scale.x + world.x;
-                    oy = pendingPin.y * cs * world.scale.y + world.y;
-                }
-                return (
-                    <div
-                        className="absolute z-50 bg-surface border border-terminal/50 px-3 py-2 shadow-lg"
-                        style={{ left: ox + 8, top: oy + 8 }}
-                    >
-                        <p className="text-[9px] uppercase tracking-widest text-text-dim mb-1">Pin Label</p>
-                        <input
-                            autoFocus
-                            maxLength={40}
-                            value={pinLabelDraft}
-                            onChange={e => setPinLabelDraft(e.target.value)}
-                            onKeyDown={e => {
-                                if (e.key === 'Enter' && pinLabelDraft.trim()) {
-                                    addPin(activeCampaignId!, {
-                                        id: crypto.randomUUID(),
-                                        x: pendingPin.x,
-                                        y: pendingPin.y,
-                                        label: pinLabelDraft.trim(),
-                                        color: '#e05c5c',
-                                        createdAt: Date.now(),
-                                    });
-                                    setPinLabelDraft('');
-                                } else if (e.key === 'Escape') {
-                                    setPendingPin(null);
-                                }
+            {pendingPin !== null && (
+                <div
+                    className="absolute z-50 bg-surface border border-terminal/50 px-3 py-2 shadow-lg"
+                    style={{ left: pendingPin.screenX + 8, top: pendingPin.screenY + 8 }}
+                >
+                    <p className="text-[9px] uppercase tracking-widest text-text-dim mb-1">Pin Label</p>
+                    <input
+                        autoFocus
+                        maxLength={40}
+                        value={pinLabelDraft}
+                        onChange={e => setPinLabelDraft(e.target.value)}
+                        onKeyDown={e => {
+                            if (e.key === 'Enter' && pinLabelDraft.trim()) {
+                                addPin(activeCampaignId!, {
+                                    id: crypto.randomUUID(),
+                                    x: pendingPin.x,
+                                    y: pendingPin.y,
+                                    label: pinLabelDraft.trim(),
+                                    color: '#e05c5c',
+                                    createdAt: Date.now(),
+                                });
+                                setPinLabelDraft('');
+                                setPendingPin(null);
+                            } else if (e.key === 'Escape') {
+                                setPendingPin(null);
+                            }
+                        }}
+                        className="bg-void border border-border text-terminal text-[11px] font-mono px-2 py-1 outline-none w-36"
+                        placeholder="Enter name…"
+                    />
+                    <div className="flex gap-2 mt-1">
+                        <button
+                            onClick={() => {
+                                if (!pinLabelDraft.trim()) return;
+                                addPin(activeCampaignId!, {
+                                    id: crypto.randomUUID(),
+                                    x: pendingPin.x,
+                                    y: pendingPin.y,
+                                    label: pinLabelDraft.trim(),
+                                    color: '#e05c5c',
+                                    createdAt: Date.now(),
+                                });
+                                setPinLabelDraft('');
+                                setPendingPin(null);
                             }}
-                            className="bg-void border border-border text-terminal text-[11px] font-mono px-2 py-1 outline-none w-36"
-                            placeholder="Enter name…"
-                        />
-                        <div className="flex gap-2 mt-1">
-                            <button
-                                onClick={() => {
-                                    if (!pinLabelDraft.trim()) return;
-                                    addPin(activeCampaignId!, {
-                                        id: crypto.randomUUID(),
-                                        x: pendingPin.x,
-                                        y: pendingPin.y,
-                                        label: pinLabelDraft.trim(),
-                                        color: '#e05c5c',
-                                        createdAt: Date.now(),
-                                    });
-                                    setPinLabelDraft('');
-                                }}
-                                className="text-[9px] uppercase tracking-widest text-terminal hover:text-terminal/70"
-                            >Place</button>
-                            <button
-                                onClick={() => setPendingPin(null)}
-                                className="text-[9px] uppercase tracking-widest text-text-dim hover:text-danger"
-                            >Cancel</button>
-                        </div>
+                            className="text-[9px] uppercase tracking-widest text-terminal hover:text-terminal/70"
+                        >Place</button>
+                        <button
+                            onClick={() => setPendingPin(null)}
+                            className="text-[9px] uppercase tracking-widest text-text-dim hover:text-danger"
+                        >Cancel</button>
                     </div>
-                );
-            })()}
+                </div>
+            )}
         </div>
     );
 }

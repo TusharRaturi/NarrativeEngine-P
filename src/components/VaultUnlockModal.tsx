@@ -25,7 +25,7 @@ export function VaultUnlockModal({ onUnlock, onUseMachineKey, hasRememberedKey }
                 toast.error('Incorrect password');
                 setIsLoading(false);
             }
-        } catch (err) {
+        } catch {
             toast.error('Failed to unlock vault');
             setIsLoading(false);
         }
@@ -35,7 +35,7 @@ export function VaultUnlockModal({ onUnlock, onUseMachineKey, hasRememberedKey }
         setIsLoading(true);
         try {
             await onUseMachineKey();
-        } catch (err) {
+        } catch {
             toast.error('Failed to use machine key');
             setIsLoading(false);
         }

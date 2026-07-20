@@ -92,7 +92,11 @@ export function NPCLedgerModal() {
     const toggleCheck = (id: string) => {
         setCheckedIds(prev => {
             const next = new Set(prev);
-            next.has(id) ? next.delete(id) : next.add(id);
+            if (next.has(id)) {
+                next.delete(id);
+            } else {
+                next.add(id);
+            }
             return next;
         });
     };
@@ -116,7 +120,8 @@ export function NPCLedgerModal() {
 
     // ── Import / Export ──────────────────────────────────────────────────
     const handleExport = () => {
-        const exportData = npcLedger.map(({ portrait: _p, ...rest }) => rest);
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const exportData = npcLedger.map(({ portrait: _, ...rest }) => rest);
         const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');

@@ -36,8 +36,8 @@ export function LootRollModal() {
     // Reset state whenever the modal opens (mirrors RenameNpcModal's reset effect).
     useEffect(() => {
         if (open) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setRolls(1);
-            setChecked({});
             openedAtRef.current = Date.now();
         }
     }, [open]);

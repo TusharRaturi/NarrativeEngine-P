@@ -5,7 +5,7 @@ import { llmCall } from '../../utils/llmCall';
 import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 import { DIVERGENCE_CATEGORIES, CATEGORY_DEFINITIONS, coerceCategory } from '../campaign-state/divergenceRegister';
 import { uid } from '../../utils/uid';
-import { truncateScenesToBudget } from './shared';
+import { chunkScenesToBudget } from './shared';
 import { parseChapterSummaryOutput } from './chapterSummary';
 import type { ChapterSummaryOutput } from './chapterSummary';
 
@@ -29,8 +29,7 @@ function buildCombinedSealPrompt(
     npcLedger: { id: string; name: string; aliases: string }[],
     indexEntries?: { sceneId: string; witnesses?: string[] }[]
 ): string {
-    const truncated = truncateScenesToBudget(scenes, COMBINED_SEAL_TOKEN_BUDGET);
-    const sceneContent = truncated.map(s => `--- SCENE ${s.sceneId} ---\n${s.content}`).join('\n\n');
+    const sceneContent = scenes.map(s => `--- SCENE ${s.sceneId} ---\n${s.content}`).join('\n\n');
 
     const npcList = npcLedger.map(n =>
         `- ${n.name} (id: ${n.id}${n.aliases ? ', also known as: ' + n.aliases : ''})`
@@ -167,6 +166,40 @@ SUMMARY RULES:
 4. Unresolved threads are open plot hooks, promises, or mysteries
 5. Title should be 2-5 words, evocative
 6. Summary should read like a campaign journal entry, not a list`;
+}
+
+function buildStitchSummaryPrompt(
+    partialSummaries: ChapterSummaryOutput[],
+    chapterTitle: string
+): string {
+    const summariesText = partialSummaries.map((s, i) => `--- CHUNK ${i + 1} SUMMARY ---\n${JSON.stringify(s, null, 2)}`).join('\n\n');
+    return `You are a TTRPG campaign archivist.
+I have a long chapter broken into chunks. The AI has already generated a summary for each chunk.
+Your task is to synthesize these partial chunk summaries into ONE final, cohesive chapter summary.
+
+CHAPTER: "${chapterTitle || 'Untitled'}"
+
+PARTIAL CHUNK SUMMARIES:
+${summariesText}
+
+OUTPUT FORMAT — a single JSON object with the key "summary".
+
+The "summary" value must be this JSON shape:
+{
+    "title": "Short evocative chapter title",
+    "summary": "3-5 sentence narrative summary of what happened across all chunks",
+    "keywords": ["keyword1", "keyword2"],
+    "npcs": ["NPC Name 1", "NPC Name 2"],
+    "majorEvents": ["Event description 1", "Event description 2"],
+    "unresolvedThreads": ["Thread 1", "Thread 2"],
+    "tone": "one of: combat-heavy, exploration, social, mystery, political, emotional, mixed",
+    "themes": ["theme1", "theme2"]
+}
+
+RULES:
+- Combine all the major characters, events, and threads from the chunks.
+- The narrative summary should cover the beginning, middle, and end of the chapter seamlessly.
+`;
 }
 
 function extractWitnessCorrections(parsed: object): Record<string, string[]> | undefined {
@@ -367,30 +400,91 @@ export async function sealChapterCombined(
     npcLedger: { id: string; name: string; aliases: string }[],
     maxRetries = 2,
     scanBudget = 0,
-    indexEntries?: { sceneId: string; witnesses?: string[] }[]
+    indexEntries?: { sceneId: string; witnesses?: string[] }[],
+    contextLimit?: number
 ): Promise<CombinedSealResult> {
-    for (let attempt = 0; attempt <= maxRetries; attempt++) {
-        const prompt = buildCombinedSealPrompt(scenes, chapterTitle, sceneIds, npcLedger, indexEntries);
-        const label = attempt === 0 ? '' : ' (retry)';
-
-        console.log(`[CombinedSeal] Generating summary + divergences${label}...`, {
-            sceneCount: scenes.length,
-            sceneIds: sceneIds.length,
-            promptTokens: countTokens(prompt),
-        });
-
-        const output = await llmCall(provider, prompt, { priority: 'low', maxTokens: scanBudget > 0 ? scanBudget : 2000, trackingLabel: 'chapter-seal', timeoutMs: AI_CALL_TIMEOUT_MS });
-        const result = parseCombinedSealOutput(output, chapterId, sceneIds, npcLedger);
-
-        if (result.summary && !result.divergenceParseError) {
-            return result;
-        }
-        if (result.summary && result.divergenceParseError) {
-            console.warn(`[CombinedSeal] Attempt ${attempt + 1}: summary OK but divergence parse failed — retrying divergences`);
-            continue;
-        }
-        console.warn(`[CombinedSeal] Attempt ${attempt + 1} produced no usable output`);
+    const chunks = chunkScenesToBudget(scenes, contextLimit && contextLimit > 0 ? contextLimit : COMBINED_SEAL_TOKEN_BUDGET);
+    
+    if (chunks.length === 0) {
+        return { summary: null, divergences: [], divergenceParseError: true };
     }
+    
+    const allDivergences: DivergenceEntry[] = [];
+    let allWitnessCorrections: Record<string, string[]> = {};
+    let allSceneEventMap: Record<string, SceneEvent[]> = {};
+    const partialSummaries: ChapterSummaryOutput[] = [];
+    
+    for (let chunkIdx = 0; chunkIdx < chunks.length; chunkIdx++) {
+        const chunkScenes = chunks[chunkIdx];
+        const chunkSceneIds = chunkScenes.map(s => s.sceneId);
+        let chunkResult: CombinedSealResult | null = null;
+        
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            const prompt = buildCombinedSealPrompt(chunkScenes, chapterTitle, chunkSceneIds, npcLedger, indexEntries);
+            const label = attempt === 0 ? '' : ' (retry)';
 
-    return { summary: null, divergences: [], divergenceParseError: true };
+            console.log(`[CombinedSeal] Generating summary + divergences for chunk ${chunkIdx + 1}/${chunks.length}${label}...`, {
+                sceneCount: chunkScenes.length,
+                sceneIds: chunkSceneIds.length,
+                promptTokens: countTokens(prompt),
+            });
+
+            const output = await llmCall(provider, prompt, { priority: 'low', maxTokens: scanBudget > 0 ? scanBudget : 2000, trackingLabel: 'chapter-seal', timeoutMs: AI_CALL_TIMEOUT_MS });
+            const result = parseCombinedSealOutput(output, chapterId, chunkSceneIds, npcLedger);
+
+            if (result.summary && !result.divergenceParseError) {
+                chunkResult = result;
+                break;
+            }
+            if (result.summary && result.divergenceParseError) {
+                console.warn(`[CombinedSeal] Chunk ${chunkIdx + 1} Attempt ${attempt + 1}: summary OK but divergence parse failed — retrying divergences`);
+                continue;
+            }
+            console.warn(`[CombinedSeal] Chunk ${chunkIdx + 1} Attempt ${attempt + 1} produced no usable output`);
+        }
+        
+        if (chunkResult) {
+            if (chunkResult.summary) partialSummaries.push(chunkResult.summary);
+            allDivergences.push(...chunkResult.divergences);
+            if (chunkResult.witnessCorrections) allWitnessCorrections = { ...allWitnessCorrections, ...chunkResult.witnessCorrections };
+            if (chunkResult.sceneEventMap) allSceneEventMap = { ...allSceneEventMap, ...chunkResult.sceneEventMap };
+        }
+    }
+    
+    // Single chunk case: return directly
+    if (chunks.length === 1 && partialSummaries.length > 0) {
+        return {
+            summary: partialSummaries[0],
+            divergences: allDivergences,
+            witnessCorrections: Object.keys(allWitnessCorrections).length > 0 ? allWitnessCorrections : undefined,
+            sceneEventMap: Object.keys(allSceneEventMap).length > 0 ? allSceneEventMap : undefined,
+        };
+    }
+    
+    // Multi-chunk case: stitch summaries together
+    if (partialSummaries.length > 0) {
+        console.log(`[CombinedSeal] Stitching ${partialSummaries.length} partial summaries...`);
+        const stitchPrompt = buildStitchSummaryPrompt(partialSummaries, chapterTitle);
+        
+        for (let attempt = 0; attempt <= maxRetries; attempt++) {
+            const output = await llmCall(provider, stitchPrompt, { priority: 'low', maxTokens: 1000, trackingLabel: 'chapter-seal-stitch', timeoutMs: AI_CALL_TIMEOUT_MS });
+            try {
+                const cleaned = extractJson(output);
+                const parsed = JSON.parse(cleaned);
+                if (parsed.summary) {
+                    const finalSummary = parseChapterSummaryOutput(JSON.stringify(parsed.summary));
+                    return {
+                        summary: finalSummary,
+                        divergences: allDivergences,
+                        witnessCorrections: Object.keys(allWitnessCorrections).length > 0 ? allWitnessCorrections : undefined,
+                        sceneEventMap: Object.keys(allSceneEventMap).length > 0 ? allSceneEventMap : undefined,
+                    };
+                }
+            } catch (e) {
+                console.warn(`[CombinedSeal] Stitch attempt ${attempt + 1} failed:`, e);
+            }
+        }
+    }
+    
+    return { summary: null, divergences: allDivergences, divergenceParseError: true };
 }

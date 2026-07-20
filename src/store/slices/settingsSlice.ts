@@ -70,6 +70,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
         try {
             const localSettings = await idbGet('nn_settings');
             if (localSettings && localSettings.settings) {
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
                 const raw = localSettings as any;
 
                 // Decrypt providers (new two-tier) and legacy inline-config presets (if still present).
@@ -315,8 +316,8 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
             set((s) => ({
                 settings: {
                     ...s.settings,
-                    ...(data.presets && data.presets.length > 0 ? { presets: data.presets } : {}),
-                    ...(data.providers && data.providers.length > 0 ? { providers: data.providers } : {}),
+                    ...(data.presets && data.presets.length > 0 ? { presets: data.presets as AIPreset[] } : {}),
+                    ...(data.providers && data.providers.length > 0 ? { providers: data.providers as LLMProvider[] } : {}),
                 }
             }));
             set({ vaultStatus: { exists: true, unlocked: true, hasRemember: remember } });
@@ -338,8 +339,8 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
             set((s) => ({
                 settings: {
                     ...s.settings,
-                    ...(data.presets && data.presets.length > 0 ? { presets: data.presets } : {}),
-                    ...(data.providers && data.providers.length > 0 ? { providers: data.providers } : {}),
+                    ...(data.presets && data.presets.length > 0 ? { presets: data.presets as AIPreset[] } : {}),
+                    ...(data.providers && data.providers.length > 0 ? { providers: data.providers as LLMProvider[] } : {}),
                 }
             }));
             set({ vaultStatus: { exists: true, unlocked: true, hasRemember: true } });
@@ -391,8 +392,8 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
             set((s) => ({
                 settings: {
                     ...s.settings,
-                    ...(data.presets && data.presets.length > 0 ? { presets: data.presets } : {}),
-                    ...(data.providers && data.providers.length > 0 ? { providers: data.providers } : {}),
+                    ...(data.presets && data.presets.length > 0 ? { presets: data.presets as AIPreset[] } : {}),
+                    ...(data.providers && data.providers.length > 0 ? { providers: data.providers as LLMProvider[] } : {}),
                 }
             }));
             toast.success('Vault imported successfully');

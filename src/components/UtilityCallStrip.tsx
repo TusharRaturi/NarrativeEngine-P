@@ -94,11 +94,11 @@ export function UtilityCallStrip() {
     const { active } = useUtilityCalls();
     const pipelinePhase = useAppStore(s => s.pipelinePhase);
     const streamingStats = useAppStore(s => s.streamingStats);
-    const [, setTick] = useState(0);
+    const [now, setNow] = useState(() => Date.now());
 
     useEffect(() => {
         if (active.length === 0 && pipelinePhase === 'idle') return;
-        const id = setInterval(() => setTick(t => t + 1), 1000);
+        const id = setInterval(() => setNow(Date.now()), 1000);
         return () => clearInterval(id);
     }, [active.length, pipelinePhase]);
 
@@ -109,7 +109,7 @@ export function UtilityCallStrip() {
         <div className="border-b border-terminal/20 bg-terminal/5">
             {hasGeneration && <GenerationStrip phase={pipelinePhase} stats={streamingStats} />}
             {active.map(call => {
-                const now = Date.now();
+
                 const elapsed = Math.floor((now - call.startedAt) / 1000);
                 const totalSec = Math.floor(call.initialTimeoutMs / 1000);
                 const remaining = Math.max(0, Math.floor((call.deadline - now) / 1000));

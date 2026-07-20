@@ -15,8 +15,7 @@ export async function sendMessageAndParseJson(
     messages: OpenAIMessage[],
     contextLabel: string,
     trackingLabel?: string,
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-): Promise<{ parsed: any; rawStr: string }> {
+): Promise<{ parsed: unknown; rawStr: string }> {
     let fullJsonStr = '';
 
     await sendMessage(

@@ -47,25 +47,6 @@ export const ChapterTab: React.FC = () => {
             backfillAbortRef.current = null;
         };
     }, []);
-
-    const handleSeal = useCallback(async () => {
-        if (!activeCampaignId) return;
-        setIsCreating(true);
-        try {
-            const result = await api.chapters.seal(activeCampaignId);
-            if (result) {
-                await refreshChapters();
-                toast.success('Chapter sealed');
-                regenerateChapter(result.sealedChapter, true);
-            }
-        } catch (err) {
-            console.error(err);
-            toast.error('Failed to seal chapter');
-        } finally {
-            setIsCreating(false);
-        }
-    }, [activeCampaignId, refreshChapters]);
-
     const regenerateChapter = useCallback(async (chapter: ArchiveChapter, setSealedAt: boolean = false) => {
         if (!activeCampaignId) return;
 
@@ -92,10 +73,11 @@ export const ChapterTab: React.FC = () => {
                     npcLedger: npcLedger ?? [],
                     settings: state.settings,
                     setChapters,
-                } as any,
+                } as unknown as Parameters<typeof runCombinedSeal>[3],
                 {
                     setDivergenceRegister: useAppStore.getState().setDivergenceRegister,
-                } as any,
+                    setArchiveIndex: useAppStore.getState().setArchiveIndex,
+                } as unknown as Parameters<typeof runCombinedSeal>[4],
                 setSealedAt,
                 // WO-P1-03: the 5 formerly-coupling reads, now explicit params.
                 {
@@ -115,7 +97,25 @@ export const ChapterTab: React.FC = () => {
         } finally {
             setIsRegenerating(prev => prev === chapter.chapterId ? null : prev);
         }
-    }, [activeCampaignId, refreshChapters, getActiveSummarizerEndpoint]);
+    }, [activeCampaignId, refreshChapters, getActiveSummarizerEndpoint, messages, archiveIndex, loreChunks, npcLedger, setChapters]);
+
+    const handleSeal = useCallback(async () => {
+        if (!activeCampaignId) return;
+        setIsCreating(true);
+        try {
+            const result = await api.chapters.seal(activeCampaignId);
+            if (result) {
+                await refreshChapters();
+                toast.success('Chapter sealed');
+                regenerateChapter(result.sealedChapter, true);
+            }
+        } catch (err) {
+            console.error(err);
+            toast.error('Failed to seal chapter');
+        } finally {
+            setIsCreating(false);
+        }
+    }, [activeCampaignId, refreshChapters, regenerateChapter]);
 
     // WO-07: user-triggered synopsis backfill for sealed chapters missing `synopsis`.
     // Sequential calls (no parallel) so progress is predictable and token spend is
@@ -231,7 +231,7 @@ export const ChapterTab: React.FC = () => {
             await api.chapters.create(activeCampaignId);
             await refreshChapters();
             toast.success('New chapter created');
-        } catch (err) {
+        } catch {
             toast.error('Failed to create chapter');
         } finally {
             setIsCreating(false);

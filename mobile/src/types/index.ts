@@ -204,6 +204,7 @@ export type GameContext = {
     loreRaw: string;
     rulesRaw: string;
     rulesChunkMeta?: Record<string, RuleChunkMeta>;
+    rulesRawHash?: string;
     starter: string;
     continuePrompt: string;
     inventory: string;

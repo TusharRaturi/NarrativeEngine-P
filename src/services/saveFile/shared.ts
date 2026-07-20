@@ -4,6 +4,43 @@ import { countTokens } from '../infrastructure/tokenizer';
 
 export const CHAPTER_SUMMARY_TOKEN_BUDGET = 8000;
 
+export function chunkScenesToBudget(
+    scenes: { sceneId: string; content: string }[],
+    budget: number = CHAPTER_SUMMARY_TOKEN_BUDGET
+): { sceneId: string; content: string }[][] {
+    const chunks: { sceneId: string; content: string }[][] = [];
+    let currentChunk: { sceneId: string; content: string }[] = [];
+    let currentTokens = 0;
+
+    for (const scene of scenes) {
+        let sceneTokens = countTokens(scene.content);
+        
+        // If a single scene is larger than the entire budget on its own, we must truncate it.
+        // This is a rare edge case, but necessary to prevent infinite loops or oversized single calls.
+        let processedScene = scene;
+        if (sceneTokens > budget) {
+            // ~4 chars per token approximation for the slice
+            processedScene = { sceneId: scene.sceneId, content: scene.content.slice(0, budget * 4) + '\n[...truncated]' };
+            sceneTokens = countTokens(processedScene.content);
+        }
+
+        if (currentChunk.length > 0 && currentTokens + sceneTokens > budget) {
+            chunks.push(currentChunk);
+            currentChunk = [];
+            currentTokens = 0;
+        }
+
+        currentChunk.push(processedScene);
+        currentTokens += sceneTokens;
+    }
+
+    if (currentChunk.length > 0) {
+        chunks.push(currentChunk);
+    }
+
+    return chunks;
+}
+
 export function truncateScenesToBudget(
     scenes: { sceneId: string; content: string }[],
     budget: number = CHAPTER_SUMMARY_TOKEN_BUDGET
