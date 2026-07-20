@@ -425,4 +425,19 @@ export const api = {
             return undefined;
         }
     },
+    embedding: {
+        async batchCompute(texts: string[]): Promise<{ embeddings: number[][] } | undefined> {
+            try {
+                const res = await fetch(`${API}/embedding/batch-compute`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ texts }),
+                });
+                if (res.ok) return await res.json();
+            } catch (err) {
+                console.warn('[Embedding API] Failed to compute batch:', err);
+            }
+            return undefined;
+        }
+    }
 };

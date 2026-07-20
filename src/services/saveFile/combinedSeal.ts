@@ -396,7 +396,7 @@ export async function sealChapterCombined(
     scenes: { sceneId: string; content: string }[],
     chapterId: string,
     chapterTitle: string,
-    sceneIds: string[],
+    _sceneIds: string[],
     npcLedger: { id: string; name: string; aliases: string }[],
     maxRetries = 2,
     scanBudget = 0,

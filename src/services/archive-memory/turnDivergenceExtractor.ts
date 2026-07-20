@@ -49,10 +49,10 @@ GM: ${gmText}
 OUTPUT FORMAT — a single JSON object with one key per category slot. Each value is an array of fact objects, or [] if empty. Example:
 {
     "locations": [
-        { "text": "Eastern gate destroyed by siege", "sceneRef": "${sceneId}", "npcIds": [], "knownBy": [], "unrecognizedNpcNames": [] }
+        { "text": "Eastern gate destroyed by siege", "sceneRef": "${sceneId}", "npcIds": [], "knownBy": [], "unrecognizedNpcNames": [], "locations": ["eastern_gate"], "items": [], "theme": "destruction" }
     ],
     "npc_events": [
-        { "text": "Grak allied with the player", "sceneRef": "${sceneId}", "npcIds": ["npc_42"], "knownBy": ["npc_42"], "unrecognizedNpcNames": [] }
+        { "text": "Grak allied with the player", "sceneRef": "${sceneId}", "npcIds": ["npc_42"], "knownBy": ["npc_42"], "unrecognizedNpcNames": [], "locations": [], "items": [], "theme": "alliance" }
     ],
     "promises_debts": [],
     "world_state": [],
@@ -74,6 +74,10 @@ DIVERGENCE EXTRACTION RULES:
 - sceneRef must be: ${sceneId}
 - npcIds: list the NPC ledger IDs mentioned. If a name appears that is NOT in the ledger, put it in unrecognizedNpcNames instead.
 - knownBy: list the NPC ledger IDs of witnesses who SAW or PARTICIPATED in this event. Only include NPCs who were present when the fact happened. Omit this field for rules_lore and locations (those are broadcast knowledge). If unsure, omit knownBy.
+- locations: list specific, named places where this fact occurred or that are mentioned (e.g. "eastern_gate", "lower_ward"). Empty array if none.
+- items: list specific, named objects or artifacts mentioned (e.g. "amulet_of_fire"). Empty array if none.
+- theme: provide exactly ONE descriptive lowercase word categorizing the fact (e.g. "combat", "betrayal", "discovery").
+- DO NOT include NPC names in the 'locations', 'items', or 'theme' fields.
 - Focus on: permanent changes, new information, relationship shifts, acquisitions, losses, oaths, regime changes.
 - Skip transient details, emotional narration, momentary states, and anything the archive would already surface.
 - If a slot is empty, output [] for that slot.
@@ -135,8 +139,20 @@ Respond with valid JSON only.`;
                 knownBy = rawItem.knownBy.filter((k): k is string => typeof k === 'string');
             }
 
+            const locations: string[] | undefined = Array.isArray(rawItem.locations) && rawItem.locations.length > 0 
+                ? rawItem.locations.filter((l): l is string => typeof l === 'string') 
+                : undefined;
+                
+            const items: string[] | undefined = Array.isArray(rawItem.items) && rawItem.items.length > 0
+                ? rawItem.items.filter((i): i is string => typeof i === 'string')
+                : undefined;
+                
+            const theme: string | undefined = typeof rawItem.theme === 'string' && rawItem.theme.trim() !== ''
+                ? rawItem.theme.trim()
+                : undefined;
+
             entries.push({
-                id: uid('div_'),
+                id: 'div_' + uid(),
                 chapterId,
                 category,
                 text,
@@ -148,6 +164,9 @@ Respond with valid JSON only.`;
                 unrecognizedNpcNames: stillUnrecognized.length > 0 ? stillUnrecognized : undefined,
                 reviewFlag: stillUnrecognized.length > 0 ? true : undefined,
                 messageId,
+                locations,
+                items,
+                theme,
             });
         }
     }

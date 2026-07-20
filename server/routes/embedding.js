@@ -1,6 +1,6 @@
 import os from 'os';
 import { Router } from 'express';
-import { isModelReady } from '../lib/embedder.js';
+import { isModelReady, embedBatch } from '../lib/embedder.js';
 import { getActiveJobs } from '../lib/embedJobs.js';
 import { wrapAsync } from '../lib/asyncHandler.js';
 
@@ -38,6 +38,20 @@ export function createEmbeddingRouter() {
             cpuModel: os.cpus()?.[0]?.model?.trim() ?? 'unknown',
             suggestedSpeed: suggestSpeed(cores, totalMemGB),
         });
+    }));
+
+    router.post('/api/embedding/batch-compute', wrapAsync(async (req, res) => {
+        const { texts } = req.body;
+        if (!Array.isArray(texts)) {
+            return res.status(400).json({ error: 'texts must be an array of strings' });
+        }
+        
+        // Use a relatively aggressive batch config since this is a user-initiated active block
+        const vectors = await embedBatch(texts, 12, 10);
+        
+        // Convert Float32Arrays back to regular arrays for JSON serialization
+        const serialized = vectors.map(v => Array.from(v));
+        res.json({ embeddings: serialized });
     }));
 
     return router;

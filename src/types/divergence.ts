@@ -29,6 +29,9 @@ export type DivergenceEntry = {
     reviewFlag?: boolean;
     unrecognizedNpcNames?: string[];
     messageId?: string;
+    locations?: string[];
+    items?: string[];
+    theme?: string;
 };
 
 export type TopicCluster = {

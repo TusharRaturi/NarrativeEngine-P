@@ -1,7 +1,7 @@
 import type { DivergenceRegister, DivergenceEntry, NPCEntry, ArchiveChapter, EndpointConfig, ProviderConfig } from '../../types';
 import { llmCall } from '../../utils/llmCall';
-import { CATEGORY_LABELS } from './divergenceRegister';
 import { extractJsonRobust } from '../infrastructure/jsonExtract';
+import { api } from '../llm/apiClient';
 
 export type DedupGroup = {
     bucketLabel: string;
@@ -72,46 +72,76 @@ export async function runFactDedup(
         }
     }
 
-    const bucketMap = new Map<string, { label: string; entries: DivergenceEntry[] }>();
+    // Phase 1: Fetch embeddings
+    onProgress('Generating semantic embeddings for facts...', 0, 100);
+    const textsToEmbed = finalEligible.map(e => `${e.category}: ${e.text}`);
+    const embedRes = await api.embedding.batchCompute(textsToEmbed);
+    
+    if (cancel.cancelled) throw new Error('Dedup cancelled.');
 
-    for (const entry of finalEligible) {
-        if (entry.npcIds && entry.npcIds.length > 0) {
-            for (const npcId of entry.npcIds) {
-                if (!bucketMap.has(npcId)) {
-                    const name = npcNameMap.get(npcId) ?? npcId;
-                    bucketMap.set(npcId, { label: name, entries: [] });
-                }
-                bucketMap.get(npcId)!.entries.push(entry);
+    if (!embedRes || !embedRes.embeddings) {
+        throw new Error('Failed to compute embeddings for facts.');
+    }
+    const embeddings = embedRes.embeddings;
+
+    // Phase 2: Compute local similarity and form clusters
+    onProgress('Clustering facts by semantic similarity...', 10, 100);
+    
+    const clusters: DivergenceEntry[][] = [];
+    const used = new Set<string>();
+
+    for (let i = 0; i < finalEligible.length; i++) {
+        if (used.has(finalEligible[i].id)) continue;
+        
+        const cluster = [finalEligible[i]];
+        used.add(finalEligible[i].id);
+        const vecA = embeddings[i];
+
+        for (let j = i + 1; j < finalEligible.length; j++) {
+            if (used.has(finalEligible[j].id)) continue;
+            
+            const vecB = embeddings[j];
+            const sim = cosineSimilarity(vecA, vecB);
+            
+            const eA = finalEligible[i];
+            const eB = finalEligible[j];
+            
+            // Boost similarity if they share structured entities
+            let entityOverlap = false;
+            if (eA.theme && eA.theme === eB.theme) entityOverlap = true;
+            if (eA.locations?.some(l => eB.locations?.includes(l))) entityOverlap = true;
+            if (eA.items?.some(it => eB.items?.includes(it))) entityOverlap = true;
+            
+            const threshold = entityOverlap ? 0.70 : 0.82;
+            
+            if (sim >= threshold) {
+                cluster.push(eB);
+                used.add(eB.id);
             }
-        } else {
-            const catKey = `__cat_${entry.category}`;
-            if (!bucketMap.has(catKey)) {
-                bucketMap.set(catKey, { label: CATEGORY_LABELS[entry.category] ?? entry.category, entries: [] });
-            }
-            bucketMap.get(catKey)!.entries.push(entry);
+        }
+        
+        if (cluster.length > 1) {
+            clusters.push(cluster);
         }
     }
 
-    const buckets = Array.from(bucketMap.values()).filter(b => b.entries.length > 1);
+    if (clusters.length === 0) {
+        return { groups: allGroups, failedBuckets: [] };
+    }
+
+    // Phase 3: Batch LLM processing
+    const BATCH_SIZE = 5; // number of clusters per LLM prompt
     const failedBuckets: string[] = [];
     const seenMergeKeys = new Set<string>();
 
-    for (let i = 0; i < buckets.length; i++) {
+    for (let i = 0; i < clusters.length; i += BATCH_SIZE) {
         if (cancel.cancelled) throw new Error('Dedup cancelled.');
 
-        const bucket = buckets[i];
-        onProgress(`Checking ${bucket.label} — ${i + 1} / ${buckets.length} entities`, i, buckets.length);
+        const batch = clusters.slice(i, i + BATCH_SIZE);
+        onProgress(`Reviewing semantic clusters with LLM (${i + 1} to ${Math.min(i + BATCH_SIZE, clusters.length)} of ${clusters.length})...`, 20 + Math.floor((i / clusters.length) * 80), 100);
 
-        const factLines = bucket.entries
-            .map(e => `${e.id} | #${e.sceneRef} | ${e.text}`)
-            .join('\n');
-
-        const prompt = `You are deduplicating campaign facts about ${bucket.label}.
-
-FACTS (id | scene | text):
-${factLines}
-
-Identify groups where multiple facts describe the SAME EVENT or SAME STATE in different words.
+        let promptText = `You are a strict data deduplicator. Analyze the following distinct clusters of campaign facts. Each cluster is separated by "---".
+Within EACH cluster, identify facts that describe the EXACT SAME EVENT or EXACT SAME STATE in different words.
 
 DO NOT GROUP:
 - Different events sharing a trait ("X saved A" + "X saved B")
@@ -119,53 +149,55 @@ DO NOT GROUP:
 - General + specific ("X is brave" + "X charged the dragon")
 - Related but distinct ("Bridge is dangerous" + "Bridge collapsed")
 
-GROUP:
+ONLY GROUP:
 - Restatements of one event ("X rescued a civilian" + "X saved a bystander")
-- Same state in different words ("X has the amulet" + "X carries the amulet")
+- Same state in different words ("X has the amulet" + "X carries the amulet")\n\n`;
 
-Schema (do not copy example values):
+        for (let b = 0; b < batch.length; b++) {
+            promptText += `---\nCLUSTER ${b + 1}:\n`;
+            promptText += batch[b].map(e => `${e.id} | #${e.sceneRef} | ${e.text}`).join('\n') + '\n\n';
+        }
+
+        promptText += `Return ONLY a JSON object with this exact schema:
 {"duplicates":[{"ids":["<fact_id>","<fact_id>"],"reason":"<one short sentence>"}]}
 
-If nothing duplicates, return {"duplicates":[]} exactly.`;
+If there are NO duplicates in ANY cluster, return {"duplicates":[]} exactly.`;
 
         let raw: string;
         try {
-            raw = await llmCall(utilityProvider, prompt, {
-                temperature: 0.15,
+            raw = await llmCall(utilityProvider, promptText, {
+                temperature: 0.1,
                 maxTokens: 4096,
-                trackingLabel: 'fact-dedup',
+                trackingLabel: 'fact-dedup-batch',
                 timeoutMs: 24 * 60 * 60 * 1000,
             });
         } catch (err) {
-            console.warn(`[FactDeduper] LLM call failed for bucket "${bucket.label}":`, err);
-            failedBuckets.push(bucket.label);
+            console.warn(`[FactDeduper] LLM batch failed:`, err);
+            failedBuckets.push(`Batch ${i / BATCH_SIZE + 1}`);
             continue;
         }
-
-        if (cancel.cancelled) throw new Error('Dedup cancelled.');
 
         const { value: parsed, parseOk } = extractJsonRobust<{ duplicates: Array<{ ids: string[]; reason?: string }> }>(
             raw,
             { duplicates: [] },
         );
 
-        if (!parseOk) {
-            console.warn('[FactDeduper] Bad response for bucket', bucket.label, raw);
-            failedBuckets.push(bucket.label);
+        if (!parseOk || !Array.isArray(parsed.duplicates)) {
+            console.warn('[FactDeduper] Bad response for batch', raw);
+            failedBuckets.push(`Batch ${i / BATCH_SIZE + 1}`);
             continue;
         }
 
-        if (!Array.isArray(parsed.duplicates)) continue;
-
+        // Map facts back for sorting
         const entryById = new Map<string, DivergenceEntry>();
-        for (const e of bucket.entries) entryById.set(e.id, e);
-
-        const bucketIdSet = new Set(bucket.entries.map(e => e.id));
+        for (const cluster of batch) {
+            for (const e of cluster) entryById.set(e.id, e);
+        }
 
         for (const group of parsed.duplicates) {
             if (!Array.isArray(group.ids)) continue;
 
-            const validIds = group.ids.filter(id => bucketIdSet.has(id));
+            const validIds = group.ids.filter(id => entryById.has(id));
             if (validIds.length < 2) continue;
 
             const sortedByRecency = [...validIds].sort((a, b) => {
@@ -184,9 +216,13 @@ If nothing duplicates, return {"duplicates":[]} exactly.`;
             const mergeKey = `${keepId}|${[...disableIds].sort().join('|')}`;
             if (seenMergeKeys.has(mergeKey)) continue;
             seenMergeKeys.add(mergeKey);
+            
+            const keepEntry = entryById.get(keepId)!;
+            const labelStr = keepEntry.theme ? `Theme: ${keepEntry.theme}` : 
+                             (keepEntry.npcIds?.length ? `NPCs` : 'Semantic Cluster');
 
             allGroups.push({
-                bucketLabel: bucket.label,
+                bucketLabel: labelStr,
                 keepId,
                 disableIds,
                 reason: group.reason,
@@ -194,7 +230,16 @@ If nothing duplicates, return {"duplicates":[]} exactly.`;
         }
     }
 
-    onProgress(`Done — ${allGroups.length} duplicate groups found`, buckets.length, buckets.length);
-
+    onProgress(`Done — ${allGroups.length} duplicate groups found`, 100, 100);
     return { groups: allGroups, failedBuckets };
+}
+
+function cosineSimilarity(a: number[], b: number[]) {
+    let dot = 0, normA = 0, normB = 0;
+    for (let i = 0; i < a.length; i++) {
+        dot += a[i] * b[i];
+        normA += a[i] * a[i];
+        normB += b[i] * b[i];
+    }
+    return dot / (Math.sqrt(normA) * Math.sqrt(normB) + 1e-8);
 }

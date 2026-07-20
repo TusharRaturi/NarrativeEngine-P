@@ -2,7 +2,9 @@ import { useState, useRef, useMemo } from 'react';
 import { Edit2, Check, Pin, PinOff, ChevronDown, ChevronUp, Trash2, Sparkles, Loader2, Users, X, Link2 } from 'lucide-react';
 import { useAppStore } from '../../../store/useAppStore';
 import type { DivergenceCategory, DivergenceEntry, NPCEntry } from '../../../types';
-import { EMPTY_REGISTER, CATEGORY_LABELS } from '../../../services/campaign-state/divergenceRegister';
+import { EMPTY_REGISTER, CATEGORY_LABELS, mergeSealEntries } from '../../../services/campaign-state/divergenceRegister';
+import { extractTurnDivergences } from '../../../services/archive-memory/turnDivergenceExtractor';
+import { api } from '../../../services/llm/apiClient';
 import { runFactClustering, assignSubjectTokens, type ClusteringCancelled } from '../../../services/campaign-state/factClusterer';
 import { runFactDedup, type DedupResult, type DedupCancelled } from '../../../services/campaign-state/factDeduper';
 import { normalizeFaction, parseKnownByToken, groupDivergencesBySubject } from '../../../services/campaign-state/knowledgeScope';
@@ -186,6 +188,11 @@ function KnownByEditor({ entry, npcLedger, onApply, onClose }: {
 }
 
 export function FactsView() {
+    const archiveIndex = useAppStore(s => s.archiveIndex);
+    const activeCampaignId = useAppStore(s => s.activeCampaignId);
+    const settings = useAppStore(s => s.settings);
+    const setDivergenceRegister = useAppStore(s => s.setDivergenceRegister);
+    const auxProvider = useAppStore(s => s.getActiveAuxiliaryEndpoint() || s.getActiveStoryEndpoint());
     const divergenceRegister = useAppStore(s => s.divergenceRegister);
     const chapters = useAppStore(s => s.chapters);
     const deleteDivergenceFact = useAppStore(s => s.deleteDivergenceFact);
@@ -228,6 +235,10 @@ export function FactsView() {
     const [dedupError, setDedupError] = useState<string | null>(null);
     const dedupCancelRef = useRef<DedupCancelled>({ cancelled: false });
 
+    const [extractRunning, setExtractRunning] = useState(false);
+    const [extractProgress, setExtractProgress] = useState<{ msg: string; done: number; total: number } | null>(null);
+    const extractCancelRef = useRef<{ cancelled: boolean }>({ cancelled: false });
+
     const reg = divergenceRegister ?? EMPTY_REGISTER;
     const entries = reg.entries;
 
@@ -267,6 +278,62 @@ export function FactsView() {
 
     // Find the open chapter for the placeholder
     const openChapter = chapters?.find(c => !c.sealedAt);
+
+    const handleExtractPastScenes = async () => {
+        if (!activeCampaignId || !auxProvider) return;
+        setExtractRunning(true);
+        extractCancelRef.current.cancelled = false;
+        
+        try {
+            const existingSceneRefs = new Set(entries.map(e => e.sceneRef));
+            // Exclude last scene as requested
+            const candidates = archiveIndex.slice(0, -1).map(s => s.sceneId);
+            const missing = candidates.filter(id => !existingSceneRefs.has(id));
+
+            if (missing.length === 0) {
+                setExtractProgress({ msg: 'No previous scenes need extraction.', done: 0, total: 0 });
+                setExtractRunning(false);
+                return;
+            }
+
+            setExtractProgress({ msg: `Fetching ${missing.length} scenes...`, done: 0, total: missing.length });
+            
+            let currentRegister = reg;
+            let count = 0;
+            const chunkSize = 5;
+            for (let i = 0; i < missing.length; i += chunkSize) {
+                if (extractCancelRef.current.cancelled) break;
+                const chunk = missing.slice(i, i + chunkSize);
+                const scenes = await api.archive.fetchScenes(activeCampaignId, chunk);
+                
+                for (const scene of scenes) {
+                    if (extractCancelRef.current.cancelled) break;
+                    setExtractProgress({ msg: `Extracting scene ${scene.sceneId}...`, done: count, total: missing.length });
+                    
+                    const newEntries = await extractTurnDivergences(
+                        auxProvider,
+                        '', 
+                        scene.content,
+                        scene.sceneId,
+                        openChapter?.chapterId || 'unknown',
+                        npcLedger || [],
+                        settings.divergenceImportanceGate ?? 7
+                    );
+                    
+                    currentRegister = mergeSealEntries(currentRegister, newEntries, scene.sceneId);
+                    count++;
+                }
+                setDivergenceRegister(currentRegister);
+            }
+            
+            setExtractProgress({ msg: `Extraction complete. Processed ${count} scenes.`, done: count, total: missing.length });
+        } catch (err) {
+            console.error('[FactsView] Extraction failed:', err);
+            setExtractProgress({ msg: 'Extraction failed: ' + String(err), done: 0, total: 0 });
+        } finally {
+            setExtractRunning(false);
+        }
+    };
 
     const handleStartEdit = (e: DivergenceEntry) => {
         setEditingId(e.id);
@@ -461,6 +528,32 @@ export function FactsView() {
         <span className={`text-[9px] ml-1 ${knownByChipClass(e.knownBy)}`}>(known to: {knownBySummary(e.knownBy, npcLedger ?? [])})</span>
     );
 
+    // Shared entity badges for structured tags
+    const factBadges = (e: DivergenceEntry) => {
+        const badges = [];
+        if (e.npcIds && e.npcIds.length > 0) {
+            for (const npcId of e.npcIds) {
+                const npc = npcLedger?.find(n => n.id === npcId);
+                if (npc) badges.push(<span key={npc.id} className="text-[9px] px-1 py-0.5 rounded bg-purple-500/10 text-purple-400 border border-purple-500/20 leading-none">{npc.name}</span>);
+            }
+        }
+        if (e.locations && e.locations.length > 0) {
+            for (const loc of e.locations) {
+                badges.push(<span key={`loc_${loc}`} className="text-[9px] px-1 py-0.5 rounded bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 leading-none">{loc.replace(/_/g, ' ')}</span>);
+            }
+        }
+        if (e.items && e.items.length > 0) {
+            for (const item of e.items) {
+                badges.push(<span key={`item_${item}`} className="text-[9px] px-1 py-0.5 rounded bg-orange-500/10 text-orange-400 border border-orange-500/20 leading-none">{item.replace(/_/g, ' ')}</span>);
+            }
+        }
+        if (e.theme) {
+            badges.push(<span key="theme" className="text-[9px] px-1 py-0.5 rounded bg-slate-500/10 text-slate-400 border border-slate-500/20 leading-none uppercase tracking-wider">{e.theme}</span>);
+        }
+        if (badges.length === 0) return null;
+        return <span className="inline-flex flex-wrap gap-1 ml-1.5 align-middle">{badges}</span>;
+    };
+
     return (
         <>
             <div className="flex items-center gap-1 flex-wrap">
@@ -489,7 +582,33 @@ export function FactsView() {
                         <X size={9} /> Stop
                     </button>
                 )}
+                <button
+                    onClick={handleExtractPastScenes}
+                    disabled={extractRunning}
+                    className="flex items-center gap-1 text-[9px] uppercase tracking-widest font-bold px-1.5 py-0.5 rounded text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors disabled:opacity-50 disabled:cursor-not-allowed ml-auto"
+                    title="Extract facts from all previous scenes that haven't been extracted yet"
+                >
+                    {extractRunning ? <Loader2 size={9} className="animate-spin" /> : <Sparkles size={9} />}
+                    Extract Missing Scenes
+                </button>
+                {extractRunning && (
+                    <button
+                        onClick={() => { extractCancelRef.current.cancelled = true; }}
+                        className="flex items-center gap-0.5 text-[9px] text-red-400 hover:text-red-300 px-1"
+                    >
+                        <X size={9} /> Stop
+                    </button>
+                )}
             </div>
+
+            {extractProgress && (
+                <div className="flex items-center gap-2 mt-1">
+                    <div className="text-[9px] text-emerald-400 flex-1">{extractProgress.msg}</div>
+                    {extractProgress.total > 0 && extractRunning && (
+                        <div className="text-[9px] text-emerald-400/70">{extractProgress.done} / {extractProgress.total}</div>
+                    )}
+                </div>
+            )}
 
             {simStatus && (
                 <div className="text-[9px] text-text-dim">{simStatus}</div>
@@ -621,6 +740,7 @@ export function FactsView() {
                                                                 {e.text}
                                                                 <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
                                                                 {knownBySuffix(e)}
+                                                                {factBadges(e)}
                                                             </span>
                                                             {rowActions(e)}
                                                         </div>
@@ -651,6 +771,7 @@ export function FactsView() {
                                         {' '}{e.text}
                                         <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
                                         {knownBySuffix(e)}
+                                        {factBadges(e)}
                                     </span>
                                 </div>
                             ))}
@@ -698,6 +819,7 @@ export function FactsView() {
                                                             <span className="ml-1 text-[8px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1 rounded">latest</span>
                                                         )}
                                                         {knownBySuffix(e)}
+                                                        {factBadges(e)}
                                                     </span>
                                                     {rowActions(e)}
                                                 </div>
@@ -737,6 +859,7 @@ export function FactsView() {
                                         {' '}{e.text}
                                         <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
                                         {knownBySuffix(e)}
+                                        {factBadges(e)}
                                     </span>
                                     <span className="flex items-center gap-0.5 shrink-0">
                                         <button onClick={() => pinDivergenceFact(e.id)} className="text-amber-400 p-0.5" title="Unpin">
@@ -850,6 +973,7 @@ export function FactsView() {
                                                                     {e.text}
                                                                     <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
                                                                     {knownBySuffix(e)}
+                                                                    {factBadges(e)}
                                                                 </span>
                                                                 {rowActions(e)}
                                                             </div>

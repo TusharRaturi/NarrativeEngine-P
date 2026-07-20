@@ -460,7 +460,7 @@ export async function runGenerationStage(
 
         const allowTools = toolCallCount < MAX_TOOL_CALLS_PER_TURN && apiRetryCount < 2;
         const apiFormat = getApiFormat(providerSafe);
-        const isGeminiAPI = isGeminiFamilyModel(providerSafe.modelName) || apiFormat === 'gemini';
+        const isGeminiAPI = isGeminiFamilyModel(providerSafe) || apiFormat === 'gemini';
         const requestPayload = sanitizePayloadForApi(currentPayload, allowTools, provider?.modelName, isGeminiAPI);
 
         // Dice tool availability is decoupled from pool mode (diceFairnessActive).
@@ -502,7 +502,7 @@ export async function runGenerationStage(
                     const engineText = sceneNumber
                         ? `Scene #${sceneNumber} | ${stripLLMSceneHeader(finalText)}`
                         : finalText;
-                    const dispatchResult = toolHandler({ arguments: toolCall.arguments, loreChunks, notebook: state.context.notebook, diceSystem: context.diceSystem });
+                    const dispatchResult = toolHandler({ arguments: toolCall.arguments, loreChunks, notebook: state.context.notebook });
                     if (dispatchResult.accumulation === 'overwrite') {
                         accumulatedContent = engineText;
                     } else {

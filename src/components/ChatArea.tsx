@@ -195,7 +195,7 @@ export function ChatArea() {
         const sceneId = msg.sceneId || useAppStore.getState().archiveIndex[useAppStore.getState().archiveIndex.length - 1]?.sceneId || '000';
 
         const state = useAppStore.getState();
-        const provider = state.getActiveAuxiliaryEndpoint() || state.getFreshProvider();
+        const provider = state.getActiveAuxiliaryEndpoint() || state.getActiveStoryEndpoint();
         if (!provider) {
             toast.error('No AI provider configured.');
             return;
