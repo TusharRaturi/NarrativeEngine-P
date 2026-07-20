@@ -372,35 +372,41 @@ async function runArchiveTrack(
                 if (extractImportance >= importanceGate && textToExtractGm.trim()) {
                     backgroundQueue.push(`Divergence-Extraction:${extractArchiveId}`, async () => {
                         if (!assertStillActive(activeCampaignId, 'Divergence-Extraction')) return;
-                        const npcLedger = useAppStore.getState().npcLedger || [];
-                        const newEntries = await extractTurnDivergences(
+                        const storeState = useAppStore.getState();
+                        const npcLedger = storeState.npcLedger || [];
+                        const activeDivergences = storeState.divergenceRegister?.entries.filter(e => e.isActive !== false) || [];
+
+                        const extracted = await extractTurnDivergences(
                             auxProvider,
                             textToExtractUser,
                             textToExtractGm,
                             extractArchiveId,
                             chapterId,
                             npcLedger,
-                            importanceGate
+                            importanceGate,
+                            activeDivergences
                         );
                         if (!assertStillActive(activeCampaignId, 'Divergence-Extraction')) return;
                         
-                        const storeState = useAppStore.getState();
-                        const currentRegister = storeState.divergenceRegister;
+                        const postExtractStoreState = useAppStore.getState();
+                        const currentRegister = postExtractStoreState.divergenceRegister;
                         if (currentRegister) {
-                            const nextRegister = mergeSealEntries(currentRegister, newEntries, extractArchiveId);
+                            const nextRegister = mergeSealEntries(currentRegister, extracted, extractArchiveId);
                             guardedSetDivergenceRegister(nextRegister);
-                            if (newEntries.length > 0) {
-                                console.log(`[Archive] Post-turn divergences extracted for scene #${extractArchiveId} (${newEntries.length} facts)`);
+                            
+                            const allEntries = [...extracted.newEntries, ...extracted.updates.map(u => u.newEntry)];
+                            if (allEntries.length > 0 || extracted.invalidations.length > 0) {
+                                console.log(`[Archive] Post-turn divergences extracted for scene #${extractArchiveId} (${extracted.newEntries.length} new, ${extracted.updates.length} updates, ${extracted.invalidations.length} invalidations)`);
                                 
                                 // Dispatch divergence-based suggestions
-                                const npcsToSuggest = newEntries.flatMap(e => e.unrecognizedNpcNames || []);
-                                if (npcsToSuggest.length > 0 && storeState.addNpcSuggestions) {
-                                    storeState.addNpcSuggestions(npcsToSuggest);
+                                const npcsToSuggest = allEntries.flatMap(e => e.unrecognizedNpcNames || []);
+                                if (npcsToSuggest.length > 0 && postExtractStoreState.addNpcSuggestions) {
+                                    postExtractStoreState.addNpcSuggestions(npcsToSuggest);
                                 }
                                 
-                                const locationsToSuggest = newEntries.flatMap(e => e.locations || []);
-                                if (locationsToSuggest.length > 0 && storeState.addLocationSuggestions) {
-                                    storeState.addLocationSuggestions(
+                                const locationsToSuggest = allEntries.flatMap(e => e.locations || []);
+                                if (locationsToSuggest.length > 0 && postExtractStoreState.addLocationSuggestions) {
+                                    postExtractStoreState.addLocationSuggestions(
                                         locationsToSuggest.map(name => ({
                                             name,
                                             firstSeen: Date.now()
@@ -682,7 +688,12 @@ export async function runCombinedSeal(
         const currentSceneId = sceneIds[sceneIds.length - 1] ?? '';
         // WO-P1-03: was `useAppStore.getState().divergenceRegister ?? EMPTY_REGISTER` (the :546 read).
         const liveRegister = sealInputs.divergenceRegister;
-        const merged = mergeSealEntries(liveRegister, result.divergences, currentSceneId);
+        const extracted: ExtractedDivergences = {
+            newEntries: result.divergences,
+            updates: [],
+            invalidations: []
+        };
+        const merged = mergeSealEntries(liveRegister, extracted, currentSceneId);
         callbacks.setDivergenceRegister?.(merged);
 
         try {

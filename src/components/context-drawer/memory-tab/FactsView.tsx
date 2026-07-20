@@ -310,23 +310,27 @@ export function FactsView() {
                     if (extractCancelRef.current.cancelled) break;
                     setExtractProgress({ msg: `Extracting scene ${scene.sceneId}...`, done: count, total: missing.length });
                     
-                    const newEntries = await extractTurnDivergences(
+                    const activeDivergences = currentRegister.entries.filter(e => e.isActive !== false);
+                    const extracted = await extractTurnDivergences(
                         auxProvider,
                         '', 
                         scene.content,
                         scene.sceneId,
                         openChapter?.chapterId || 'unknown',
                         npcLedger || [],
-                        settings.divergenceImportanceGate ?? 7
+                        settings.divergenceImportanceGate ?? 7,
+                        activeDivergences
                     );
                     
                     const storeState = useAppStore.getState();
-                    const npcsToSuggest = newEntries.flatMap(e => e.unrecognizedNpcNames || []);
+                    const allEntries = [...extracted.newEntries, ...extracted.updates.map(u => u.newEntry)];
+                    
+                    const npcsToSuggest = allEntries.flatMap(e => e.unrecognizedNpcNames || []);
                     if (npcsToSuggest.length > 0 && storeState.addNpcSuggestions) {
                         storeState.addNpcSuggestions(npcsToSuggest);
                     }
                     
-                    const locationsToSuggest = newEntries.flatMap(e => e.locations || []);
+                    const locationsToSuggest = allEntries.flatMap(e => e.locations || []);
                     if (locationsToSuggest.length > 0 && storeState.addLocationSuggestions) {
                         storeState.addLocationSuggestions(
                             locationsToSuggest.map(name => ({
@@ -336,7 +340,7 @@ export function FactsView() {
                         );
                     }
                     
-                    currentRegister = mergeSealEntries(currentRegister, newEntries, scene.sceneId);
+                    currentRegister = mergeSealEntries(currentRegister, extracted, scene.sceneId);
                     count++;
                 }
                 setDivergenceRegister(currentRegister);

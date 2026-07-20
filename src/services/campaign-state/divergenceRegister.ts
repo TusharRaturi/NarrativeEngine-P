@@ -87,14 +87,37 @@ export function stripReasoning(raw: string): string {
     return clean.trim();
 }
 
+export type ExtractedDivergences = {
+    newEntries: DivergenceEntry[];
+    updates: { targetId: string; newEntry: DivergenceEntry }[];
+    invalidations: string[];
+};
+
 export function mergeSealEntries(
     register: DivergenceRegister,
-    newEntries: DivergenceEntry[],
+    extracted: ExtractedDivergences,
     sceneId: string
 ): DivergenceRegister {
-    if (newEntries.length === 0) return register;
+    if (extracted.newEntries.length === 0 && extracted.updates.length === 0 && extracted.invalidations.length === 0) return register;
 
-    const entries = [...register.entries, ...newEntries];
+    let entries = [...register.entries];
+
+    for (const invalidationId of extracted.invalidations) {
+        const idx = entries.findIndex(e => e.id === invalidationId);
+        if (idx !== -1) {
+            entries[idx] = { ...entries[idx], isActive: false };
+        }
+    }
+
+    for (const update of extracted.updates) {
+        const idx = entries.findIndex(e => e.id === update.targetId);
+        if (idx !== -1) {
+            entries[idx] = { ...entries[idx], isActive: false, supersededBy: update.newEntry.id };
+        }
+        entries.push(update.newEntry);
+    }
+
+    entries = [...entries, ...extracted.newEntries];
 
     return {
         entries,

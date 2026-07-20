@@ -23,6 +23,8 @@ export type DivergenceEntry = {
     // Stable snake_case subject slug shared by ALL facts about the same subject
     // (e.g. "alex_chen.identity"). The scene number is the version axis. undefined = ungrouped.
     subjectToken?: string;
+    isActive?: boolean;
+    supersededBy?: string;
     pinned: boolean;
     enabled?: boolean;
     source: 'auto' | 'manual';

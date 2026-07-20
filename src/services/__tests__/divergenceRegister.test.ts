@@ -115,7 +115,7 @@ describe('divergenceRegister v2', () => {
     describe('mergeSealEntries', () => {
         it('appends new entries to register', () => {
             const reg = makeRegister();
-            const entries = [makeEntry({ id: 'div_new' })];
+            const entries = { newEntries: [makeEntry({ id: 'div_new' })], updates: [], invalidations: [] };
             const merged = mergeSealEntries(reg, entries, '025');
             expect(merged.entries).toHaveLength(1);
             expect(merged.entries[0].id).toBe('div_new');
@@ -124,13 +124,13 @@ describe('divergenceRegister v2', () => {
 
         it('returns register unchanged if no new entries', () => {
             const reg = makeRegister({ entries: [makeEntry()] });
-            const merged = mergeSealEntries(reg, [], '025');
+            const merged = mergeSealEntries(reg, { newEntries: [], updates: [], invalidations: [] }, '025');
             expect(merged).toBe(reg);
         });
 
         it('preserves chapterToggles and categoryToggles', () => {
             const reg = makeRegister({ chapterToggles: { CH01: false }, categoryToggles: { CH01: { locations: false } } });
-            const merged = mergeSealEntries(reg, [makeEntry()], '025');
+            const merged = mergeSealEntries(reg, { newEntries: [makeEntry()], updates: [], invalidations: [] }, '025');
             expect(merged.chapterToggles).toEqual({ CH01: false });
             expect(merged.categoryToggles).toEqual({ CH01: { locations: false } });
         });
