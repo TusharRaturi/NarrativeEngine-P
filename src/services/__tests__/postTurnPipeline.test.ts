@@ -179,22 +179,6 @@ describe('runPostTurnPipeline', () => {
         expect(autoSealCalls).toHaveLength(0);
     });
 
-    it('populates NPC suggestions for new NPC names detected in assistant content', async () => {
-        mockApi.archive.append.mockResolvedValueOnce({ sceneId: '001' });
-        mockApi.chapters.list.mockResolvedValueOnce([]);
-
-        mockExtractNPCNames.mockReturnValueOnce(['Kaelen']);
-        mockValidateNPCCandidates.mockResolvedValueOnce(['Kaelen']);
-        mockClassifyNPCNames.mockReturnValueOnce({ newNames: ['Kaelen'], existingNpcs: [] });
-
-        const callbacks = makeCallbacks();
-        await runPostTurnPipeline(makeState(), callbacks, ASSISTANT_CONTENT, ALL_MSGS);
-
-        expect(callbacks.addNpcSuggestions).toHaveBeenCalledWith(['Kaelen'], ASSISTANT_CONTENT);
-        const npcGenCalls = vi.mocked(mockBQ.push).mock.calls.filter(c => c[0] === 'NPC-Gen:Kaelen');
-        expect(npcGenCalls).toHaveLength(0);
-    });
-
     it('calls incrementBookkeepingTurnCounter and resetBookkeepingTurnCounter when turnCount >= interval', async () => {
         mockApi.archive.append.mockResolvedValueOnce({ sceneId: '005' });
         mockApi.chapters.list.mockResolvedValueOnce([]);

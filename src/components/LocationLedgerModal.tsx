@@ -5,6 +5,7 @@ import type { LocationEntry, LocationConnection } from '../types';
 import { LocationSuggestionsPanel } from './location-ledger/LocationSuggestionsPanel';
 import { LocationEditForm } from './location-ledger/LocationEditForm';
 import { filterLocations } from '../utils/ledgerFilters';
+import { queueLocationEnrichment } from '../services/locationEnrich';
 
 function newLocationId(): string {
     return `loc_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
@@ -39,6 +40,7 @@ export function LocationLedgerModal() {
 
     const [selectedId, setSelectedId] = useState<string | null>(null);
     const [isEditing, setIsEditing] = useState(false);
+    const [aiUpdatingId, setAiUpdatingId] = useState<string | null>(null);
     const [searchQuery, setSearchQuery] = useState('');
     const [form, setForm] = useState<Partial<LocationEntry>>({ ...EMPTY_ENTRY });
     // Draft fields kept as comma-separated strings for the chip/field UX
@@ -67,6 +69,16 @@ export function LocationLedgerModal() {
         setNewConnectionBand('short');
         setNewConnectionNote('');
         setIsEditing(false);
+    };
+
+    const handleAIUpdate = () => {
+        if (!selectedId) return;
+        setAiUpdatingId(selectedId);
+        queueLocationEnrichment(selectedId);
+        // Optimistically clear the loading state after 8s
+        setTimeout(() => {
+            setAiUpdatingId(null);
+        }, 8000);
     };
 
     const handleStartEditing = () => {
@@ -310,6 +322,7 @@ export function LocationLedgerModal() {
                             renderedForm={renderedForm}
                             isEditing={isEditing}
                             selectedId={selectedId}
+                            isAIUpdating={aiUpdatingId === selectedId}
                             featuresDraft={featuresDraft}
                             setFeaturesDraft={setFeaturesDraft}
                             newConnectionTo={newConnectionTo}
@@ -320,6 +333,7 @@ export function LocationLedgerModal() {
                             setNewConnectionNote={setNewConnectionNote}
                             locationLedger={locationLedger}
                             onStartEditing={handleStartEditing}
+                            onAIUpdate={handleAIUpdate}
                             onSetAsCurrent={handleSetAsCurrent}
                             onCancel={handleCancelEdit}
                             onSave={handleSave}

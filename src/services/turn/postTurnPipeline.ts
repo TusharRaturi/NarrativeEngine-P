@@ -8,8 +8,6 @@ import { sealChapterCombined } from '../saveFileEngine';
 import { backgroundQueue } from '../infrastructure/backgroundQueue';
 import { extractSceneEvents } from '../archive-memory/sceneEventExtractor';
 import { extractTurnDivergences } from '../archive-memory/turnDivergenceExtractor';
-import { extractNPCNames, classifyNPCNames, validateNPCCandidates } from '../npc/npcDetector';
-import { updateExistingNPCs, backfillNPCDrives } from '../chatEngine';
 import { scanPressure, buildPressurePatch, shouldArchiveNPC, findArchivedToRestore } from '../npc/npcPressureTracker';
 import { scanCharacterProfile } from '../characterProfileParser';
 import { scanCharacterTraits } from '../characterTraitParser';
@@ -19,7 +17,7 @@ import { resolveLocationHeader } from '../locationHeader';
 import { toast } from '../../components/Toast';
 import { mergeSealEntries, EMPTY_REGISTER } from '../campaign-state/divergenceRegister';
 import { saveDivergenceRegister } from '../../store/campaignStore';
-import { tierAllows, NPC_UPDATE_COOLDOWN } from './aiTier';
+import { tierAllows } from './aiTier';
 
 const PRESENT_HEADER_RE = /👥\s*\[Present\]\s*(.+)/i;
 
@@ -136,7 +134,6 @@ export async function runPostTurnPipeline(
 
     const results = await Promise.allSettled([
         runArchiveTrack(state, callbacks, displayInput, lastAssistantContent, allMsgs, activeCampaignId),
-        runNPCTrack(state, callbacks, lastAssistantContent, allMsgs, npcLedger, activeCampaignId),
         runPressureTrack(state, callbacks, displayInput, npcLedger, activeCampaignId, lastAssistantContent),
     ]);
 
@@ -387,12 +384,29 @@ async function runArchiveTrack(
                         );
                         if (!assertStillActive(activeCampaignId, 'Divergence-Extraction')) return;
                         
-                        const currentRegister = useAppStore.getState().divergenceRegister;
+                        const storeState = useAppStore.getState();
+                        const currentRegister = storeState.divergenceRegister;
                         if (currentRegister) {
                             const nextRegister = mergeSealEntries(currentRegister, newEntries, extractArchiveId);
                             guardedSetDivergenceRegister(nextRegister);
                             if (newEntries.length > 0) {
                                 console.log(`[Archive] Post-turn divergences extracted for scene #${extractArchiveId} (${newEntries.length} facts)`);
+                                
+                                // Dispatch divergence-based suggestions
+                                const npcsToSuggest = newEntries.flatMap(e => e.unrecognizedNpcNames || []);
+                                if (npcsToSuggest.length > 0 && storeState.addNpcSuggestions) {
+                                    storeState.addNpcSuggestions(npcsToSuggest);
+                                }
+                                
+                                const locationsToSuggest = newEntries.flatMap(e => e.locations || []);
+                                if (locationsToSuggest.length > 0 && storeState.addLocationSuggestions) {
+                                    storeState.addLocationSuggestions(
+                                        locationsToSuggest.map(name => ({
+                                            name,
+                                            firstSeen: Date.now()
+                                        }))
+                                    );
+                                }
                             }
                         }
                     }).catch(err => console.warn('[PostTurn] Background divergence extraction failed:', err));
@@ -566,10 +580,8 @@ async function runArchiveTrack(
                     if (mergedLedger !== s.locationLedger && s.activeCampaignId === activeCampaignId) {
                         s.setLocationLedger(mergedLedger);
                     }
-                    if (scan.suggestions.length > 0 && s.activeCampaignId === activeCampaignId) {
-                        s.addLocationSuggestions(scan.suggestions);
-                    }
-                    console.log(`[Auto Bookkeeping] Location scan at scene #${sceneId}: current=${scan.currentPlaceId ?? '(unclear)'}, suggestions=${scan.suggestions.length}`);
+                    // Location suggestions are now handled exclusively by the Divergence Extractor
+                    console.log(`[Auto Bookkeeping] Location scan at scene #${sceneId}: current=${scan.currentPlaceId ?? '(unclear)'}`);
                 }).catch(err => console.warn('[Auto Bookkeeping] Location scan failed:', err));
             }
         }
@@ -679,6 +691,22 @@ export async function runCombinedSeal(
             console.warn('[CombinedSeal] Failed to save divergence register:', e);
         }
 
+        const storeState = useAppStore.getState();
+        const npcsToSuggest = result.divergences.flatMap(e => e.unrecognizedNpcNames || []);
+        if (npcsToSuggest.length > 0 && storeState.addNpcSuggestions) {
+            storeState.addNpcSuggestions(npcsToSuggest);
+        }
+        
+        const locationsToSuggest = result.divergences.flatMap(e => e.locations || []);
+        if (locationsToSuggest.length > 0 && storeState.addLocationSuggestions) {
+            storeState.addLocationSuggestions(
+                locationsToSuggest.map(name => ({
+                    name,
+                    firstSeen: Date.now()
+                }))
+            );
+        }
+
         console.log(`[CombinedSeal] Chapter ${chapter.chapterId}: ${result.divergences.length} facts extracted`);
     }
 
@@ -727,98 +755,6 @@ export async function runCombinedSeal(
     }
 }
 
-async function runNPCTrack(
-    state: TurnState,
-    callbacks: TurnCallbacks,
-    lastAssistantContent: string,
-    allMsgs: ChatMessage[],
-    npcLedger: import('../../types').NPCEntry[],
-    activeCampaignId: string
-): Promise<void> {
-    // WO-A rewrite 2 §2: the PC lives at `context.playerCharacter` now, not as
-    // an `isPC` row in the ledger. The NPC detector must skip the PC's name +
-    // aliases so play never spawns an NPC clone of the player character.
-    // Defensive: also check the ledger for a legacy `isPC` row (post-migration
-    // this should be empty, but cheap to guard).
-    const pc = state.context.playerCharacter ?? npcLedger.find(n => n.isPC) ?? null;
-    const excludeNames = npcLedger.flatMap(npc => {
-        const aliases = (npc.aliases || '').split(',').map(a => a.trim()).filter(Boolean);
-        return [npc.name, ...aliases];
-    });
-    if (pc) {
-        excludeNames.push(pc.name);
-        if (pc.aliases) {
-            excludeNames.push(...pc.aliases.split(',').map(a => a.trim()).filter(Boolean));
-        }
-    }
-    const extractedNames = extractNPCNames(lastAssistantContent, excludeNames);
-    if (extractedNames.length === 0) return;
-
-    // Lite tier: skip NPC validation LLM call — surface raw extracted names as suggestions only.
-    const freshProvider = state.getFreshProvider();
-    const validatedNames = (freshProvider && tierAllows(state.settings.aiTier, 'npcValidate'))
-        ? await validateNPCCandidates(freshProvider, extractedNames, lastAssistantContent)
-        : extractedNames;
-
-    if (validatedNames.length === 0) return;
-
-    const { newNames, existingNpcs: existingNpcsToUpdate } = classifyNPCNames(validatedNames, npcLedger, excludeNames);
-
-    const guardedUpdateNPC = (id: string, patch: Parameters<typeof callbacks.updateNPC>[1]) => {
-        const currentId = useAppStore.getState().activeCampaignId;
-        if (currentId !== activeCampaignId) {
-            console.warn(`[NPC Update] Dropping update for NPC ${id} — campaign switched (${activeCampaignId} → ${currentId})`);
-            return;
-        }
-        callbacks.updateNPC(id, patch);
-    };
-
-    for (const potentialName of newNames) {
-        console.log(`[NPC Auto-Gen] New character detected: "${potentialName}" — adding to suggestions for player review...`);
-        callbacks.addNpcSuggestions?.([potentialName], lastAssistantContent);
-    }
-
-    if (existingNpcsToUpdate.length > 0 && tierAllows(state.settings.aiTier, 'npcUpdate')) {
-        const cooldown = NPC_UPDATE_COOLDOWN[state.settings.aiTier ?? 'pro'];
-        const archiveIndex = state.archiveIndex;
-        const sceneNow = archiveIndex.length > 0
-            ? parseInt(archiveIndex[archiveIndex.length - 1].sceneId, 10) || 0
-            : 0;
-        // Apply the tier cooldown (Infinity on Lite — but the npcUpdate gate above already
-        // blocks Lite entirely; this still matters for Pro's 5-scene cooldown).
-        const npcsDueForUpdate = existingNpcsToUpdate.filter(
-            npc => sceneNow - (npc.lastUpdateScene ?? -Infinity) >= cooldown
-        );
-
-        if (npcsDueForUpdate.length > 0) {
-            const updateProvider = state.getFreshProvider();
-            if (updateProvider) {
-                backgroundQueue.push(
-                    `NPC-Update:${npcsDueForUpdate.map(n => n.name).join(',')}`,
-                    () => updateExistingNPCs(updateProvider, allMsgs, npcsDueForUpdate, guardedUpdateNPC)
-                        .then(() => {
-                            for (const npc of npcsDueForUpdate) {
-                                guardedUpdateNPC(npc.id, { lastUpdateScene: sceneNow });
-                            }
-                        })
-                ).catch(err => console.warn('[NPC Update] Background update failed:', err));
-            }
-        }
-
-        if (tierAllows(state.settings.aiTier, 'drivesBackfill')) {
-            const npcsNeedingDrives = existingNpcsToUpdate.filter(n => !n.drives);
-            if (npcsNeedingDrives.length > 0) {
-                const backfillProvider = state.getFreshProvider();
-                if (backfillProvider) {
-                    backgroundQueue.push(
-                        `NPC-Drives-Backfill:${npcsNeedingDrives.map(n => n.name).join(',')}`,
-                        () => backfillNPCDrives(backfillProvider, allMsgs, npcsNeedingDrives, guardedUpdateNPC)
-                    ).catch(err => console.warn('[NPC Drives Backfill] Background backfill failed:', err));
-                }
-            }
-        }
-    }
-}
 
 async function runPressureTrack(
     state: TurnState,

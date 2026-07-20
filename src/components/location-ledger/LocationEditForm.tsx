@@ -1,4 +1,4 @@
-import { Link2, Trash2, X } from 'lucide-react';
+import { Link2, Trash2, X, Loader2, Sparkles } from 'lucide-react';
 import type { LocationEntry, LocationConnection } from '../../types';
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -20,6 +20,7 @@ type Props = {
     renderedForm: Partial<LocationEntry>;
     isEditing: boolean;
     selectedId: string | null;
+    isAIUpdating: boolean;
     featuresDraft: string;
     setFeaturesDraft: React.Dispatch<React.SetStateAction<string>>;
     newConnectionTo: string;
@@ -30,6 +31,7 @@ type Props = {
     setNewConnectionNote: React.Dispatch<React.SetStateAction<string>>;
     locationLedger: LocationEntry[];
     onStartEditing: () => void;
+    onAIUpdate: () => void;
     onSetAsCurrent: (loc: LocationEntry) => void;
     onCancel: () => void;
     onSave: () => void;
@@ -39,13 +41,13 @@ type Props = {
 };
 
 export function LocationEditForm({
-    form, setForm, renderedForm, isEditing, selectedId,
+    form, setForm, renderedForm, isEditing, selectedId, isAIUpdating,
     featuresDraft, setFeaturesDraft,
     newConnectionTo, setNewConnectionTo,
     newConnectionBand, setNewConnectionBand,
     newConnectionNote, setNewConnectionNote,
     locationLedger,
-    onStartEditing, onSetAsCurrent, onCancel, onSave,
+    onStartEditing, onAIUpdate, onSetAsCurrent, onCancel, onSave,
     onAddConnection, onRemoveConnection, onDelete,
 }: Props) {
     return (
@@ -58,10 +60,19 @@ export function LocationEditForm({
                     {!isEditing && selectedId && (
                         <>
                             <button
+                                onClick={onAIUpdate}
+                                disabled={isAIUpdating}
+                                title="Ask AI to enrich this location based on recent chat history"
+                                className="flex items-center gap-1.5 px-3 py-1.5 border border-terminal/30 rounded text-[10px] uppercase tracking-wider text-terminal hover:border-terminal transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                                {isAIUpdating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                                AI Update
+                            </button>
+                            <button
                                 onClick={onStartEditing}
                                 className="px-3 py-1.5 border border-border rounded text-[10px] uppercase tracking-wider text-text-dim hover:text-terminal hover:border-terminal transition-colors"
                             >
-                                Edit
+                                Edit Record
                             </button>
                             <button
                                 onClick={() => onSetAsCurrent(form as LocationEntry)}

@@ -320,6 +320,22 @@ export function FactsView() {
                         settings.divergenceImportanceGate ?? 7
                     );
                     
+                    const storeState = useAppStore.getState();
+                    const npcsToSuggest = newEntries.flatMap(e => e.unrecognizedNpcNames || []);
+                    if (npcsToSuggest.length > 0 && storeState.addNpcSuggestions) {
+                        storeState.addNpcSuggestions(npcsToSuggest);
+                    }
+                    
+                    const locationsToSuggest = newEntries.flatMap(e => e.locations || []);
+                    if (locationsToSuggest.length > 0 && storeState.addLocationSuggestions) {
+                        storeState.addLocationSuggestions(
+                            locationsToSuggest.map(name => ({
+                                name,
+                                firstSeen: Date.now()
+                            }))
+                        );
+                    }
+                    
                     currentRegister = mergeSealEntries(currentRegister, newEntries, scene.sceneId);
                     count++;
                 }
