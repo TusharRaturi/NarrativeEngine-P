@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { X, Plus, MapPin, Trash2, Search, Navigation } from 'lucide-react';
+import { X, Plus, MapPin, Trash2, Search, Navigation, Edit2 } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import type { LocationEntry, LocationConnection } from '../types';
 import { LocationSuggestionsPanel } from './location-ledger/LocationSuggestionsPanel';
@@ -284,6 +284,13 @@ export function LocationLedgerModal() {
                                         className="p-1.5 text-text-dim hover:text-terminal hover:bg-terminal/10 rounded transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 shrink-0"
                                     >
                                         <Navigation size={12} />
+                                    </button>
+                                    <button
+                                        onClick={(e) => { e.stopPropagation(); handleSelect(loc); setIsEditing(true); }}
+                                        title="Edit location"
+                                        className="p-1.5 text-text-dim hover:text-terminal hover:bg-terminal/10 rounded transition-colors opacity-100 sm:opacity-0 sm:group-hover:opacity-100 shrink-0"
+                                    >
+                                        <Edit2 size={12} />
                                     </button>
                                     <button
                                         onClick={(e) => handleDelete(loc.id, e)}
