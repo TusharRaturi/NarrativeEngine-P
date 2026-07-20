@@ -39,17 +39,50 @@ export async function runFactDedup(
         chapterIndexMap.set(chapters[i].chapterId, i);
     }
 
-    const bucketMap = new Map<string, { label: string; entries: DivergenceEntry[] }>();
+    const allGroups: DedupGroup[] = [];
+    const localDedupMap = new Map<string, DivergenceEntry[]>();
+    const finalEligible: DivergenceEntry[] = [];
 
     for (const entry of eligible) {
-        const primaryNpc = entry.npcIds.length > 0 ? entry.npcIds[0] : null;
+        const normalizedText = entry.text.toLowerCase().replace(/[^\w\s]/g, '').trim();
+        const sig = `${entry.sceneRef}|${normalizedText}`;
+        if (!localDedupMap.has(sig)) localDedupMap.set(sig, []);
+        localDedupMap.get(sig)!.push(entry);
+    }
 
-        if (primaryNpc) {
-            if (!bucketMap.has(primaryNpc)) {
-                const name = npcNameMap.get(primaryNpc) ?? primaryNpc;
-                bucketMap.set(primaryNpc, { label: name, entries: [] });
+    for (const entries of localDedupMap.values()) {
+        if (entries.length > 1) {
+            const sortedByRecency = [...entries].sort((a, b) => {
+                if (a.source === 'manual' && b.source !== 'manual') return 1;
+                if (b.source === 'manual' && a.source !== 'manual') return -1;
+                return a.id.localeCompare(b.id);
+            });
+            const keep = sortedByRecency[sortedByRecency.length - 1];
+            const disable = sortedByRecency.slice(0, -1);
+            
+            allGroups.push({
+                bucketLabel: 'Exact Duplicates',
+                keepId: keep.id,
+                disableIds: disable.map(d => d.id),
+                reason: 'Identical fact text in the same scene.',
+            });
+            finalEligible.push(keep);
+        } else {
+            finalEligible.push(entries[0]);
+        }
+    }
+
+    const bucketMap = new Map<string, { label: string; entries: DivergenceEntry[] }>();
+
+    for (const entry of finalEligible) {
+        if (entry.npcIds && entry.npcIds.length > 0) {
+            for (const npcId of entry.npcIds) {
+                if (!bucketMap.has(npcId)) {
+                    const name = npcNameMap.get(npcId) ?? npcId;
+                    bucketMap.set(npcId, { label: name, entries: [] });
+                }
+                bucketMap.get(npcId)!.entries.push(entry);
             }
-            bucketMap.get(primaryNpc)!.entries.push(entry);
         } else {
             const catKey = `__cat_${entry.category}`;
             if (!bucketMap.has(catKey)) {
@@ -59,12 +92,9 @@ export async function runFactDedup(
         }
     }
 
-    const buckets = [...bucketMap.values()].filter(b => b.entries.length >= 3);
-
-    if (buckets.length === 0) return { groups: [], failedBuckets: [] };
-
-    const allGroups: DedupGroup[] = [];
+    const buckets = Array.from(bucketMap.values()).filter(b => b.entries.length > 1);
     const failedBuckets: string[] = [];
+    const seenMergeKeys = new Set<string>();
 
     for (let i = 0; i < buckets.length; i++) {
         if (cancel.cancelled) throw new Error('Dedup cancelled.');
@@ -150,6 +180,10 @@ If nothing duplicates, return {"duplicates":[]} exactly.`;
 
             const keepId = sortedByRecency[sortedByRecency.length - 1];
             const disableIds = sortedByRecency.slice(0, -1);
+
+            const mergeKey = `${keepId}|${[...disableIds].sort().join('|')}`;
+            if (seenMergeKeys.has(mergeKey)) continue;
+            seenMergeKeys.add(mergeKey);
 
             allGroups.push({
                 bucketLabel: bucket.label,
