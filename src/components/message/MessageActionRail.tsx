@@ -1,4 +1,4 @@
-import { Edit2, Trash2, Loader2, Check, X, Volume2, Square, RotateCw, Play, Pause, RefreshCw, Rewind } from 'lucide-react';
+import { Edit2, Trash2, Loader2, Check, X, Volume2, Square, RotateCw, Play, Pause, RefreshCw, Rewind, Zap } from 'lucide-react';
 import type { ChatMessage } from '../../types';
 import { hasSwipeSet } from '../../services/turn/pendingCommit';
 
@@ -22,6 +22,7 @@ export function MessageActionRail({
     onSpeak,
     onPauseResume,
     onDelete,
+    onExtractFacts,
 }: {
     msg: ChatMessage;
     isEditing?: boolean;
@@ -38,6 +39,7 @@ export function MessageActionRail({
     onSpeak: () => void;
     onPauseResume: () => void;
     onDelete: (id: string) => void;
+    onExtractFacts?: (id: string) => void;
 }) {
     return (
         <div className="flex flex-col gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity bg-void-darker border border-border p-1 rounded-md self-start sticky top-1/2 -translate-y-1/2 z-10">
@@ -77,6 +79,15 @@ export function MessageActionRail({
                             className="text-text-dim hover:text-amber-400 p-1.5 bg-void-lighter rounded"
                         >
                             <Rewind size={14} />
+                        </button>
+                    )}
+                    {msg.role === 'assistant' && onExtractFacts && (
+                        <button
+                            title="Extract Turn Divergences (Facts)"
+                            onClick={() => onExtractFacts(msg.id)}
+                            className="text-text-dim hover:text-amber-400 p-1.5 bg-void-lighter rounded"
+                        >
+                            <Zap size={14} />
                         </button>
                     )}
                     {canSpeak && (

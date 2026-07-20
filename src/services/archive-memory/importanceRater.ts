@@ -2,17 +2,17 @@ import type { ChatMessage, ProviderConfig, EndpointConfig } from '../../types';
 import { llmCall } from '../../utils/llmCall';
 import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 
-const IMPORTANCE_PROMPT = `Rate the narrative importance of the scene below on a 1-5 scale.
+const IMPORTANCE_PROMPT = `Rate the narrative importance of the scene below on a 1-10 scale based on HOW THE NARRATIVE WOULD BREAK if the facts established here were forgotten.
 
 CRITERIA:
-1 — Trivial: passing greeting, mundane travel, routine shopping, small talk
-2 — Minor: routine conversation, minor discovery, atmospheric description
-3 — Notable: meaningful dialogue, new NPC introduced, new location explored, skill check
-4 — Significant: combat encounter, major reveal, relationship shift, item acquired/lost, plot milestone
-5 — Critical: character death, betrayal, major plot twist, world-changing event, irreversible consequence
+1-2 — Trivial: Forgetting this would not break the narrative at all (e.g., passing greeting, mundane travel, minor purchases, small talk). (Negative: Does NOT contain combat, does NOT establish new facts, does NOT change any character states).
+3-4 — Minor: Forgetting this might cause minor confusion but no plot holes (e.g., atmospheric details, minor NPC introductions, routine conversation). (Negative: Does NOT advance the main plot, does NOT permanently alter relationships).
+5-6 — Notable: Forgetting this would cause noticeable continuity errors (e.g., relationship shifts, new locations explored). (Negative: Does NOT resolve major conflict, does NOT change the world state).
+7-8 — Significant: Forgetting this would cause major plot holes (e.g., combat resolutions, major reveals, quest milestones, significant items acquired/lost).
+9-10 — Critical: Catastrophic narrative breakage if forgotten (e.g., character death, major betrayal, world-changing events, irreversible consequences).
 
 RULES:
-- Output ONLY a single digit 1-5, nothing else
+- Output ONLY a single digit (or 10), nothing else
 - When uncertain, round DOWN (prefer lower importance)
 
 RECENT CONTEXT:
@@ -40,22 +40,10 @@ export async function rateImportance(
 
     try {
         const raw = await llmCall(provider, prompt, { priority: 'low', trackingLabel: 'importance-rating', timeoutMs: AI_CALL_TIMEOUT_MS });
-        const match = raw.trim().match(/\b([1-5])\b/);
+        const match = raw.trim().match(/\b([1-9]|10)\b/);
         if (match) return parseInt(match[1], 10);
     } catch (err) {
-        console.warn('[ImportanceRater] LLM call failed, using heuristic fallback:', err);
+        console.warn('[ImportanceRater] LLM call failed, using fallback:', err);
     }
-    return heuristicImportance(`${userText}\n${gmText}`);
-}
-
-export function heuristicImportance(text: string): number {
-    const lower = text.toLowerCase();
-    let score = 3;
-    if (/\b(killed|slain|died|defeated|destroyed|executed|murdered|sacrificed)\b/.test(lower)) score += 2;
-    if (/\b(betrayal|betrayed|treason|revelation|twist|prophecy)\b/.test(lower)) score += 2;
-    if (/\[MEMORABLE:/.test(text)) score += 1;
-    if (/\b(king|queen|emperor|archmage|general|commander)\b/.test(lower)) score += 1;
-    if (/\b(acquired|obtained|legendary|artifact|enchanted)\b/.test(lower)) score += 1;
-    if (/\b(quest|mission|alliance|treaty|oath|vow)\b/.test(lower)) score += 1;
-    return Math.min(5, Math.max(1, score));
+    return 1;
 }

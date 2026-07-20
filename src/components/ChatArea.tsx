@@ -25,6 +25,8 @@ import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { InventoryStagingBar } from './inventory/InventoryStagingBar';
 import { IndexingBanner } from './IndexingBanner';
 import { AskGmPanel } from './ooc/AskGmPanel';
+import { extractTurnDivergences } from '../services/archive-memory/turnDivergenceExtractor';
+import { mergeSealEntries } from '../services/campaign-state/divergenceRegister';
 import { ArmedAskGmNote } from './ooc/ArmedAskGmNote';
 
 export function ChatArea() {
@@ -181,6 +183,56 @@ export function ChatArea() {
         resizeToContent();
     };
 
+    const handleExtractTurnFacts = async (messageId: string) => {
+        const msgIndex = messages.findIndex(m => m.id === messageId);
+        if (msgIndex === -1) return;
+        const msg = messages[msgIndex];
+
+        const prevMsgs = messages.slice(0, msgIndex);
+        const lastUser = [...prevMsgs].reverse().find(m => m.role === 'user');
+        const userText = lastUser?.content || '';
+        const gmText = msg.content;
+        const sceneId = msg.sceneId || useAppStore.getState().archiveIndex[useAppStore.getState().archiveIndex.length - 1]?.sceneId || '000';
+
+        const state = useAppStore.getState();
+        const provider = state.getActiveAuxiliaryEndpoint() || state.getFreshProvider();
+        if (!provider) {
+            toast.error('No AI provider configured.');
+            return;
+        }
+
+        const npcLedger = useAppStore.getState().npcLedger || [];
+        const importanceGate = settings.divergenceImportanceGate ?? 7;
+        const chapterId = useAppStore.getState().chapters.find(c => !c.sealedAt)?.chapterId || 'unknown';
+
+        toast.info('Extracting turn facts...');
+        try {
+            const newEntries = await extractTurnDivergences(
+                provider,
+                userText,
+                gmText,
+                sceneId,
+                chapterId,
+                npcLedger,
+                importanceGate
+            );
+
+            if (newEntries.length > 0) {
+                const currentRegister = useAppStore.getState().divergenceRegister;
+                if (currentRegister) {
+                    const nextRegister = mergeSealEntries(currentRegister, newEntries, sceneId);
+                    useAppStore.getState().setDivergenceRegister?.(nextRegister);
+                    toast.success(`Extracted ${newEntries.length} new facts.`);
+                }
+            } else {
+                toast.info('No facts met the importance gate for extraction.');
+            }
+        } catch (err) {
+            console.error('[Extract Turn Facts]', err);
+            toast.error('Failed to extract facts.');
+        }
+    };
+
     return (
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden relative">
             {context.sceneNoteActive && (
@@ -219,6 +271,7 @@ export function ChatArea() {
                 onSkipDirectorBrief={handleSkipDirectorBrief}
                 onOpenSwipeSheet={setSwipeSheetMessageId}
                 onRetry={retry.retryStoryAI}
+                onExtractFacts={handleExtractTurnFacts}
             />
 
             <ChatActionStrip

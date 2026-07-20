@@ -7,6 +7,7 @@ import { rateImportance } from '../archive-memory/importanceRater';
 import { sealChapterCombined } from '../saveFileEngine';
 import { backgroundQueue } from '../infrastructure/backgroundQueue';
 import { extractSceneEvents } from '../archive-memory/sceneEventExtractor';
+import { extractTurnDivergences } from '../archive-memory/turnDivergenceExtractor';
 import { extractNPCNames, classifyNPCNames, validateNPCCandidates } from '../npc/npcDetector';
 import { updateExistingNPCs, backfillNPCDrives } from '../chatEngine';
 import { scanPressure, buildPressurePatch, shouldArchiveNPC, findArchivedToRestore } from '../npc/npcPressureTracker';
@@ -21,6 +22,11 @@ import { saveDivergenceRegister } from '../../store/campaignStore';
 import { tierAllows, NPC_UPDATE_COOLDOWN } from './aiTier';
 
 const PRESENT_HEADER_RE = /👥\s*\[Present\]\s*(.+)/i;
+
+// Cache for multi-turn narrative scenes (so we can extract the whole scene at once when it increments)
+let narrativeSceneCache: { userText: string; gmText: string; maxImportance: number; }[] = [];
+let currentNarrativeScene: string | null = null;
+let narrativeArchiveSceneId: string | null = null;
 
 /**
  * Campaign-id guard factory for background-task callbacks. Mirrors the
@@ -343,6 +349,75 @@ async function runArchiveTrack(
                 console.log(`[Archive] Post-turn events extracted for scene #${entry.sceneId}`);
             }
         }).catch(err => console.warn('[PostTurn] Background event extraction failed:', err));
+    }
+
+    const auxProvider = state.getFreshAuxiliaryProvider?.() || bkProvider;
+    if (state.settings.autoExtractDivergences && auxProvider) {
+        const guardedSetDivergenceRegister = callbacks.setDivergenceRegister 
+            ? makeGuarded(callbacks.setDivergenceRegister, activeCampaignId, 'setDivergenceRegister (AutoExtractDivergences)')
+            : undefined;
+
+        if (guardedSetDivergenceRegister) {
+            const importanceGate = state.settings.divergenceImportanceGate ?? 7;
+            const openChapter = freshChapters.find(c => !c.sealedAt);
+            const chapterId = openChapter?.chapterId || 'unknown';
+
+            const headerMatch = lastAssistantContent.match(/^Scene\s*#(\d+)/i);
+            const turnNarrativeScene = headerMatch ? headerMatch[1] : null;
+
+            if (turnNarrativeScene && currentNarrativeScene && turnNarrativeScene !== currentNarrativeScene) {
+                // Scene incremented! Extract the cached scene.
+                const textToExtractUser = narrativeSceneCache.map(c => c.userText).join('\n\n');
+                const textToExtractGm = narrativeSceneCache.map(c => c.gmText).join('\n\n');
+                const extractArchiveId = narrativeArchiveSceneId || appendedSceneId || '000';
+                const extractImportance = Math.max(...narrativeSceneCache.map(c => c.maxImportance), 1);
+
+                if (extractImportance >= importanceGate && textToExtractGm.trim()) {
+                    backgroundQueue.push(`Divergence-Extraction:${extractArchiveId}`, async () => {
+                        if (!assertStillActive(activeCampaignId, 'Divergence-Extraction')) return;
+                        const npcLedger = useAppStore.getState().npcLedger || [];
+                        const newEntries = await extractTurnDivergences(
+                            auxProvider,
+                            textToExtractUser,
+                            textToExtractGm,
+                            extractArchiveId,
+                            chapterId,
+                            npcLedger,
+                            importanceGate
+                        );
+                        if (!assertStillActive(activeCampaignId, 'Divergence-Extraction')) return;
+                        
+                        const currentRegister = useAppStore.getState().divergenceRegister;
+                        if (currentRegister) {
+                            const nextRegister = mergeSealEntries(currentRegister, newEntries, extractArchiveId);
+                            guardedSetDivergenceRegister(nextRegister);
+                            if (newEntries.length > 0) {
+                                console.log(`[Archive] Post-turn divergences extracted for scene #${extractArchiveId} (${newEntries.length} facts)`);
+                            }
+                        }
+                    }).catch(err => console.warn('[PostTurn] Background divergence extraction failed:', err));
+                }
+
+                // Clear cache
+                narrativeSceneCache = [];
+                narrativeArchiveSceneId = appendedSceneId || null;
+            }
+
+            if (turnNarrativeScene) {
+                currentNarrativeScene = turnNarrativeScene;
+            }
+            if (!narrativeArchiveSceneId || narrativeSceneCache.length === 0) {
+                narrativeArchiveSceneId = appendedSceneId || null;
+            }
+
+            if (appendedSceneId) {
+                narrativeSceneCache.push({
+                    userText: displayInput,
+                    gmText: lastAssistantContent,
+                    maxImportance: sceneImportance ?? 1
+                });
+            }
+        }
     }
 
     const openChapter = freshChapters.find(c => !c.sealedAt);

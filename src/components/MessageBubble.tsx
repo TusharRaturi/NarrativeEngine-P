@@ -45,6 +45,8 @@ interface MessageBubbleProps {
     globalIsStreaming?: boolean;
     /** Smart Retry v1: called when the user taps Retry on a failed/aborted GM bubble. */
     onRetry?: (messageId: string) => void;
+    /** Triggers fact/divergence extraction for this specific GM message */
+    onExtractFacts?: (id: string) => void;
 }
 
 export function MessageBubble({
@@ -69,6 +71,7 @@ export function MessageBubble({
     swipeGenLoading,
     globalIsStreaming,
     onRetry,
+    onExtractFacts,
 }: MessageBubbleProps) {
     let markdownContent: string = typeof msg.displayContent === 'string'
         ? msg.displayContent
@@ -144,6 +147,7 @@ export function MessageBubble({
             onSpeak={tts.handleSpeak}
             onPauseResume={tts.handlePauseResume}
             onDelete={onDelete}
+            onExtractFacts={onExtractFacts}
         />
     );
 
