@@ -320,16 +320,16 @@ describe('WO-09c — Claude wire preserves history breakpoints', () => {
                 } as ChatMessage);
             }
 
-            const assembled = buildPayload(
-                baseSettings(), baseContext(),
-                history, 'I look around.',
-                8,                               // condensedUpToIndex
-                undefined, undefined, undefined, undefined, undefined, undefined, // 6-11
-                archiveIndex,                    // 12
-                undefined, undefined, undefined, undefined, undefined, // 13-17
-                sealedChapters,                  // 18
-                ['npc_a'],                        // 19
-            );
+            const assembled = buildPayload({
+                settings: baseSettings(),
+                context: baseContext(),
+                history: history,
+                userMessage: 'I look around.',
+                condensedUpToIndex: 8,
+                archiveIndex: archiveIndex,
+                chapters: sealedChapters,
+                onStageNpcIds: ['npc_a'],
+            });
 
             // Pass the assembled messages through buildChatBody with a Claude provider.
             const body = buildChatBody(claudeProvider, assembled.messages, { stream: false });

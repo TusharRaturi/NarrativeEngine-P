@@ -182,7 +182,7 @@ describe('Payload Builder Integration', () => {
         ctx.rulesChunks = []; // no chunk metadata
         ctx.rulesRaw = '### Complete Raw Rules\nLoad all of them.';
         
-        const payload = buildPayload(baseSettings(), ctx, [], 'Hello');
+        const payload = buildPayload({ settings: baseSettings(), context: ctx, history: [], userMessage: 'Hello' });
         const firstSystem = payload.messages.find(m => m.role === 'system');
         expect(firstSystem).toBeDefined();
         expect(firstSystem!.content).toContain('Complete Raw Rules');
@@ -198,29 +198,7 @@ describe('Payload Builder Integration', () => {
             { id: 'rule-rag-2', header: '[CHUNK: RULE] Difficulty Check', content: 'Standard DC is 15.', tokens: 40, triggerKeywords: [] }
         ];
         
-        const payload = buildPayload(
-            baseSettings(),
-            ctx,
-            [],
-            'Hello',
-            undefined,
-            [],
-            [],
-            [],
-            undefined,
-            [],
-            undefined,
-            [],
-            [],
-            [],
-            [],
-            undefined,
-            undefined,
-            [],
-            [],
-            relevantRules,
-            '[Available rule sections not loaded this turn]\n## Stealth\n[End section list]'
-        );
+        const payload = buildPayload({ settings: baseSettings(), context: ctx, history: [], userMessage: 'Hello', condensedUpToIndex: undefined, relevantLore: [], npcLedger: [], archiveRecall: [], recommendedNPCNames: [], semanticFactText: undefined, archiveIndex: [], timelineEvents: [], inventoryCategories: [], profileFields: [], deepContextSummary: undefined, divergenceRegister: undefined, chapters: [], onStageNpcIds: [], relevantRules: relevantRules, rulesManifest: '[Available rule sections not loaded this turn]\n## Stealth\n[End section list]' });
         
         // RAG-retrieved rules ride in the volatile block folded into the final user message
         // (only the verbatim full-rules fallback stays in the system message)
@@ -248,29 +226,7 @@ describe('Payload Builder Integration', () => {
             { id: 'rule-rag-2', header: '[CHUNK: RULE] Difficulty Check', content: 'Standard DC is 15.', tokens: 40, triggerKeywords: [] }
         ];
         
-        const payload = buildPayload(
-            settings,
-            ctx,
-            [],
-            'Hello',
-            undefined,
-            [],
-            [],
-            [],
-            undefined,
-            [],
-            undefined,
-            [],
-            [],
-            [],
-            [],
-            undefined,
-            undefined,
-            [],
-            [],
-            relevantRules,
-            ''
-        );
+        const payload = buildPayload({ settings: settings, context: ctx, history: [], userMessage: 'Hello', condensedUpToIndex: undefined, relevantLore: [], npcLedger: [], archiveRecall: [], recommendedNPCNames: [], semanticFactText: undefined, archiveIndex: [], timelineEvents: [], inventoryCategories: [], profileFields: [], deepContextSummary: undefined, divergenceRegister: undefined, chapters: [], onStageNpcIds: [], relevantRules: relevantRules, rulesManifest: '' });
         
         const systemMessage = payload.messages.find(m => m.role === 'user');
         expect(systemMessage).toBeDefined();

@@ -35,12 +35,16 @@ export type BackfillRunResult = {
 
 function buildSynopsisPrompt(chapter: ArchiveChapter): string {
     // Trivial source: title + summary + majorEvents only. Keeps the call cheap.
+    // Defensive: old campaigns may have non-string `summary` (null, undefined,
+    // object) from buggy seals, manual edits, or pre-WO-06 schemas — the type
+    // says required string but runtime loads raw JSON with no validation.
     const majorEvents = (chapter.majorEvents ?? []).filter(Boolean);
+    const summary = typeof chapter.summary === 'string' ? chapter.summary : '';
     return [
         'You are a TTRPG campaign archivist. Generate a synopsis for an already-sealed chapter.',
         '',
         `CHAPTER TITLE: ${chapter.title || 'Untitled'}`,
-        `CHAPTER SUMMARY: ${chapter.summary || '(no summary recorded)'}`,
+        `CHAPTER SUMMARY: ${summary || '(no summary recorded)'}`,
         `MAJOR EVENTS: ${majorEvents.length > 0 ? majorEvents.map(e => `- ${e}`).join('\n') : '(none recorded)'}`,
         '',
         'OUTPUT FORMAT — respond with a JSON object containing only these three fields:',
@@ -125,9 +129,12 @@ export async function backfillChapterSynopses(opts: BackfillRunOptions): Promise
         const chapter = targets[i];
         onProgress?.(i, targets.length, chapter.chapterId);
 
-        // Skip chapters with no summary — synopsis is 1-2 sentences derived from
-        // the summary; without it the call would hallucinate.
-        if (!chapter.summary || chapter.summary.trim() === '') {
+        // Skip chapters with no usable summary — synopsis is 1-2 sentences
+        // derived from the summary; without it the call would hallucinate.
+        // Defensive: `summary` may be non-string (null/undefined/object) in old
+        // campaigns — treat anything that isn't a non-empty string as "missing".
+        const summaryStr = typeof chapter.summary === 'string' ? chapter.summary : '';
+        if (!summaryStr || summaryStr.trim() === '') {
             skipped.push(chapter.chapterId);
             continue;
         }

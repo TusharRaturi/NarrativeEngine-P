@@ -139,24 +139,13 @@ describe('WO-12 — Slotted RAG world rendering', () => {
             { id: 'h2', role: 'assistant', content: 'The bard looked up from his lute.', timestamp: 2 } as ChatMessage,
         ];
 
-        const result = buildPayload(
-            baseSettings(),
-            baseContext(),
-            history,                        // history — non-empty, mixed roles
-            'I remember the battle.',       // userMessage
-            undefined,                      // condensedUpToIndex
-            undefined, undefined,            // relevantLore, npcLedger
-            undefined,                      // archiveRecall
-            undefined, undefined, undefined, // sceneNumber, recommendedNPCNames, semanticFactText
-            undefined,                      // archiveIndex
-            undefined, undefined, undefined, undefined, undefined, // timeline, inv, profile, deepCtx, divergence
-            undefined, undefined,           // chapters, onStageNpcIds
-            undefined, undefined,            // relevantRules, rulesManifest
-            undefined, undefined, undefined, undefined, // pinnedExcerpts, plannerEventTypes, locationLedger, nextTurnOocBrief
-            undefined, undefined,           // watchdogNudge, directorBrief
-            undefined,                      // elevatedScenes — none for this test
-            snippets,                       // slottedRagSnippets
-        );
+        const result = buildPayload({
+            settings: baseSettings(),
+            context: baseContext(),
+            history: history,
+            userMessage: 'I remember the battle.',
+            slottedRagSnippets: snippets,
+        });
 
         const messages = result.messages;
 

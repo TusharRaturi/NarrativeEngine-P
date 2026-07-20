@@ -197,23 +197,14 @@ describe('WO-11b Correction 1 — Dynamic Elevation renders independently of ord
         const archiveIndex = [mkIndexEntry('004', { witnesses: [] })];
         const elevated = [elevatedScene('004', 'The battle at the gates — verbatim content.', 'CH02')];
 
-        const result = buildPayload(
-            baseSettings(),
-            baseContext(),
-            [],                              // history
-            'I remember the battle.',        // userMessage
-            undefined,                       // condensedUpToIndex
-            undefined, undefined,             // relevantLore, npcLedger
-            undefined,                       // archiveRecall — deliberately undefined
-            undefined, undefined, undefined, // sceneNumber, recommendedNPCNames, semanticFactText
-            archiveIndex,                    // archiveIndex
-            undefined, undefined, undefined, undefined, undefined, // timeline, inv, profile, deepCtx, divergence
-            undefined, undefined,            // chapters, onStageNpcIds
-            undefined, undefined,             // relevantRules, rulesManifest
-            undefined, undefined, undefined, undefined, // pinnedExcerpts, plannerEventTypes, locationLedger, nextTurnOocBrief
-            undefined, undefined,            // watchdogNudge, directorBrief
-            elevated,                        // elevatedScenes
-        );
+        const result = buildPayload({
+            settings: baseSettings(),
+            context: baseContext(),
+            history: [],
+            userMessage: 'I remember the battle.',
+            archiveIndex,
+            elevatedScenes: elevated,
+        });
 
         const messages = result.messages;
         // The final user message (below the cache boundary) contains the elevated label.

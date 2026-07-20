@@ -1,5 +1,6 @@
 import type { ChatMessage, NPCEntry, SceneStakes, PipelinePhase } from '../../types';
 import type { TurnCallbacks, TurnState } from './turnOrchestrator';
+import type { TurnContext } from './turnContext';
 import type { OpenAIMessage } from '../llm/llmService';
 import { runPostTurnPipeline } from './postTurnPipeline';
 import { classifySceneStakes } from './sceneStakesTag';
@@ -19,6 +20,15 @@ interface PendingTurnSnapshot {
     displayInput: string;                // user's display input for this turn
     activeCampaignId: string;            // campaign at turn time
     npcLedger: NPCEntry[];               // ledger at turn time
+    // WO-P1-03: the TurnContext bus, carried across the commit boundary by the
+    // snapshot. Post-turn runs a turn later, off the frozen snapshot — so the
+    // bus is carried HERE, not by one live object. The post-turn pipeline may
+    // read bus fields (e.g. ctx.locationLedger) instead of reaching into
+    // getState(). Thread-only: this does NOT rewrite what post-turn computes
+    // (that's Project 4's memory port). Optional for now — callers that don't
+    // pass it leave it undefined (the post-turn pipeline falls back to its
+    // existing reads, preserving byte-identical behaviour).
+    turnContext?: TurnContext;
 }
 
 let pendingSnapshot: PendingTurnSnapshot | null = null;
@@ -27,6 +37,11 @@ export function capturePendingTurnSnapshot(
     state: TurnState,
     cachedPayload: OpenAIMessage[],
     displayInput: string,
+    // WO-P1-03: optional bus — carried across the commit boundary so the
+    // post-turn pipeline can read bus fields without a live reference. The
+    // generation stage passes the bus it built; other callers (none today)
+    // omit it. Optional to keep the signature backward-compatible.
+    turnContext?: TurnContext,
 ): void {
     pendingSnapshot = {
         turnState: state,
@@ -35,6 +50,7 @@ export function capturePendingTurnSnapshot(
         displayInput,
         activeCampaignId: state.activeCampaignId ?? '',
         npcLedger: state.npcLedger,
+        turnContext,
     };
 }
 
@@ -181,7 +197,10 @@ export async function commitPendingTurn(): Promise<void> {
     const snapshotMessages = commitState.getMessages();
 
     try {
-        await runPostTurnPipeline(commitState, commitCallbacks, text, snapshotMessages);
+        // WO-P1-03: pass the bus (carried by the snapshot across the commit
+        // boundary) to the post-turn pipeline. Thread-only — the pipeline does
+        // NOT yet read it; Project 4 will swap selected reads to bus fields.
+        await runPostTurnPipeline(commitState, commitCallbacks, text, snapshotMessages, snapshot?.turnContext);
 
         // Auto-condense check — moved to commit (was in the orchestrator completion callback).
         if (commitState.settings.autoCondenseEnabled) {

@@ -97,6 +97,14 @@ export const ChapterTab: React.FC = () => {
                     setDivergenceRegister: useAppStore.getState().setDivergenceRegister,
                 } as any,
                 setSealedAt,
+                // WO-P1-03: the 5 formerly-coupling reads, now explicit params.
+                {
+                    npcLedger: npcLedger ?? [],
+                    archiveIndex,
+                    divergenceScanBudget: state.settings.divergenceScanBudget ?? 0,
+                    contextLimit: state.settings.contextLimit ?? 4096,
+                    divergenceRegister: state.divergenceRegister ?? { entries: [], chapterToggles: {}, categoryToggles: {}, lastUpdatedSceneId: '', lastUpdatedAt: 0, version: 2 },
+                },
             );
 
             await refreshChapters();

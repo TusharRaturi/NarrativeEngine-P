@@ -222,6 +222,39 @@ describe('backfillChapterSynopses â€” sequential loop and abort', () => {
         expect(result.patched.map(p => p.chapterId)).toEqual(['CH02']);
     });
 
+    it('regression: non-string summary (null/undefined/object from old campaigns) does not crash, skips the chapter', async () => {
+        // Old campaigns may have chapters with non-string `summary` from buggy
+        // seals, manual edits, or pre-WO-06 schemas. The type says required
+        // string but runtime loads raw JSON with no validation. The backfill
+        // must treat any non-string summary as "missing" and skip the chapter,
+        // NOT crash with "TypeError: chapter.summary.trim is not a function".
+        const list = [
+            { ...chapter({ chapterId: 'CH01', sealedAt: 1000 }), summary: null as unknown as string },
+            { ...chapter({ chapterId: 'CH02', sealedAt: 2000 }), summary: undefined as unknown as string },
+            { ...chapter({ chapterId: 'CH03', sealedAt: 3000 }), summary: { weird: 'object' } as unknown as string },
+            chapter({ chapterId: 'CH04', sealedAt: 4000, summary: 'valid summary' }),
+        ];
+
+        let calls = 0;
+        vi.mocked(llmCall).mockImplementation(async () => {
+            calls += 1;
+            return JSON.stringify({ synopsis: 's', abstractTitle: 'a', literalTitle: 'l' });
+        });
+
+        // Must not throw.
+        const result = await backfillChapterSynopses({
+            chapters: list,
+            provider: PROVIDER,
+            patch: async () => {},
+            isActive: () => true,
+        });
+
+        // The three non-string-summary chapters are skipped; only CH04 is sent to the LLM.
+        expect(calls).toBe(1);
+        expect(result.skipped).toEqual(['CH01', 'CH02', 'CH03']);
+        expect(result.patched.map(p => p.chapterId)).toEqual(['CH04']);
+    });
+
     it('aborts mid-run when isActive() turns false, leaving already-patched chapters patched', async () => {
         const list: ArchiveChapter[] = [
             chapter({ chapterId: 'CH01', sealedAt: 1000 }),

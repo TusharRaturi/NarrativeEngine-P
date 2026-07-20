@@ -184,18 +184,16 @@ function buildVerbatimHistory(): ChatMessage[] {
 }
 
 function buildPayloadWithLod(userMessage: string, opts: { chapters?: ArchiveChapter[]; settings?: Partial<AppSettings>; onStageNpcIds?: string[] } = {}) {
-    return buildPayload(
-        baseSettings(opts.settings),     // 1 settings
-        baseContext(),                   // 2 context
-        buildVerbatimHistory(),          // 3 history
-        userMessage,                     // 4 userMessage
-        8,                               // 5 condensedUpToIndex
-        undefined, undefined, undefined, undefined, undefined, undefined, // 6-11 (lore, npcs, recall, scene#, npcNames, semFact)
-        ARCHIVE_INDEX,                   // 12 archiveIndex
-        undefined, undefined, undefined, undefined, undefined, // 13-17 (timeline, inv, profile, deepCtx, divergence)
-        opts.chapters ?? SEALED_CHAPTERS, // 18 chapters
-        opts.onStageNpcIds ?? ['npc_a'],  // 19 onStageNpcIds
-    );
+    return buildPayload({
+        settings: baseSettings(opts.settings),
+        context: baseContext(),
+        history: buildVerbatimHistory(),
+        userMessage,
+        condensedUpToIndex: 8,
+        archiveIndex: ARCHIVE_INDEX,
+        chapters: opts.chapters ?? SEALED_CHAPTERS,
+        onStageNpcIds: opts.onStageNpcIds ?? ['npc_a'],
+    });
 }
 
 describe('WO-09 — LOD history wiring + cache proofs', () => {
@@ -300,18 +298,15 @@ describe('WO-09 — LOD history wiring + cache proofs', () => {
     it('empty-chapters path: when chapters is undefined, the LOD block is omitted and the payload shape matches the pre-WO-09 layout', () => {
         // No chapters → LOD is skipped entirely. The cached prefix must NOT contain
         // the LOD marker. The payload must still build (no throw).
-        const { messages } = buildPayload(
-            baseSettings(),                  // 1
-            baseContext(),                   // 2
-            buildVerbatimHistory(),          // 3
-            'I look around.',                // 4
-            8,                               // 5 condensedUpToIndex
-            undefined, undefined, undefined, undefined, undefined, undefined, // 6-11
-            ARCHIVE_INDEX,                   // 12 archiveIndex
-            undefined, undefined, undefined, undefined, undefined, // 13-17
-            undefined,                       // 18 chapters (undefined)
-            ['npc_a'],                       // 19 onStageNpcIds
-        );
+        const { messages } = buildPayload({
+            settings: baseSettings(),
+            context: baseContext(),
+            history: buildVerbatimHistory(),
+            userMessage: 'I look around.',
+            condensedUpToIndex: 8,
+            archiveIndex: ARCHIVE_INDEX,
+            onStageNpcIds: ['npc_a'],
+        });
         const prefix = cachedPrefix(messages);
         expect(prefix).not.toContain('[LOD HISTORY');
         // The verbatim window must still be present (cache-stamping on last history msg).
@@ -324,18 +319,15 @@ describe('WO-09 — LOD history wiring + cache proofs', () => {
     it('empty-chapters path: no condensed boundary (condensedUpToIndex undefined) → LOD omitted even if chapters are passed', () => {
         // No condensation yet → nothing is "wholly behind" → LOD renders nothing.
         // Mirrors the "nothing condensed" rule from WO-08.
-        const { messages } = buildPayload(
-            baseSettings(),                  // 1
-            baseContext(),                   // 2
-            buildVerbatimHistory(),          // 3
-            'I look around.',                // 4
-            undefined,                       // 5 condensedUpToIndex — no condensation
-            undefined, undefined, undefined, undefined, undefined, undefined, // 6-11
-            ARCHIVE_INDEX,                   // 12
-            undefined, undefined, undefined, undefined, undefined, // 13-17
-            SEALED_CHAPTERS,                 // 18 chapters
-            ['npc_a'],                       // 19
-        );
+        const { messages } = buildPayload({
+            settings: baseSettings(),
+            context: baseContext(),
+            history: buildVerbatimHistory(),
+            userMessage: 'I look around.',
+            archiveIndex: ARCHIVE_INDEX,
+            chapters: SEALED_CHAPTERS,
+            onStageNpcIds: ['npc_a'],
+        });
         const prefix = cachedPrefix(messages);
         expect(prefix).not.toContain('[LOD HISTORY');
     });
@@ -388,18 +380,16 @@ function buildLodOnlyPayload(userMessage: string, opts: { chapters?: ArchiveChap
         const sceneId = String(i).padStart(3, '0');
         msgs.push(mkMsg(sceneId, 'assistant', `GM reply in scene ${sceneId}.`));
     }
-    return buildPayload(
-        baseSettings(),                  // 1
-        baseContext(),                   // 2
-        msgs,                            // 3 history
-        userMessage,                     // 4
-        8,                               // 5 condensedUpToIndex — all 9 msgs behind
-        undefined, undefined, undefined, undefined, undefined, undefined, // 6-11
-        ARCHIVE_INDEX,                   // 12
-        undefined, undefined, undefined, undefined, undefined, // 13-17
-        opts.chapters ?? SEALED_CHAPTERS, // 18
-        opts.onStageNpcIds ?? ['npc_a'],  // 19
-    );
+    return buildPayload({
+        settings: baseSettings(),
+        context: baseContext(),
+        history: msgs,
+        userMessage,
+        condensedUpToIndex: 8,
+        archiveIndex: ARCHIVE_INDEX,
+        chapters: opts.chapters ?? SEALED_CHAPTERS,
+        onStageNpcIds: opts.onStageNpcIds ?? ['npc_a'],
+    });
 }
 
 describe('WO-09b — Checkpoint 2 cache-boundary corrections', () => {
@@ -459,18 +449,16 @@ describe('WO-09b — Checkpoint 2 cache-boundary corrections', () => {
                 const sceneId = String(i).padStart(3, '0');
                 msgs.push(mkMsg(sceneId, 'assistant', `GM reply in scene ${sceneId}.`));
             }
-            return buildPayload(
-                baseSettings(),                  // 1
-                ctx,                             // 2
-                msgs,                            // 3
-                'I look around.',                // 4
-                8,                               // 5 condensedUpToIndex
-                undefined, undefined, undefined, undefined, undefined, undefined, // 6-11
-                ARCHIVE_INDEX,                   // 12
-                undefined, undefined, undefined, undefined, undefined, // 13-17
-                opts.withLod ? SEALED_CHAPTERS : undefined, // 18
-                ['npc_a'],                       // 19
-            );
+            return buildPayload({
+                settings: baseSettings(),
+                context: ctx,
+                history: msgs,
+                userMessage: 'I look around.',
+                condensedUpToIndex: 8,
+                archiveIndex: ARCHIVE_INDEX,
+                chapters: opts.withLod ? SEALED_CHAPTERS : undefined,
+                onStageNpcIds: ['npc_a'],
+            });
         }
 
         /** Find the index of the scene-note system message inside the assembled
@@ -634,18 +622,16 @@ describe('WO-09c — Final accounting corrections', () => {
                 const sceneId = String(i).padStart(3, '0');
                 msgs.push(mkMsg(sceneId, 'assistant', `GM reply in scene ${sceneId}.`));
             }
-            return buildPayload(
-                baseSettings(),                  // 1
-                ctx,                             // 2
-                msgs,                            // 3
-                'I look around.',                // 4
-                8,                               // 5 condensedUpToIndex
-                undefined, undefined, undefined, undefined, undefined, undefined, // 6-11
-                ARCHIVE_INDEX,                   // 12
-                undefined, undefined, undefined, undefined, undefined, // 13-17
-                SEALED_CHAPTERS,                 // 18
-                ['npc_a'],                       // 19
-            );
+            return buildPayload({
+                settings: baseSettings(),
+                context: ctx,
+                history: msgs,
+                userMessage: 'I look around.',
+                condensedUpToIndex: 8,
+                archiveIndex: ARCHIVE_INDEX,
+                chapters: SEALED_CHAPTERS,
+                onStageNpcIds: ['npc_a'],
+            });
         }
 
         it('Fitted History contains neither [LOD HISTORY nor [SCENE NOTE', () => {

@@ -321,37 +321,37 @@ async function buildFallbackPayload(opts: {
         // user-role message — provider-safe shape). The live messages already include
         // the pending GM reply, so history contains it naturally.
         const directive = buildSceneContinueDirective({ pcName, targetWords, allowDiceTool });
-        const payloadResult = buildPayload(
-            store.settings,
-            store.context,
-            store.messages,
-            directive,   // userMessage slot — directive becomes the final user message
-            store.condenser.condensedUpToIndex,
-            gathered.relevantLore,
-            store.npcLedger,
-            gathered.archiveRecall,
-            undefined,   // _sceneNumber (unused in builder)
-            gathered.recommendedNPCNames,
-            gathered.semanticFactText,
-            store.archiveIndex,
-            gathered.timelineEvents,
-            gathered.inventoryCategories as (import('../../types').InventoryItemCategory | 'equipped')[] | undefined,
-            gathered.profileFields as string[] | undefined,
-            gathered.deepContextSummary,
-            store.divergenceRegister,
-            gathered.relevantRules ? undefined : store.chapters,
-            store.onStageNpcIds,
-            gathered.relevantRules,
-            gathered.rulesManifest,
-            store.pinnedExcerpts,
-            undefined,   // plannerEventTypes — recomputed inside buildWorld
-            store.locationLedger,
-            undefined,   // nextTurnOocBrief — continue has none
-            undefined,   // watchdogNudge — not wired for scene-continue
-            undefined,   // directorBrief — not wired for scene-continue
-            gathered.elevatedScenes,
-            gathered.slottedRagSnippets,
-        );
+        const payloadResult = buildPayload({
+            settings: store.settings,
+            context: store.context,
+            history: store.messages,
+            userMessage: directive,   // userMessage slot — directive becomes the final user message
+            condensedUpToIndex: store.condenser.condensedUpToIndex,
+            relevantLore: gathered.relevantLore,
+            npcLedger: store.npcLedger,
+            archiveRecall: gathered.archiveRecall,
+            // _sceneNumber dropped (WO-P1-01) — was unread.
+            recommendedNPCNames: gathered.recommendedNPCNames,
+            semanticFactText: gathered.semanticFactText,
+            archiveIndex: store.archiveIndex,
+            timelineEvents: gathered.timelineEvents,
+            inventoryCategories: gathered.inventoryCategories as (import('../../types').InventoryItemCategory | 'equipped')[] | undefined,
+            profileFields: gathered.profileFields as string[] | undefined,
+            deepContextSummary: gathered.deepContextSummary,
+            divergenceRegister: store.divergenceRegister,
+            chapters: gathered.relevantRules ? undefined : store.chapters,
+            onStageNpcIds: store.onStageNpcIds,
+            relevantRules: gathered.relevantRules,
+            rulesManifest: gathered.rulesManifest,
+            pinnedExcerpts: store.pinnedExcerpts,
+            // plannerEventTypes omitted — recomputed inside buildWorld.
+            locationLedger: store.locationLedger,
+            // nextTurnOocBrief omitted — continue has none.
+            // watchdogNudge omitted — not wired for scene-continue.
+            // directorBrief omitted — not wired for scene-continue.
+            elevatedScenes: gathered.elevatedScenes,
+            slottedRagSnippets: gathered.slottedRagSnippets,
+        });
 
         return { basePayload: payloadResult.messages, directive: '' };
     } catch (err) {

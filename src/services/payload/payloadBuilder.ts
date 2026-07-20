@@ -12,53 +12,82 @@ import { countTokens } from '../infrastructure/tokenizer';
 import type { ElevatedScene } from '../archive-memory/dynamicElevation';
 import type { SlottedRagSnippet } from '../archive-memory/slottedRag';
 
-export function buildPayload(
-    settings: AppSettings,
-    context: GameContext,
-    history: ChatMessage[],
-    userMessage: string,
-    condensedUpToIndex?: number,
-    relevantLore?: LoreChunk[],
-    npcLedger?: NPCEntry[],
-    archiveRecall?: ArchiveScene[],
-    /** @deprecated scene # handling moved to volatile (commit 21977e2). Kept for
-     *  call-site signature stability; the value is no longer read here. */
-    _sceneNumber?: string,
-    recommendedNPCNames?: string[],
-    semanticFactText?: string,
-    archiveIndex?: ArchiveIndexEntry[],
-    timelineEvents?: TimelineEvent[],
-    inventoryCategories?: (InventoryItemCategory | 'equipped')[],
-    profileFields?: string[],
-    deepContextSummary?: string,
-    divergenceRegister?: DivergenceRegister,
-    chapters?: ArchiveChapter[],
-    onStageNpcIds?: string[],
-    relevantRules?: LoreChunk[],
-    rulesManifest?: string,
-    pinnedExcerpts?: PinnedExcerpt[],
-    plannerEventTypes?: SceneEventType[],
-    locationLedger?: LocationEntry[],
+export type BuildPayloadOptions = {
+    settings: AppSettings;
+    context: GameContext;
+    history: ChatMessage[];
+    userMessage: string;
+    condensedUpToIndex?: number;
+    relevantLore?: LoreChunk[];
+    npcLedger?: NPCEntry[];
+    archiveRecall?: ArchiveScene[];
+    recommendedNPCNames?: string[];
+    semanticFactText?: string;
+    archiveIndex?: ArchiveIndexEntry[];
+    timelineEvents?: TimelineEvent[];
+    inventoryCategories?: (InventoryItemCategory | 'equipped')[];
+    profileFields?: string[];
+    deepContextSummary?: string;
+    divergenceRegister?: DivergenceRegister;
+    chapters?: ArchiveChapter[];
+    onStageNpcIds?: string[];
+    relevantRules?: LoreChunk[];
+    rulesManifest?: string;
+    pinnedExcerpts?: PinnedExcerpt[];
+    plannerEventTypes?: SceneEventType[];
+    locationLedger?: LocationEntry[];
     /** User-confirmed session-only guidance, excluded from canonical chat history. */
-    nextTurnOocBrief?: string,
+    nextTurnOocBrief?: string;
     /** Director Watchdog nudge (WO-03): highest-priority deterministic signal from
      *  `buildWatchdogDossier`, surfaced as a [STAGE NOTE] adjacent to GM_REMINDER in
      *  the final user message (below the cache boundary). Suppressed when a Director
      *  Brief is present — the Brief supersedes it (WO-04 wires the actual value). */
-    watchdogNudge?: string,
+    watchdogNudge?: string;
     /** Director Brief (WO-04): when provided, rendered as a [DIRECTOR BRIEF] block
      *  placed BEFORE GM_REMINDER in the final user message (below the cache boundary).
      *  Supersedes `watchdogNudge` (the deterministic nudge is omitted when the Brief
      *  is present — the Brief carries the same intent with LLM-authored directives). */
-    directorBrief?: string,
+    directorBrief?: string;
     /** WO-11: synopsis-tier scenes elevated verbatim below the cache boundary for
      *  this turn only. Each carries a chapterId for the labeled rendering in world.ts. */
-    elevatedScenes?: ElevatedScene[],
+    elevatedScenes?: ElevatedScene[];
     /** WO-12: Slotted RAG — one-line snippets from synopsis-tier scenes that had
      *  search hits but did NOT get elevated. Reuses WO-11's scoped search results
      *  (one search, two consumers); no second vector search. Witness-filtered. */
-    slottedRagSnippets?: SlottedRagSnippet[],
-): { messages: OpenAIMessage[]; trace?: PayloadTrace[]; debugSections?: DebugSection[] } {
+    slottedRagSnippets?: SlottedRagSnippet[];
+};
+
+export function buildPayload(options: BuildPayloadOptions): { messages: OpenAIMessage[]; trace?: PayloadTrace[]; debugSections?: DebugSection[] } {
+    const {
+        settings,
+        context,
+        history,
+        userMessage,
+        condensedUpToIndex,
+        relevantLore,
+        npcLedger,
+        archiveRecall,
+        recommendedNPCNames,
+        semanticFactText,
+        archiveIndex,
+        timelineEvents,
+        inventoryCategories,
+        profileFields,
+        deepContextSummary,
+        divergenceRegister,
+        chapters,
+        onStageNpcIds,
+        relevantRules,
+        rulesManifest,
+        pinnedExcerpts,
+        plannerEventTypes,
+        locationLedger,
+        nextTurnOocBrief,
+        watchdogNudge,
+        directorBrief,
+        elevatedScenes,
+        slottedRagSnippets,
+    } = options;
     const isDebug = settings.debugMode === true;
     const limit = settings.contextLimit || 8192;
     const collector = createTraceCollector(isDebug);

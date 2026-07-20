@@ -93,8 +93,19 @@ export async function runPostTurnPipeline(
     state: TurnState,
     callbacks: TurnCallbacks,
     lastAssistantContent: string,
-    allMsgs: ChatMessage[]
+    allMsgs: ChatMessage[],
+    // WO-P1-03: optional TurnContext bus, carried across the commit boundary
+    // by the PendingTurnSnapshot. Thread-only — the pipeline does NOT yet read
+    // this (the existing reads stay, preserving byte-identical behaviour).
+    // Project 4's memory port will swap selected reads to bus fields. Keeping
+    // the param optional so callers that don't have a bus (e.g. launch
+    // reconciliation's rebuildStateFromLiveStore path) still work.
+    turnContext?: import('./turnContext').TurnContext,
 ): Promise<void> {
+    // WO-P1-03: thread-only seam. Acknowledge the param is intentionally
+    // threaded but not yet consumed — Project 4 will read bus fields here.
+    // The void reference keeps lint happy without changing behaviour.
+    void turnContext;
     const activeCampaignId = state.activeCampaignId!;
     const { displayInput, npcLedger } = state;
 
@@ -347,13 +358,24 @@ async function runArchiveTrack(
 
             const sealProvider = state.getFreshProvider();
             if (sealProvider && tierAllows(state.settings.aiTier, 'sealChapter')) {
+                // WO-P1-03: pass the 5 formerly-coupling reads as explicit params.
+                // These are read from the store here at the call site (still on
+                // the post-turn path), but the seal function itself no longer
+                // reaches into getState() — its inputs are now honest.
                 await runCombinedSeal(
                     sealProvider,
                     sealResult.sealedChapter,
                     activeCampaignId,
                     state,
                     guardedSealCallbacks,
-                    true
+                    true,
+                    {
+                        npcLedger: useAppStore.getState().npcLedger ?? [],
+                        archiveIndex: useAppStore.getState().archiveIndex ?? [],
+                        divergenceScanBudget: useAppStore.getState().settings.divergenceScanBudget ?? 0,
+                        contextLimit: useAppStore.getState().settings.contextLimit ?? 4096,
+                        divergenceRegister: useAppStore.getState().divergenceRegister ?? EMPTY_REGISTER,
+                    }
                 );
             }
         }).catch(err => console.warn('[Auto-Seal] Failed:', err));
@@ -475,7 +497,19 @@ export async function runCombinedSeal(
     activeCampaignId: string,
     state: TurnState,
     callbacks: TurnCallbacks,
-    setSealedAt: boolean
+    setSealedAt: boolean,
+    // WO-P1-03 §4 (Option A): the 5 coupling reads hoisted to explicit params.
+    // Pre-refactor these were fetched inside the function via
+    // `useAppStore.getState().*`. Hoisting them makes the seal's inputs honest
+    // and testable. Same values, just passed in rather than fetched —
+    // byte-identical effect (guarded by postTurnSealGolden.test.ts).
+    sealInputs: {
+        npcLedger: import('../../types').NPCEntry[];
+        archiveIndex: import('../../types').ArchiveIndexEntry[];
+        divergenceScanBudget: number;
+        contextLimit: number;
+        divergenceRegister: import('../../types').DivergenceRegister;
+    },
 ): Promise<void> {
     const startNum = parseInt(chapter.sceneRange[0], 10);
     const endNum = parseInt(chapter.sceneRange[1], 10);
@@ -486,14 +520,16 @@ export async function runCombinedSeal(
         );
 
     const scenes = await api.archive.fetchScenes(activeCampaignId, sceneIds);
-    const npcLedger = useAppStore.getState().npcLedger ?? [];
+    // WO-P1-03: was `useAppStore.getState().npcLedger ?? []` (the :489 read).
+    const npcLedger = sealInputs.npcLedger;
     const npcData = npcLedger.map(n => ({
         id: n.id,
         name: n.name,
         aliases: n.aliases,
     }));
 
-    const archiveIndex = useAppStore.getState().archiveIndex ?? [];
+    // WO-P1-03: was `useAppStore.getState().archiveIndex ?? []` (the :496 read).
+    const archiveIndex = sealInputs.archiveIndex;
     const indexEntries = archiveIndex
         .filter(e => {
             const sn = parseInt(e.sceneId, 10);
@@ -501,8 +537,10 @@ export async function runCombinedSeal(
         })
         .map(e => ({ sceneId: e.sceneId, witnesses: e.witnesses }));
 
-    const scanBudgetSetting = useAppStore.getState().settings.divergenceScanBudget ?? 0;
-    const contextLimit = useAppStore.getState().settings.contextLimit ?? 4096;
+    // WO-P1-03: was `useAppStore.getState().settings.divergenceScanBudget ?? 0` (the :504 read)
+    // and `useAppStore.getState().settings.contextLimit ?? 4096` (the :505 read).
+    const scanBudgetSetting = sealInputs.divergenceScanBudget;
+    const contextLimit = sealInputs.contextLimit;
     const effectiveScanBudget = scanBudgetSetting > 0 ? scanBudgetSetting : Math.round(contextLimit * 0.75);
 
     const result = await sealChapterCombined(
@@ -543,7 +581,8 @@ export async function runCombinedSeal(
 
     if (result.divergences.length > 0) {
         const currentSceneId = sceneIds[sceneIds.length - 1] ?? '';
-        const liveRegister = useAppStore.getState().divergenceRegister ?? EMPTY_REGISTER;
+        // WO-P1-03: was `useAppStore.getState().divergenceRegister ?? EMPTY_REGISTER` (the :546 read).
+        const liveRegister = sealInputs.divergenceRegister;
         const merged = mergeSealEntries(liveRegister, result.divergences, currentSceneId);
         callbacks.setDivergenceRegister?.(merged);
 

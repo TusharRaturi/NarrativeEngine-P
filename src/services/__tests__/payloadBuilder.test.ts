@@ -59,7 +59,7 @@ describe('buildPayload — default rules fallback', () => {
     it('injects DEFAULT_RULES when rulesRaw is empty', () => {
         const ctx = baseContext();
         ctx.rulesRaw = '';
-        const result = buildPayload(baseSettings(), ctx, [], 'I look around');
+        const result = buildPayload({ settings: baseSettings(), context: ctx, history: [], userMessage: 'I look around' });
         const firstSystem = result.messages.find(m => m.role === 'system');
         expect(firstSystem).toBeDefined();
         expect(firstSystem!.content).toContain('ROLE: Dynamic-Realism GM.');
@@ -68,7 +68,7 @@ describe('buildPayload — default rules fallback', () => {
     it('uses user-provided rulesRaw instead of DEFAULT_RULES', () => {
         const ctx = baseContext();
         ctx.rulesRaw = '# My Custom Rules\nNo magic allowed.';
-        const result = buildPayload(baseSettings(), ctx, [], 'I look around');
+        const result = buildPayload({ settings: baseSettings(), context: ctx, history: [], userMessage: 'I look around' });
         const firstSystem = result.messages.find(m => m.role === 'system');
         expect(firstSystem).toBeDefined();
         expect(firstSystem!.content).toContain('My Custom Rules');
@@ -190,7 +190,7 @@ function makeDivergenceRegister(text: string): DivergenceRegister {
 // ── Scenario 1: Minimal ────────────────────────────────────────────────────────
 describe('buildPayload — scenario 1: minimal', () => {
     it('first message is system and contains stable preamble (rules text)', () => {
-        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello world' });
         // Minimum: at least a stable system message + final user message.
         expect(result.messages.length).toBeGreaterThanOrEqual(2);
         expect(result.messages[0].role).toBe('system');
@@ -199,14 +199,14 @@ describe('buildPayload — scenario 1: minimal', () => {
     });
 
     it('the final user message contains the GM REMINDER literal', () => {
-        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello world' });
         const lastMsg = result.messages[result.messages.length - 1];
         expect(lastMsg.role).toBe('user');
         expect(typeof lastMsg.content === 'string' && lastMsg.content.includes('[GM REMINDER')).toBe(true);
     });
 
     it('the LAST message is the user message and contains the original user text', () => {
-        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello world' });
         const last = result.messages[result.messages.length - 1];
         expect(last.role).toBe('user');
         // The final user message now includes the GM REMINDER and any volatile block folded in,
@@ -215,7 +215,7 @@ describe('buildPayload — scenario 1: minimal', () => {
     });
 
     it('message ordering: system first, user last (with GM REMINDER folded into final user message)', () => {
-        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello world' });
         const msgs = result.messages;
         expect(msgs[0].role).toBe('system');
         // GM REMINDER is now folded into the final user message (not a standalone system message).
@@ -230,14 +230,14 @@ describe('buildPayload — scenario 1: minimal', () => {
     });
 
     it('returns trace and debugSections when debugMode is true', () => {
-        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello world' });
         expect(result.trace).toBeDefined();
         expect(result.debugSections).toBeDefined();
     });
 
     it('does NOT return trace/debugSections when debugMode is false', () => {
         const settings = { ...baseSettings(), debugMode: false } as unknown as AppSettings;
-        const result = buildPayload(settings, baseContext(), [], 'Hello world');
+        const result = buildPayload({ settings: settings, context: baseContext(), history: [], userMessage: 'Hello world' });
         expect(result.trace).toBeUndefined();
         expect(result.debugSections).toBeUndefined();
     });
@@ -263,13 +263,7 @@ describe('buildPayload — scenario 2: full world context', () => {
     const userMsg = 'Aldric and Bella are at the docks. What happens next?';
 
     it('world lore marker appears in assembled content', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], userMsg,
-            undefined, lore, npcs, archive,
-            undefined, undefined, 'Some semantic fact',
-            undefined, timeline, undefined, undefined, undefined, divReg
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: userMsg, condensedUpToIndex: undefined, relevantLore: lore, npcLedger: npcs, archiveRecall: archive, recommendedNPCNames: undefined, semanticFactText: 'Some semantic fact', archiveIndex: undefined, timelineEvents: timeline, inventoryCategories: undefined, profileFields: undefined, deepContextSummary: undefined, divergenceRegister: divReg });
         // worldContent is folded into the final user message (below the cache boundary).
         const allContent = result.messages
             .map(m => m.content as string)
@@ -278,11 +272,7 @@ describe('buildPayload — scenario 2: full world context', () => {
     });
 
     it('FACTIONS section appears when faction lore is provided', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], userMsg,
-            undefined, lore
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: userMsg, condensedUpToIndex: undefined, relevantLore: lore });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -290,11 +280,7 @@ describe('buildPayload — scenario 2: full world context', () => {
     });
 
     it('LOCATIONS section appears when location lore is provided', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], userMsg,
-            undefined, lore
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: userMsg, condensedUpToIndex: undefined, relevantLore: lore });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -302,11 +288,7 @@ describe('buildPayload — scenario 2: full world context', () => {
     });
 
     it('archive recall marker appears when archiveRecall is provided', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], userMsg,
-            undefined, undefined, undefined, archive
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: userMsg, condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: archive });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -314,11 +296,7 @@ describe('buildPayload — scenario 2: full world context', () => {
     });
 
     it('active NPC context marker appears when matching NPCs are in ledger', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], userMsg,
-            undefined, undefined, npcs
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: userMsg, condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: npcs });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -326,12 +304,7 @@ describe('buildPayload — scenario 2: full world context', () => {
     });
 
     it('semantic fact text is present in assembled content', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], userMsg,
-            undefined, undefined, undefined, undefined,
-            undefined, undefined, 'SEMANTIC FACT: the sky is red'
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: userMsg, condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: undefined, recommendedNPCNames: undefined, semanticFactText: 'SEMANTIC FACT: the sky is red' });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -339,11 +312,7 @@ describe('buildPayload — scenario 2: full world context', () => {
     });
 
     it('trace has included:true entries for RAG Lore and Active NPCs', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], userMsg,
-            undefined, lore, npcs
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: userMsg, condensedUpToIndex: undefined, relevantLore: lore, npcLedger: npcs });
         const traceSourcesIncluded = (result.trace ?? [])
             .filter(t => t.included)
             .map(t => t.source);
@@ -352,11 +321,7 @@ describe('buildPayload — scenario 2: full world context', () => {
     });
 
     it('trace has included:true entry for Archive Recall when provided', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], userMsg,
-            undefined, undefined, undefined, archive
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: userMsg, condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: archive });
         const traceSourcesIncluded = (result.trace ?? [])
             .filter(t => t.included)
             .map(t => t.source);
@@ -384,22 +349,14 @@ describe('buildPayload — scenario 3: NPC tiered directive', () => {
     const userMsg = 'Zorath steps forward. Zorath raises his sword. What does Zorath say?';
 
     it('Active NPCs trace reason describes the tiered injection', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], userMsg,
-            undefined, undefined, [highNpc, lowNpc]
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: userMsg, condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: [highNpc, lowNpc] });
         const npcTrace = (result.trace ?? []).find(t => t.source === 'Active NPCs' && t.included);
         expect(npcTrace).toBeDefined();
         expect(npcTrace!.reason).toContain('tiered');
     });
 
     it('NPC with drives surfaces a WANTS line (legacy drives fallback) in output', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], userMsg,
-            undefined, undefined, [highNpc, lowNpc]
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: userMsg, condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: [highNpc, lowNpc] });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -408,11 +365,7 @@ describe('buildPayload — scenario 3: NPC tiered directive', () => {
     });
 
     it('NPC triggers surface as ON "keyword": in output', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], userMsg,
-            undefined, undefined, [highNpc, lowNpc]
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: userMsg, condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: [highNpc, lowNpc] });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -420,11 +373,7 @@ describe('buildPayload — scenario 3: NPC tiered directive', () => {
     });
 
     it('NPC hard boundaries surface as WON\'T: in output', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], userMsg,
-            undefined, undefined, [highNpc, lowNpc]
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: userMsg, condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: [highNpc, lowNpc] });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -432,11 +381,7 @@ describe('buildPayload — scenario 3: NPC tiered directive', () => {
     });
 
     it('NPC without drives does not emit a WANTS line', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], userMsg,
-            undefined, undefined, [highNpc, lowNpc]
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: userMsg, condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: [highNpc, lowNpc] });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -461,13 +406,7 @@ describe('buildPayload — scenario 4: perceptual archive filter', () => {
     ];
 
     it('trace shows perceptual filter removed unwitnessed scenes', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], 'What do you recall?',
-            undefined, undefined, [activeNpc, archivedNpc],
-            [witnessedScene, unwitnessedScene],
-            undefined, undefined, undefined, archiveIndex
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'What do you recall?', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: [activeNpc, archivedNpc], archiveRecall: [witnessedScene, unwitnessedScene], recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: archiveIndex });
         const filterTrace = (result.trace ?? []).find(
             t => t.source === 'Archive Recall' && t.included === false && t.reason.includes('Perceptual filter removed')
         );
@@ -475,13 +414,7 @@ describe('buildPayload — scenario 4: perceptual archive filter', () => {
     });
 
     it('unwitnessed scene content is absent from assembled messages', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], 'What do you recall?',
-            undefined, undefined, [activeNpc, archivedNpc],
-            [witnessedScene, unwitnessedScene],
-            undefined, undefined, undefined, archiveIndex
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'What do you recall?', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: [activeNpc, archivedNpc], archiveRecall: [witnessedScene, unwitnessedScene], recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: archiveIndex });
         const allContent = result.messages
             .map(m => (typeof m.content === 'string' ? m.content : ''))
             .join('\n');
@@ -489,13 +422,7 @@ describe('buildPayload — scenario 4: perceptual archive filter', () => {
     });
 
     it('witnessed scene content IS present in assembled messages', () => {
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], 'What do you recall?',
-            undefined, undefined, [activeNpc, archivedNpc],
-            [witnessedScene, unwitnessedScene],
-            undefined, undefined, undefined, archiveIndex
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'What do you recall?', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: [activeNpc, archivedNpc], archiveRecall: [witnessedScene, unwitnessedScene], recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: archiveIndex });
         const allContent = result.messages
             .map(m => (typeof m.content === 'string' ? m.content : ''))
             .join('\n');
@@ -505,13 +432,7 @@ describe('buildPayload — scenario 4: perceptual archive filter', () => {
     it('scene with NO witnesses (broadcast) is always included', () => {
         const broadcastScene = makeArchiveScene('003', 'The whole world heard the announcement.');
         const broadcastIdx = makeArchiveIndexEntry('003', []); // empty witnesses = broadcast
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], 'What happened?',
-            undefined, undefined, [activeNpc],
-            [broadcastScene],
-            undefined, undefined, undefined, [broadcastIdx]
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'What happened?', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: [activeNpc], archiveRecall: [broadcastScene], recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: [broadcastIdx] });
         const allContent = result.messages
             .map(m => (typeof m.content === 'string' ? m.content : ''))
             .join('\n');
@@ -547,11 +468,7 @@ describe('buildPayload — scenario 5: world-budget trim', () => {
             makeArchiveScene('001', 'D'.repeat(400)),
         ];
 
-        const result = buildPayload(
-            smallSettings, baseContext(),
-            [], 'Hello',
-            undefined, bigLore, undefined, archive
-        );
+        const result = buildPayload({ settings: smallSettings, context: baseContext(), history: [], userMessage: 'Hello', condensedUpToIndex: undefined, relevantLore: bigLore, npcLedger: undefined, archiveRecall: archive });
 
         const droppedTrace = (result.trace ?? []).find(
             t => !t.included && typeof t.reason === 'string' && t.reason.includes('Exceeds World budget')
@@ -591,7 +508,7 @@ describe('buildPayload — scenario 6: history fitting and ephemeral cleanup', (
             makeMsg('user', 'Last user'),
         ];
 
-        const result = buildPayload(baseSettings(), baseContext(), history, 'Current message');
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: history, userMessage: 'Current message' });
         const allMsgs = result.messages;
         const firstToolMsg = allMsgs.find(
             m => m.role === 'tool' && m.tool_call_id === toolCallId1
@@ -631,7 +548,7 @@ describe('buildPayload — scenario 6: history fitting and ephemeral cleanup', (
             makeMsg('user', 'Turn 2'),
         ];
 
-        const result = buildPayload(baseSettings(), baseContext(), history, 'Turn 3');
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: history, userMessage: 'Turn 3' });
         const ephemeralTrace = (result.trace ?? []).find(t => t.source === 'Ephemeral Cleanup');
         expect(ephemeralTrace).toBeDefined();
     });
@@ -644,7 +561,7 @@ describe('buildPayload — scenario 6: history fitting and ephemeral cleanup', (
             makeMsg('assistant', 'Assistant reply'),
         ];
 
-        const result = buildPayload(baseSettings(), baseContext(), history, 'Current message');
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: history, userMessage: 'Current message' });
         // The overall first message in messages is system; confirm no tool at position 0 of history slice
         const firstFittedRole = result.messages.find(
             m => m.role !== 'system'
@@ -671,7 +588,7 @@ describe('buildPayload — scenario 7: scene note depth splice', () => {
             makeMsg('assistant', 'GM reply 2'),
         ];
 
-        const result = buildPayload(baseSettings(), ctx, history, 'What happens next?');
+        const result = buildPayload({ settings: baseSettings(), context: ctx, history: history, userMessage: 'What happens next?' });
 
         // A system message with [SCENE NOTE should be in messages
         const noteMsg = result.messages.find(
@@ -693,7 +610,7 @@ describe('buildPayload — scenario 7: scene note depth splice', () => {
             sceneNoteDepth: 3,
         } as GameContext;
 
-        const result = buildPayload(baseSettings(), ctx, [], 'What do I see?');
+        const result = buildPayload({ settings: baseSettings(), context: ctx, history: [], userMessage: 'What do I see?' });
 
         // With empty history, fallback is used
         const fallbackTrace = (result.trace ?? []).find(t => t.source === 'Scene Note (Fallback)');
@@ -723,7 +640,7 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
             ],
         } as unknown as AppSettings;
 
-        const result = buildPayload(reasoningSettings, baseContext(), [], 'Hello');
+        const result = buildPayload({ settings: reasoningSettings, context: baseContext(), history: [], userMessage: 'Hello' });
         const firstSystem = result.messages[0];
         expect(typeof firstSystem.content).toBe('string');
         expect(firstSystem.content as string).toContain('thinking');
@@ -742,7 +659,7 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
             ],
         } as unknown as AppSettings;
 
-        const result = buildPayload(reasoningSettings, baseContext(), [], 'Hello');
+        const result = buildPayload({ settings: reasoningSettings, context: baseContext(), history: [], userMessage: 'Hello' });
         const firstSystem = result.messages[0];
         expect(firstSystem.content as string).toContain('thinking');
     });
@@ -756,7 +673,7 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
             presets: [{ id: 'preset_reasoning', storyAIProviderId: 'prov_reasoning' }],
         } as unknown as AppSettings;
 
-        const result = buildPayload(reasoningSettings, baseContext(), [], 'Hello');
+        const result = buildPayload({ settings: reasoningSettings, context: baseContext(), history: [], userMessage: 'Hello' });
         const firstSystem = result.messages[0];
         expect(firstSystem.content as string).toContain('[WRITER REASONING FRAMEWORK]');
         expect(firstSystem.content as string).toContain('Step 1 — Deconstruct');
@@ -771,7 +688,7 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
             presets: [{ id: 'preset_normal', storyAIProviderId: 'prov_normal' }],
         } as unknown as AppSettings;
 
-        const result = buildPayload(normalSettings, baseContext(), [], 'Hello');
+        const result = buildPayload({ settings: normalSettings, context: baseContext(), history: [], userMessage: 'Hello' });
         const firstSystem = result.messages[0];
         expect(firstSystem.content as string).not.toContain('[WRITER REASONING FRAMEWORK]');
         // Existing thinking-block reminder must also be absent for non-reasoning models.
@@ -786,7 +703,7 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
             presets: [{ id: 'preset_reasoning', storyAIProviderId: 'prov_reasoning' }],
         } as unknown as AppSettings;
 
-        const result = buildPayload(reasoningSettings, baseContext(), [], 'Hello');
+        const result = buildPayload({ settings: reasoningSettings, context: baseContext(), history: [], userMessage: 'Hello' });
         const finalUser = result.messages[result.messages.length - 1];
         expect(finalUser.role).toBe('user');
         expect(finalUser.content as string).toContain(
@@ -808,7 +725,7 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
             presets: [{ id: 'preset_normal', storyAIProviderId: 'prov_normal' }],
         } as unknown as AppSettings;
 
-        const result = buildPayload(normalSettings, baseContext(), [], 'Hello');
+        const result = buildPayload({ settings: normalSettings, context: baseContext(), history: [], userMessage: 'Hello' });
         const finalUser = result.messages[result.messages.length - 1];
         expect(finalUser.content as string).not.toContain('[WRITER REASONING FRAMEWORK]');
     });
@@ -825,7 +742,7 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
             presets: [{ id: 'preset_normal', storyAIProviderId: 'prov_normal' }],
         } as unknown as AppSettings;
 
-        const result = buildPayload(normalSettings, baseContext(), [], 'Hello');
+        const result = buildPayload({ settings: normalSettings, context: baseContext(), history: [], userMessage: 'Hello' });
         const finalUser = result.messages[result.messages.length - 1];
         // Reconstruct the pre-WO-01 finalUserContent: volatile + GM_REMINDER + (no askGmBrief) + userMessage.
         // buildPayload with empty history + empty context still emits world + volatile blocks; the only
@@ -845,7 +762,7 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
             rulesRaw: customRules,
         } as GameContext;
 
-        const result = buildPayload(baseSettings(), ctx, [], 'I attack the guard');
+        const result = buildPayload({ settings: baseSettings(), context: ctx, history: [], userMessage: 'I attack the guard' });
         const firstSystem = result.messages[0];
         // User's custom Action Resolution rules must be preserved (not swapped for d20 template)
         expect(firstSystem.content as string).toContain('Roll 2d6');
@@ -862,7 +779,7 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
             rulesRaw: customRules,
         } as GameContext;
 
-        const result = buildPayload(baseSettings(), ctx, [], 'I attack the guard');
+        const result = buildPayload({ settings: baseSettings(), context: ctx, history: [], userMessage: 'I attack the guard' });
         const firstSystem = result.messages[0];
         expect(firstSystem.content as string).toContain('Roll 2d6');
         expect(firstSystem.content as string).toContain('7 is mixed');
@@ -892,7 +809,7 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
             inventoryItems: [],
         } as unknown as GameContext;
 
-        const result = buildPayload(baseSettings(), ctx, [], 'What do I have?');
+        const result = buildPayload({ settings: baseSettings(), context: ctx, history: [], userMessage: 'What do I have?' });
         // volatile blocks are folded into the final user message.
         const allContent = result.messages
             .map(m => m.content as string)
@@ -931,13 +848,7 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
             ],
         } as unknown as GameContext;
 
-        const result = buildPayload(
-            baseSettings(), ctx,
-            [], 'What weapons do I have?',
-            undefined, undefined, undefined, undefined,
-            undefined, undefined, undefined, undefined, undefined,
-            ['weapon', 'equipped']
-        );
+        const result = buildPayload({ settings: baseSettings(), context: ctx, history: [], userMessage: 'What weapons do I have?', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: undefined, recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: undefined, timelineEvents: undefined, inventoryCategories: ['weapon', 'equipped'] });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -963,13 +874,7 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
             inventoryItems: [],
         } as unknown as GameContext;
 
-        const result = buildPayload(
-            baseSettings(), ctx,
-            [], 'What are my stats?',
-            undefined, undefined, undefined, undefined,
-            undefined, undefined, undefined, undefined, undefined,
-            undefined, ['name', 'class', 'level']
-        );
+        const result = buildPayload({ settings: baseSettings(), context: ctx, history: [], userMessage: 'What are my stats?', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: undefined, recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: undefined, timelineEvents: undefined, inventoryCategories: undefined, profileFields: ['name', 'class', 'level'] });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -991,7 +896,7 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
             characterProfileLastScene: '003',
         } as unknown as GameContext;
 
-        const result = buildPayload(baseSettings(), ctx, [], 'Who am I?');
+        const result = buildPayload({ settings: baseSettings(), context: ctx, history: [], userMessage: 'Who am I?' });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -1015,7 +920,7 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
             characterProfileLastScene: 'Never',
         } as unknown as GameContext;
 
-        const result = buildPayload(baseSettings(), ctx, [], 'Who am I?');
+        const result = buildPayload({ settings: baseSettings(), context: ctx, history: [], userMessage: 'Who am I?' });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -1027,7 +932,7 @@ describe('buildPayload — scenario 9: smart bookkeeping vs legacy', () => {
 // ── Scenario 10: cache_control: ephemeral markers ──────────────────────────────
 describe('buildPayload — cache_control: ephemeral markers', () => {
     it('stable content system message has cache_control: ephemeral', () => {
-        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello world' });
         const stableMsg = result.messages.find(
             m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('ROLE: Dynamic-Realism GM.')
         );
@@ -1037,12 +942,7 @@ describe('buildPayload — cache_control: ephemeral markers', () => {
 
     it('divergence content system message has cache_control: ephemeral when divergence is present', () => {
         const divReg = makeDivergenceRegister('The bridge was destroyed in scene 001.');
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], 'What happened?',
-            undefined, undefined, undefined, undefined,
-            undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, divReg
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'What happened?', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: undefined, recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: undefined, timelineEvents: undefined, inventoryCategories: undefined, profileFields: undefined, deepContextSummary: undefined, divergenceRegister: divReg });
         const divMsg = result.messages.find(
             m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('The bridge was destroyed')
         );
@@ -1054,11 +954,7 @@ describe('buildPayload — cache_control: ephemeral markers', () => {
         const lore: LoreChunk[] = [
             makeLoreChunk({ id: 'lc1', category: 'faction', header: 'Guild', content: 'A guild.', tokens: 5 }),
         ];
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], 'Hello',
-            undefined, lore
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello', condensedUpToIndex: undefined, relevantLore: lore });
         // worldContent is now in the final user message, not a system message.
         const worldSysMsg = result.messages.find(
             m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[WORLD LORE')
@@ -1071,7 +967,7 @@ describe('buildPayload — cache_control: ephemeral markers', () => {
     });
 
     it('GM REMINDER is folded into the final user message (no standalone GM REMINDER system message)', () => {
-        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello');
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello' });
         // No system message should carry the GM REMINDER.
         const sysReminderMsg = result.messages.find(
             m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[GM REMINDER')
@@ -1084,7 +980,7 @@ describe('buildPayload — cache_control: ephemeral markers', () => {
     });
 
     it('final user message does NOT have cache_control (cache boundary is on last history message)', () => {
-        const result = buildPayload(baseSettings(), baseContext(), [], 'Hello');
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello' });
         const lastMsg = result.messages[result.messages.length - 1];
         expect(lastMsg.role).toBe('user');
         expect((lastMsg as any).cache_control).toBeUndefined();
@@ -1101,7 +997,7 @@ describe('buildPayload — cache_control: ephemeral markers', () => {
             makeMsg('user', 'Turn 1'),
             makeMsg('assistant', 'GM reply'),
         ];
-        const result = buildPayload(baseSettings(), ctx, history, 'What next?');
+        const result = buildPayload({ settings: baseSettings(), context: ctx, history: history, userMessage: 'What next?' });
         const sceneNoteMsg = result.messages.find(
             m => m.role === 'system' && typeof m.content === 'string' && m.content.includes('[SCENE NOTE')
         );
@@ -1115,12 +1011,7 @@ describe('buildPayload — Scenario 11: Recent Scene Events rendering', () => {
     it('Recent Scene Events block is absent when there are no events in the recent scenes', () => {
         const archive = [makeArchiveScene('001', 'Scene content')];
         const archiveIndex = [makeArchiveIndexEntry('001', [])];
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], 'Hello',
-            undefined, undefined, undefined, archive,
-            undefined, undefined, undefined, archiveIndex
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: archive, recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: archiveIndex });
         // worldContent is folded into the final user message; check all content.
         const allContent = result.messages
             .map(m => m.content as string)
@@ -1141,12 +1032,7 @@ describe('buildPayload — Scenario 11: Recent Scene Events rendering', () => {
                 { eventType: 'combat', importance: 5, text: 'Fought goblins', cause: 'ambush', result: 'won' }
             ]
         }];
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], 'Hello',
-            undefined, undefined, undefined, archive,
-            undefined, undefined, undefined, archiveIndex
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: archive, recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: archiveIndex });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -1168,12 +1054,7 @@ describe('buildPayload — Scenario 11: Recent Scene Events rendering', () => {
                 { eventType: 'item_acquired', importance: 5, text: 'Medium importance event' }
             ]
         }];
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], 'Hello',
-            undefined, undefined, undefined, archive,
-            undefined, undefined, undefined, archiveIndex
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: archive, recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: archiveIndex });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -1200,12 +1081,7 @@ describe('buildPayload — Scenario 11: Recent Scene Events rendering', () => {
                 { eventType: 'combat', importance: 5, text: 'Neither' }
             ]
         }];
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], 'Hello',
-            undefined, undefined, undefined, archive,
-            undefined, undefined, undefined, archiveIndex
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: archive, recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: archiveIndex });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -1232,12 +1108,7 @@ describe('buildPayload — Scenario 11: Recent Scene Events rendering', () => {
             userSnippet: '',
             events
         }];
-        const result = buildPayload(
-            baseSettings(), baseContext(),
-            [], 'Hello',
-            undefined, undefined, undefined, archive,
-            undefined, undefined, undefined, archiveIndex
-        );
+        const result = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: archive, recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: archiveIndex });
         const allContent = result.messages
             .map(m => m.content as string)
             .join('\n');
@@ -1262,7 +1133,7 @@ describe('buildPayload — volatile notebook budget', () => {
             timestamp: 1_000 + i,
         }));
 
-        const result = buildPayload(smallSettings, ctx, [], 'Hello');
+        const result = buildPayload({ settings: smallSettings, context: ctx, history: [], userMessage: 'Hello' });
 
         // [SCENE NOTEBOOK] is part of volatileContent, folded into the final user message.
         const lastMsg = result.messages[result.messages.length - 1];
@@ -1287,7 +1158,7 @@ describe('buildPayload — volatile notebook budget', () => {
             { id: 'n1', text: 'A short note.', timestamp: 2 },
             { id: 'n2', text: 'Another short note.', timestamp: 1 },
         ];
-        const result = buildPayload(baseSettings(), ctx, [], 'Hello');
+        const result = buildPayload({ settings: baseSettings(), context: ctx, history: [], userMessage: 'Hello' });
         // [SCENE NOTEBOOK] is part of volatileContent, folded into the final user message.
         const lastMsg = result.messages[result.messages.length - 1];
         expect(lastMsg.role).toBe('user');
@@ -1314,15 +1185,8 @@ describe('buildPayload — divergence reserved in world budget', () => {
         // A large divergence register that eats into the world allocation.
         const bigDiv = makeDivergenceRegister('The capital fell. '.repeat(80));
 
-        const withDiv = buildPayload(
-            smallSettings, baseContext(), [], 'Hello',
-            undefined, lore, undefined, undefined,
-            undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, bigDiv
-        );
-        const withoutDiv = buildPayload(
-            smallSettings, baseContext(), [], 'Hello',
-            undefined, lore
-        );
+        const withDiv = buildPayload({ settings: smallSettings, context: baseContext(), history: [], userMessage: 'Hello', condensedUpToIndex: undefined, relevantLore: lore, npcLedger: undefined, archiveRecall: undefined, recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: undefined, timelineEvents: undefined, inventoryCategories: undefined, profileFields: undefined, deepContextSummary: undefined, divergenceRegister: bigDiv });
+        const withoutDiv = buildPayload({ settings: smallSettings, context: baseContext(), history: [], userMessage: 'Hello', condensedUpToIndex: undefined, relevantLore: lore });
 
         const droppedWith = (withDiv.trace ?? []).filter(
             t => !t.included && typeof t.reason === 'string' && t.reason.includes('World budget')
@@ -1370,13 +1234,7 @@ describe('buildPayload — Director Watchdog nudge (WO-03)', () => {
      *  spreads 22 `undefined`s so the nudge/brief land in the right slots without
      *  every call site having to count commas. */
     function buildWithNudge(watchdogNudge?: string, directorBrief?: string) {
-        return buildPayload(
-            baseSettings(), baseContext(), [], 'Hello world',
-            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-            watchdogNudge, directorBrief,
-        );
+        return buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello world', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: undefined, recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: undefined, timelineEvents: undefined, inventoryCategories: undefined, profileFields: undefined, deepContextSummary: undefined, divergenceRegister: undefined, chapters: undefined, onStageNpcIds: undefined, relevantRules: undefined, rulesManifest: undefined, pinnedExcerpts: undefined, plannerEventTypes: undefined, locationLedger: undefined, nextTurnOocBrief: undefined, watchdogNudge: watchdogNudge, directorBrief: directorBrief });
     }
 
     it('nudge is present in the final user message when provided', () => {
@@ -1397,7 +1255,7 @@ describe('buildPayload — Director Watchdog nudge (WO-03)', () => {
     });
 
     it('nudge is omitted when no watchdogNudge is passed (byte-identical to pre-WO-03)', () => {
-        const withUndefined = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const withUndefined = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello world' });
         const content = finalUserContent(withUndefined.messages);
         expect(content).not.toContain('[STAGE NOTE');
         // No Watchdog trace when no nudge is surfaced.
@@ -1415,7 +1273,7 @@ describe('buildPayload — Director Watchdog nudge (WO-03)', () => {
     });
 
     it('nudge never perturbs the cached prefix (invariant 2)', () => {
-        const withoutNudge = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const withoutNudge = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello world' });
         const withNudge = buildWithNudge(NUDGE);
         expect(cachedPrefixBytes(withNudge.messages)).toBe(cachedPrefixBytes(withoutNudge.messages));
     });
@@ -1432,13 +1290,7 @@ describe('buildPayload — Director Watchdog nudge (WO-03)', () => {
 
     it('does NOT add a Watchdog trace in non-debug mode', () => {
         const settings = { ...baseSettings(), debugMode: false } as unknown as AppSettings;
-        const result = buildPayload(
-            settings, baseContext(), [], 'Hello world',
-            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-            NUDGE,
-        );
+        const result = buildPayload({ settings: settings, context: baseContext(), history: [], userMessage: 'Hello world', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: undefined, recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: undefined, timelineEvents: undefined, inventoryCategories: undefined, profileFields: undefined, deepContextSummary: undefined, divergenceRegister: undefined, chapters: undefined, onStageNpcIds: undefined, relevantRules: undefined, rulesManifest: undefined, pinnedExcerpts: undefined, plannerEventTypes: undefined, locationLedger: undefined, nextTurnOocBrief: undefined, watchdogNudge: NUDGE });
         // Trace is undefined entirely in non-debug mode (createTraceCollector gate).
         expect(result.trace).toBeUndefined();
     });
@@ -1472,13 +1324,7 @@ describe('buildPayload — Director Brief (WO-04)', () => {
 
     /** Positional-arg helper: same shape as WO-03's buildWithNudge, plus the Brief slot. */
     function buildWithBrief(watchdogNudge?: string, directorBrief?: string) {
-        return buildPayload(
-            baseSettings(), baseContext(), [], 'Hello world',
-            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-            watchdogNudge, directorBrief,
-        );
+        return buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello world', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: undefined, recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: undefined, timelineEvents: undefined, inventoryCategories: undefined, profileFields: undefined, deepContextSummary: undefined, divergenceRegister: undefined, chapters: undefined, onStageNpcIds: undefined, relevantRules: undefined, rulesManifest: undefined, pinnedExcerpts: undefined, plannerEventTypes: undefined, locationLedger: undefined, nextTurnOocBrief: undefined, watchdogNudge: watchdogNudge, directorBrief: directorBrief });
     }
 
     it('Brief is present in the final user message wrapped as [DIRECTOR BRIEF] block', () => {
@@ -1500,7 +1346,7 @@ describe('buildPayload — Director Brief (WO-04)', () => {
     });
 
     it('Brief is omitted when no directorBrief is passed (byte-identical to pre-WO-04)', () => {
-        const withoutBrief = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const withoutBrief = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello world' });
         const content = finalUserContent(withoutBrief.messages);
         expect(content).not.toContain('[DIRECTOR BRIEF]');
         // No Director trace when no Brief is surfaced.
@@ -1541,7 +1387,7 @@ describe('buildPayload — Director Brief (WO-04)', () => {
     });
 
     it('Brief never perturbs the cached prefix (invariant 2)', () => {
-        const withoutBrief = buildPayload(baseSettings(), baseContext(), [], 'Hello world');
+        const withoutBrief = buildPayload({ settings: baseSettings(), context: baseContext(), history: [], userMessage: 'Hello world' });
         const withBrief = buildWithBrief(undefined, BRIEF);
         expect(cachedPrefixBytes(withBrief.messages)).toBe(cachedPrefixBytes(withoutBrief.messages));
     });
@@ -1560,13 +1406,7 @@ describe('buildPayload — Director Brief (WO-04)', () => {
 
     it('does NOT add a Director trace in non-debug mode', () => {
         const settings = { ...baseSettings(), debugMode: false } as unknown as AppSettings;
-        const result = buildPayload(
-            settings, baseContext(), [], 'Hello world',
-            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-            undefined, undefined, undefined, undefined, undefined, undefined, undefined,
-            undefined, BRIEF,
-        );
+        const result = buildPayload({ settings: settings, context: baseContext(), history: [], userMessage: 'Hello world', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: undefined, archiveRecall: undefined, recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: undefined, timelineEvents: undefined, inventoryCategories: undefined, profileFields: undefined, deepContextSummary: undefined, divergenceRegister: undefined, chapters: undefined, onStageNpcIds: undefined, relevantRules: undefined, rulesManifest: undefined, pinnedExcerpts: undefined, plannerEventTypes: undefined, locationLedger: undefined, nextTurnOocBrief: undefined, watchdogNudge: undefined, directorBrief: BRIEF });
         // Trace is undefined entirely in non-debug mode (createTraceCollector gate).
         expect(result.trace).toBeUndefined();
     });

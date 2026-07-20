@@ -117,25 +117,15 @@ function volatileContent(messages: OpenAIMessage[]): string {
 }
 
 function build(onStageNpcIds: string[]) {
-    return buildPayload(
-        baseSettings(), baseContext(),
-        [], 'What happens next?',
-        undefined,            // condensedUpToIndex
-        undefined,            // relevantLore
-        NPCS,                 // npcLedger
-        undefined,            // archiveRecall
-        undefined,            // sceneNumber
-        undefined,            // recommendedNPCNames
-        undefined,            // semanticFactText
-        undefined,            // archiveIndex
-        undefined,            // timelineEvents
-        undefined,            // inventoryCategories
-        undefined,            // profileFields
-        undefined,            // deepContextSummary
-        makeRegister(),       // divergenceRegister
-        undefined,            // chapters
-        onStageNpcIds,        // onStageNpcIds
-    );
+    return buildPayload({
+        settings: baseSettings(),
+        context: baseContext(),
+        history: [],
+        userMessage: 'What happens next?',
+        npcLedger: NPCS,
+        divergenceRegister: makeRegister(),
+        onStageNpcIds,
+    });
 }
 
 describe('Phase 6 — divergence cache-prefix stability', () => {
@@ -201,12 +191,7 @@ describe('Phase 6 — divergence cache-prefix stability', () => {
         const historyB: import('../../types').ChatMessage = {
             id: 'h2', role: 'assistant', content: 'First history assistant reply', timestamp: 2,
         };
-        const { messages } = buildPayload(
-            baseSettings(), baseContext(),
-            [historyA, historyB], 'What happens next?',
-            undefined, undefined, NPCS, undefined, undefined, undefined, undefined,
-            undefined, undefined, undefined, undefined, undefined, makeRegister(), undefined, ['npc_a'],
-        );
+        const { messages } = buildPayload({ settings: baseSettings(), context: baseContext(), history: [historyA, historyB], userMessage: 'What happens next?', condensedUpToIndex: undefined, relevantLore: undefined, npcLedger: NPCS, archiveRecall: undefined, recommendedNPCNames: undefined, semanticFactText: undefined, archiveIndex: undefined, timelineEvents: undefined, inventoryCategories: undefined, profileFields: undefined, deepContextSummary: undefined, divergenceRegister: makeRegister(), chapters: undefined, onStageNpcIds: ['npc_a'] });
 
         // The last message carrying cache_control: ephemeral must be a history message
         // (its content matches one of our history entries), not the final volatile user message.
