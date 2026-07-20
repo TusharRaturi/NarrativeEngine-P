@@ -5,14 +5,14 @@ import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 const IMPORTANCE_PROMPT = `Rate the narrative importance of the scene below on a 1-10 scale based on HOW THE NARRATIVE WOULD BREAK if the facts established here were forgotten.
 
 CRITERIA:
-1-2 — Trivial: Forgetting this would not break the narrative at all (e.g., passing greeting, mundane travel, minor purchases, small talk). (Negative: Does NOT contain combat, does NOT establish new facts, does NOT change any character states).
-3-4 — Minor: Forgetting this might cause minor confusion but no plot holes (e.g., atmospheric details, minor NPC introductions, routine conversation). (Negative: Does NOT advance the main plot, does NOT permanently alter relationships).
-5-6 — Notable: Forgetting this would cause noticeable continuity errors (e.g., relationship shifts, new locations explored). (Negative: Does NOT resolve major conflict, does NOT change the world state).
-7-8 — Significant: Forgetting this would cause major plot holes (e.g., combat resolutions, major reveals, quest milestones, significant items acquired/lost).
+1-2 — Trivial: Forgetting this would not break the narrative at all (e.g., passing greeting, mundane travel, minor purchases, small talk, minor spat).
+3-4 — Minor: Forgetting this might cause minor confusion but no plot holes (e.g., atmospheric details, minor NPC introductions, routine conversation).
+5-6 — Notable: Forgetting this would cause noticeable continuity errors (e.g., relationship shifts, new locations explored).
+7-8 — Significant: Forgetting this would cause major plot holes (e.g., combat resolutions, major reveals, quest milestones).
 9-10 — Critical: Catastrophic narrative breakage if forgotten (e.g., character death, major betrayal, world-changing events, irreversible consequences).
 
 RULES:
-- Output ONLY a single digit (or 10), nothing else
+- Output ONLY a single number (from 1 to 10), nothing else
 - When uncertain, round DOWN (prefer lower importance)
 
 RECENT CONTEXT:
