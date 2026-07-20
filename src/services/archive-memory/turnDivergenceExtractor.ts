@@ -49,7 +49,7 @@ GM: ${gmText}
 OUTPUT FORMAT — a single JSON object with one key per category slot. Each value is an array of fact objects, or [] if empty. Example:
 {
     "locations": [
-        { "text": "Eastern gate destroyed by siege", "sceneRef": "${sceneId}", "npcIds": [], "knownBy": [], "unrecognizedNpcNames": [], "locations": ["eastern_gate"], "items": [], "theme": "destruction" }
+        { "text": "Eastern gate destroyed by siege", "sceneRef": "${sceneId}", "npcIds": [], "knownBy": [], "unrecognizedNpcNames": [], "locations": ["Eastern Gate"], "items": [], "theme": "destruction" }
     ],
     "npc_events": [
         { "text": "Grak allied with the player", "sceneRef": "${sceneId}", "npcIds": ["npc_42"], "knownBy": ["npc_42"], "unrecognizedNpcNames": [], "locations": [], "items": [], "theme": "alliance" }
@@ -74,7 +74,7 @@ DIVERGENCE EXTRACTION RULES:
 - sceneRef must be: ${sceneId}
 - npcIds: list the NPC ledger IDs mentioned. If a name appears that is NOT in the ledger, put it in unrecognizedNpcNames instead.
 - knownBy: list the NPC ledger IDs of witnesses who SAW or PARTICIPATED in this event. Only include NPCs who were present when the fact happened. Omit this field for rules_lore and locations (those are broadcast knowledge). If unsure, omit knownBy.
-- locations: list specific, named places where this fact occurred or that are mentioned (e.g. "eastern_gate", "lower_ward"). Empty array if none.
+- locations: list specific, named places where this fact occurred or that are mentioned. Format in Title Case with spaces (e.g. "Eastern Gate", "Lower Ward"). Omit prefixes like "The" (e.g. "Sunken Warren"). DO NOT include minor sub-rooms or generic areas. Empty array if none.
 - items: list specific, named objects or artifacts mentioned (e.g. "amulet_of_fire"). Empty array if none.
 - theme: provide exactly ONE descriptive lowercase word categorizing the fact (e.g. "combat", "betrayal", "discovery").
 - DO NOT include NPC names in the 'locations', 'items', or 'theme' fields.

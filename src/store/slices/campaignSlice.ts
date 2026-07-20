@@ -616,16 +616,30 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
     locationSuggestions: [],
     addLocationSuggestions: (suggestions) => set((s) => {
         if (!suggestions || suggestions.length === 0) return {};
-        const existing = new Set(s.locationSuggestions.map(x => x.name.toLowerCase()));
+        
+        const normalize = (n: string) => n.toLowerCase().replace(/^(the|a|an)\s+/i, '').replace(/[^a-z0-9]/g, '');
+        
+        const existing = new Set(s.locationSuggestions.map(x => normalize(x.name)));
         const ledgerNames = new Set(
-            s.locationLedger.flatMap(l => [l.name.toLowerCase(), ...l.aliases.split(',').map(a => a.trim().toLowerCase()).filter(Boolean)])
+            s.locationLedger.flatMap(l => [l.name, ...l.aliases.split(',').map(a => a.trim())].filter(Boolean).map(normalize))
         );
+        
         const fresh: LocationSuggestion[] = [];
         for (const sug of suggestions) {
-            const name = sug.name.trim();
+            let name = sug.name.trim();
             if (!name) continue;
-            const key = name.toLowerCase();
+            
+            // Clean up any rogue underscores from older prompt behaviors
+            if (name.includes('_')) {
+                name = name.replace(/_/g, ' ')
+                           .split(' ')
+                           .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+                           .join(' ');
+            }
+            
+            const key = normalize(name);
             if (existing.has(key) || ledgerNames.has(key)) continue;
+            
             existing.add(key);
             fresh.push({ ...sug, name });
         }
