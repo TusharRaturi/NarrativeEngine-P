@@ -84,6 +84,7 @@ export type AppSettings = {
     showReasoning?: boolean;
     deepContextSearch?: boolean;
     autoExtractDivergences?: boolean;
+    divergenceImportanceGate?: number;
     divergenceTokenBudget?: number;
     divergenceScanBudget?: number;
     autoCondenseEnabled?: boolean;

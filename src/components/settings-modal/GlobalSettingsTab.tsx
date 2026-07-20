@@ -313,7 +313,7 @@ export function GlobalSettingsTab() {
             </label>
             <p className="text-[9px] text-text-dim max-w-[240px] leading-tight">
               Automatically extract campaign facts (canon changes, NPC states, obligations) from each turn.
-              Importance gate: 7+ (use ⚡ for lower).
+              Importance gate: {settings.divergenceImportanceGate ?? 7}+ (use ⚡ for lower).
             </p>
           </div>
           <button
@@ -322,6 +322,29 @@ export function GlobalSettingsTab() {
           >
             <div className={`absolute top-[2px] w-4 h-4 rounded-full bg-surface transition-transform ${settings.autoExtractDivergences ? 'translate-x-[22px]' : 'translate-x-[2px]'}`} />
           </button>
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-[10px] text-text-dim uppercase tracking-wider">
+              Importance Gate
+            </label>
+            <span className="text-amber-500 font-bold font-mono bg-amber-500/10 px-2 py-0.5 rounded text-[10px]">
+              {settings.divergenceImportanceGate ?? 7}
+            </span>
+          </div>
+          <input
+            type="range"
+            min={1}
+            max={10}
+            step={1}
+            value={settings.divergenceImportanceGate ?? 7}
+            onChange={(e) => updateSettings({ divergenceImportanceGate: parseInt(e.target.value) })}
+            className="w-full h-1.5 bg-border rounded-lg appearance-none cursor-pointer accent-amber-500"
+          />
+          <div className="flex justify-between text-[8px] text-text-dim mt-0.5">
+            <span>1 (Trivial)</span>
+            <span>10 (World-changing)</span>
+          </div>
         </div>
         <div>
           <div className="flex items-center justify-between mb-1">
