@@ -214,7 +214,8 @@ export function ChatArea() {
                 sceneId,
                 chapterId,
                 npcLedger,
-                importanceGate
+                importanceGate,
+                messageId
             );
 
             if (newEntries.length > 0) {

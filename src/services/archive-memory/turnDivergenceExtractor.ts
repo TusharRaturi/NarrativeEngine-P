@@ -12,7 +12,8 @@ export async function extractTurnDivergences(
     sceneId: string,
     chapterId: string,
     npcLedger: { id: string; name: string; aliases: string }[],
-    importanceGate: number
+    importanceGate: number,
+    messageId?: string
 ): Promise<DivergenceEntry[]> {
     const npcList = npcLedger.map(n =>
         `- ${n.name} (id: ${n.id}${n.aliases ? ', also known as: ' + n.aliases : ''})`
@@ -146,6 +147,7 @@ Respond with valid JSON only.`;
                 source: 'auto',
                 unrecognizedNpcNames: stillUnrecognized.length > 0 ? stillUnrecognized : undefined,
                 reviewFlag: stillUnrecognized.length > 0 ? true : undefined,
+                messageId,
             });
         }
     }

@@ -28,6 +28,7 @@ export type DivergenceEntry = {
     source: 'auto' | 'manual';
     reviewFlag?: boolean;
     unrecognizedNpcNames?: string[];
+    messageId?: string;
 };
 
 export type TopicCluster = {

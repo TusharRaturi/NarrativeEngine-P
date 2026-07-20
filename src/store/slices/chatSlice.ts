@@ -399,16 +399,29 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
     deleteMessage: (id) =>
         set((s) => {
             const msgs = s.messages.filter(m => m.id !== id);
+            const entries = s.divergenceRegister.entries.filter(e => e.messageId !== id);
+            const prunedLog = s.divergenceRegister.prunedLog?.filter(e => e.messageId !== id) ?? [];
             debouncedSaveCampaignState();
-            return { messages: msgs };
+            return { 
+                messages: msgs,
+                divergenceRegister: { ...s.divergenceRegister, entries, prunedLog, lastUpdatedAt: Date.now() }
+            };
         }),
     deleteMessagesFrom: (id) =>
         set((s) => {
             const index = s.messages.findIndex(m => m.id === id);
             if (index === -1) return { messages: s.messages };
             const msgs = s.messages.slice(0, index);
+            const deletedIds = new Set(s.messages.slice(index).map(m => m.id));
+            
+            const entries = s.divergenceRegister.entries.filter(e => !e.messageId || !deletedIds.has(e.messageId));
+            const prunedLog = s.divergenceRegister.prunedLog?.filter(e => !e.messageId || !deletedIds.has(e.messageId)) ?? [];
+            
             debouncedSaveCampaignState();
-            return { messages: msgs };
+            return { 
+                messages: msgs,
+                divergenceRegister: { ...s.divergenceRegister, entries, prunedLog, lastUpdatedAt: Date.now() }
+            };
         }),
     setStreaming: (v) => set({ isStreaming: v } as Partial<ChatDeps>),
     clearChat: () => set((_s) => {
