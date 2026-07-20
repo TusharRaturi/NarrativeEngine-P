@@ -1,4 +1,4 @@
-import type { ArchiveChapter, Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, SemanticFact, EntityEntry, BackupMeta, TimelineEvent, DivergenceRegister, PinnedExcerpt, LocationEntry } from '../types';
+import type { ArchiveChapter, Campaign, LoreChunk, GameContext, ChatMessage, CondenserState, NPCEntry, ArchiveIndexEntry, SemanticFact, EntityEntry, BackupMeta, TimelineEvent, DivergenceRegister, PinnedExcerpt, LocationEntry, NpcSuggestion, LocationSuggestion } from '../types';
 import { affinityToPcRelation } from '../services/npc/agency/agencyBands';
 
 import { API_BASE as API } from '../lib/apiBase';
@@ -8,6 +8,8 @@ export type CampaignState = {
     messages: ChatMessage[];
     condenser: CondenserState;
     pinnedExcerpts?: PinnedExcerpt[];
+    npcSuggestions?: NpcSuggestion[];
+    locationSuggestions?: LocationSuggestion[];
 };
 
 // ─── Campaign CRUD ───
@@ -87,8 +89,8 @@ export async function loadCampaignState(campaignId: string): Promise<CampaignSta
     const res = await fetch(`${API}/campaigns/${campaignId}/state`);
     if (!res.ok) return null;
     const record = await res.json();
-    const { context, messages, condenser } = record;
-    return { context, messages, condenser };
+    const { context, messages, condenser, pinnedExcerpts, npcSuggestions, locationSuggestions } = record;
+    return { context, messages, condenser, pinnedExcerpts, npcSuggestions, locationSuggestions };
 }
 
 // ─── Lore Chunks ───

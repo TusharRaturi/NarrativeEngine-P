@@ -138,5 +138,7 @@ export async function hydrateCampaign(campaignId: string) {
         characterProfileData: finalContext.characterProfileData,
         playerCharacter: finalContext.playerCharacter ?? null,
         pinnedExcerpts: state?.pinnedExcerpts ?? [],
+        npcSuggestions: state?.npcSuggestions ?? [],
+        locationSuggestions: state?.locationSuggestions ?? [],
     });
 }

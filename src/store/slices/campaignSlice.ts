@@ -568,12 +568,17 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
             fresh.push({ name, context, firstSeen: now });
         }
         if (fresh.length === 0) return {};
+        debouncedSaveCampaignState();
         return { npcSuggestions: [...s.npcSuggestions, ...fresh] } as Partial<CampaignDeps>;
     }),
-    dismissNpcSuggestion: (name) => set((s) => ({
-        npcSuggestions: s.npcSuggestions.filter(x => x.name.toLowerCase() !== name.toLowerCase()),
-    }) as Partial<CampaignDeps>),
-    clearNpcSuggestions: () => set({ npcSuggestions: [] } as Partial<CampaignDeps>),
+    dismissNpcSuggestion: (name) => set((s) => {
+        debouncedSaveCampaignState();
+        return { npcSuggestions: s.npcSuggestions.filter(x => x.name.toLowerCase() !== name.toLowerCase()) } as Partial<CampaignDeps>;
+    }),
+    clearNpcSuggestions: () => set((s) => {
+        debouncedSaveCampaignState();
+        return { npcSuggestions: [] } as Partial<CampaignDeps>;
+    }),
     // ── Location Ledger (v1) ──
     locationLedger: [],
     setLocationLedger: (locations) => set((s) => {
@@ -625,12 +630,17 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
             fresh.push({ ...sug, name });
         }
         if (fresh.length === 0) return {};
+        debouncedSaveCampaignState();
         return { locationSuggestions: [...s.locationSuggestions, ...fresh] } as Partial<CampaignDeps>;
     }),
-    dismissLocationSuggestion: (name) => set((s) => ({
-        locationSuggestions: s.locationSuggestions.filter(x => x.name.toLowerCase() !== name.toLowerCase()),
-    }) as Partial<CampaignDeps>),
-    clearLocationSuggestions: () => set({ locationSuggestions: [] } as Partial<CampaignDeps>),
+    dismissLocationSuggestion: (name) => set((s) => {
+        debouncedSaveCampaignState();
+        return { locationSuggestions: s.locationSuggestions.filter(x => x.name.toLowerCase() !== name.toLowerCase()) } as Partial<CampaignDeps>;
+    }),
+    clearLocationSuggestions: () => set((s) => {
+        debouncedSaveCampaignState();
+        return { locationSuggestions: [] } as Partial<CampaignDeps>;
+    }),
     semanticFacts: [],
     setSemanticFacts: (facts) => set({ semanticFacts: facts } as Partial<CampaignDeps>),
     timeline: [],
