@@ -41,13 +41,10 @@ vi.mock('../inventoryParser', () => ({ scanInventory: vi.fn() }));
 import { runPostTurnPipeline } from '../turn/postTurnPipeline';
 import { api } from '../llm/apiClient';
 import { backgroundQueue } from '../infrastructure/backgroundQueue';
-import { extractNPCNames, validateNPCCandidates, classifyNPCNames } from '../npc/npcDetector';
 
 const mockApi = vi.mocked(api);
 const mockBQ = vi.mocked(backgroundQueue);
-const mockExtractNPCNames = vi.mocked(extractNPCNames);
-const mockValidateNPCCandidates = vi.mocked(validateNPCCandidates);
-const mockClassifyNPCNames = vi.mocked(classifyNPCNames);
+
 
 const baseContext = (): GameContext => ({
     loreRaw: '',

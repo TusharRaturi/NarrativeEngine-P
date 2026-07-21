@@ -575,7 +575,7 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
         debouncedSaveCampaignState();
         return { npcSuggestions: s.npcSuggestions.filter(x => x.name.toLowerCase() !== name.toLowerCase()) } as Partial<CampaignDeps>;
     }),
-    clearNpcSuggestions: () => set((s) => {
+    clearNpcSuggestions: () => set(() => {
         debouncedSaveCampaignState();
         return { npcSuggestions: [] } as Partial<CampaignDeps>;
     }),
@@ -651,7 +651,7 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
         debouncedSaveCampaignState();
         return { locationSuggestions: s.locationSuggestions.filter(x => x.name.toLowerCase() !== name.toLowerCase()) } as Partial<CampaignDeps>;
     }),
-    clearLocationSuggestions: () => set((s) => {
+    clearLocationSuggestions: () => set(() => {
         debouncedSaveCampaignState();
         return { locationSuggestions: [] } as Partial<CampaignDeps>;
     }),

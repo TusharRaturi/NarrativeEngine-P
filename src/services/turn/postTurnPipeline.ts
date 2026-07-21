@@ -647,6 +647,9 @@ export async function runCombinedSeal(
     const contextLimit = sealInputs.contextLimit;
     const effectiveScanBudget = scanBudgetSetting > 0 ? scanBudgetSetting : Math.round(contextLimit * 0.75);
 
+    const liveRegister = sealInputs.divergenceRegister;
+    const activeDivergences = liveRegister.entries.filter(e => e.isActive !== false);
+
     const result = await sealChapterCombined(
         provider as Parameters<typeof sealChapterCombined>[0],
         scenes,
@@ -654,18 +657,21 @@ export async function runCombinedSeal(
         chapter.title,
         sceneIds,
         npcData,
+        activeDivergences,
         2,
         effectiveScanBudget,
         indexEntries.length > 0 ? indexEntries : undefined,
         contextLimit
     );
 
-    if (result.divergenceParseError && !result.summary && !result.divergences.length) {
+    const hasDivergences = result.divergences.newEntries.length > 0 || result.divergences.updates.length > 0 || result.divergences.invalidations.length > 0;
+
+    if (result.divergenceParseError && !result.summary && !hasDivergences) {
         toast.error('Chapter seal produced no output. Try regenerating.');
         return;
     }
 
-    if (result.divergenceParseError && result.divergences.length === 0) {
+    if (result.divergenceParseError && !hasDivergences) {
         toast.warning('Summary generated but facts extraction failed. You can regenerate to retry.');
     }
 
@@ -679,21 +685,14 @@ export async function runCombinedSeal(
             // Auto-seal already sets sealedAt via server; just update content
         }
         await api.chapters.update(activeCampaignId, chapter.chapterId, patch);
-    } else if (setSealedAt || result.divergences.length > 0) {
+    } else if (setSealedAt || hasDivergences) {
         // Even without summary, persist sceneIds
         await api.chapters.update(activeCampaignId, chapter.chapterId, { sceneIds } as unknown as Parameters<typeof api.chapters.update>[2]);
     }
 
-    if (result.divergences.length > 0) {
+    if (hasDivergences) {
         const currentSceneId = sceneIds[sceneIds.length - 1] ?? '';
-        // WO-P1-03: was `useAppStore.getState().divergenceRegister ?? EMPTY_REGISTER` (the :546 read).
-        const liveRegister = sealInputs.divergenceRegister;
-        const extracted: ExtractedDivergences = {
-            newEntries: result.divergences,
-            updates: [],
-            invalidations: []
-        };
-        const merged = mergeSealEntries(liveRegister, extracted, currentSceneId);
+        const merged = mergeSealEntries(liveRegister, result.divergences, currentSceneId);
         callbacks.setDivergenceRegister?.(merged);
 
         try {
@@ -703,12 +702,19 @@ export async function runCombinedSeal(
         }
 
         const storeState = useAppStore.getState();
-        const npcsToSuggest = result.divergences.flatMap(e => e.unrecognizedNpcNames || []);
+        const npcsToSuggest = [
+            ...result.divergences.newEntries,
+            ...result.divergences.updates.map(u => u.newEntry)
+        ].flatMap(e => e.unrecognizedNpcNames || []);
+        
         if (npcsToSuggest.length > 0 && storeState.addNpcSuggestions) {
             storeState.addNpcSuggestions(npcsToSuggest);
         }
         
-        const locationsToSuggest = result.divergences.flatMap(e => e.locations || []);
+        const locationsToSuggest = [
+            ...result.divergences.newEntries,
+            ...result.divergences.updates.map(u => u.newEntry)
+        ].flatMap(e => e.locations || []);
         if (locationsToSuggest.length > 0 && storeState.addLocationSuggestions) {
             storeState.addLocationSuggestions(
                 locationsToSuggest.map(name => ({
@@ -718,7 +724,7 @@ export async function runCombinedSeal(
             );
         }
 
-        console.log(`[CombinedSeal] Chapter ${chapter.chapterId}: ${result.divergences.length} facts extracted`);
+        console.log(`[CombinedSeal] Chapter ${chapter.chapterId}: ${result.divergences.newEntries.length + result.divergences.updates.length + result.divergences.invalidations.length} facts extracted`);
     }
 
     // ── Apply witness corrections from seal audit ──

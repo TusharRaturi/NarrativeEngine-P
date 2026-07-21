@@ -215,15 +215,16 @@ export function ChatArea() {
                 chapterId,
                 npcLedger,
                 importanceGate,
+                useAppStore.getState().divergenceRegister?.entries?.filter(e => e.isActive !== false) || [],
                 messageId
             );
 
-            if (newEntries.length > 0) {
+            if (newEntries.newEntries.length + newEntries.updates.length + newEntries.invalidations.length > 0) {
                 const currentRegister = useAppStore.getState().divergenceRegister;
                 if (currentRegister) {
                     const nextRegister = mergeSealEntries(currentRegister, newEntries, sceneId);
                     useAppStore.getState().setDivergenceRegister?.(nextRegister);
-                    toast.success(`Extracted ${newEntries.length} new facts.`);
+                    toast.success(`Extracted ${newEntries.newEntries.length} new facts, ${newEntries.updates.length} updates, and ${newEntries.invalidations.length} invalidations.`);
                 }
             } else {
                 toast.info('No facts met the importance gate for extraction.');

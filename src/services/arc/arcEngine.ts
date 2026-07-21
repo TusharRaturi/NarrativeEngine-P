@@ -132,7 +132,7 @@ export function runArcTick(
     if (divergenceFacts.length > 0) {
         const liveRegister = state.divergenceRegister;
         if (liveRegister && callbacks.setDivergenceRegister) {
-            const merged = mergeSealEntries(liveRegister, divergenceFacts, sceneId);
+            const merged = mergeSealEntries(liveRegister, { newEntries: divergenceFacts, updates: [], invalidations: [] }, sceneId);
             callbacks.setDivergenceRegister(merged);
             console.log(`[ArcTick] ${divergenceFacts.length} arc divergence fact(s) written`);
         } else {

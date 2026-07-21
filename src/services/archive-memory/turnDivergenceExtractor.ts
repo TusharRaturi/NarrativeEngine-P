@@ -2,7 +2,8 @@ import type { ProviderConfig, EndpointConfig, DivergenceEntry } from '../../type
 import { extractJson } from '../infrastructure/jsonExtract';
 import { llmCall } from '../../utils/llmCall';
 import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
-import { DIVERGENCE_CATEGORIES, CATEGORY_DEFINITIONS, ExtractedDivergences, coerceCategory } from '../campaign-state/divergenceRegister';
+import { DIVERGENCE_CATEGORIES, CATEGORY_DEFINITIONS, coerceCategory } from '../campaign-state/divergenceRegister';
+import type { ExtractedDivergences } from '../campaign-state/divergenceRegister';
 import { uid } from '../../utils/uid';
 import { extractContextEntities } from '../retrieval/semanticMemory';
 
@@ -31,7 +32,7 @@ export async function extractTurnDivergences(
         }
     }
 
-    const entities = extractContextEntities(userText + '\n' + gmText, [], npcLedger as any);
+    const entities = extractContextEntities(userText + '\n' + gmText, [], npcLedger.map(n => ({ id: n.id, name: n.name, aliases: n.aliases, tags: [], summary: '' })) as unknown as import('../../types').NPCEntry[]);
     const scoredDivergences = activeDivergences.map(div => {
         let score = 0;
         const textLower = div.text.toLowerCase();
@@ -127,7 +128,7 @@ Respond with valid JSON only.`;
 
     const result: ExtractedDivergences = { newEntries: [], updates: [], invalidations: [] };
 
-    const parseFactItem = (item: any, forceCategory?: string): DivergenceEntry | null => {
+    const parseFactItem = (item: unknown, forceCategory?: string): DivergenceEntry | null => {
         if (!item || typeof item !== 'object') return null;
         const rawItem = item as Record<string, unknown>;
         const text = typeof rawItem.text === 'string' ? rawItem.text.trim() : '';
@@ -180,7 +181,7 @@ Respond with valid JSON only.`;
         return {
             id: 'div_' + uid(),
             chapterId,
-            category: category as any,
+            category: category as ExtractedDivergences['newEntries'][0]['category'],
             text,
             sceneRef,
             npcIds: resolvedNpcIds,
@@ -199,7 +200,7 @@ Respond with valid JSON only.`;
 
     if (parsed.new_facts && typeof parsed.new_facts === 'object') {
         for (const category of DIVERGENCE_CATEGORIES) {
-            const slotArr = (parsed.new_facts as any)[category];
+            const slotArr = (parsed.new_facts as Record<string, unknown>)[category];
             if (!Array.isArray(slotArr)) continue;
             for (const item of slotArr) {
                 const fact = parseFactItem(item, category);

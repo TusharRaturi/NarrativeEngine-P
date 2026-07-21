@@ -339,6 +339,12 @@ The store relies on a specific dependency structure with 6 composed slices, mana
 *   **Background Queue**: Fire-and-forget task queue `makeGuarded()` to prevent running background tasks on campaigns that have been swapped away.
 *   **JSON Extraction**: `extractJsonRobust` acts as a resilient backend parser handling broken or trailing balanced-braces in LLM outputs.
 
+### Deep Dive: Divergence Extractor v2 (Fact Extraction)
+The fact extraction pipeline uses a bifurcated schema to handle chronological supersession of world state and lore facts:
+*   **Schema**: Outputs an `ExtractedDivergences` object containing `new_facts`, `updated_facts` (with `target_fact_id`), and `invalidated_facts`.
+*   **RAG Injection**: Active facts from the `divergenceRegister` are injected into the prompt using semantic entity matching, ensuring the LLM has historical context for updates.
+*   **Lifecycle**: Updates and invalidations automatically tombstone the old fact (`isActive: false`) and set a `supersededBy` lineage to maintain chronological integrity.
+
 ### Deep Dive: Supported LLM Provider Roles
 The engine supports decoupled providers across 5 configurable endpoints:
 *   **Story AI**: Main GM narration (required).

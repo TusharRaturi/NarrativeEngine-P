@@ -67,7 +67,7 @@ describe('parseCombinedSealOutput — WO-06 synopsis fields', () => {
         expect(result.summary?.summary).toContain('Locust Town');
         expect(result.summary?.keywords).toEqual(['locust-town', 'bandits']);
         // Existing top-level seal outputs intact
-        expect(result.divergences).toEqual([]);
+        expect(result.divergences).toEqual({ newEntries: [], updates: [], invalidations: [] });
         expect(result.witnessCorrections).toBeUndefined();
         expect(result.sceneEventMap).toEqual({});
         expect(result.divergenceParseError).toBeUndefined();
@@ -102,7 +102,7 @@ describe('parseCombinedSealOutput — WO-06 synopsis fields', () => {
         // No warning about the three optional fields (erratum: missing is silent)
         expect(optionalFieldWarnings()).toEqual([]);
         // Existing outputs intact
-        expect(result.divergences).toEqual([]);
+        expect(result.divergences).toEqual({ newEntries: [], updates: [], invalidations: [] });
         expect(result.sceneEventMap).toEqual({});
     });
 
@@ -127,7 +127,7 @@ describe('parseCombinedSealOutput — WO-06 synopsis fields', () => {
         // Existing summary fields still intact
         expect(result.summary?.title).toBe('The Battle at Locust Town');
         expect(result.summary?.summary).toContain('Locust Town');
-        expect(result.divergences).toEqual([]);
+        expect(result.divergences).toEqual({ newEntries: [], updates: [], invalidations: [] });
         expect(result.sceneEventMap).toEqual({});
     });
 
@@ -147,7 +147,7 @@ describe('parseCombinedSealOutput — WO-06 synopsis fields', () => {
         expect(optionalWarnings).toHaveLength(3);
         // Seal still succeeds — existing outputs intact
         expect(result.summary?.title).toBe('The Battle at Locust Town');
-        expect(result.divergences).toEqual([]);
+        expect(result.divergences).toEqual({ newEntries: [], updates: [], invalidations: [] });
         expect(result.sceneEventMap).toEqual({});
     });
 
@@ -183,9 +183,9 @@ describe('parseCombinedSealOutput — WO-06 synopsis fields', () => {
         expect(result.summary?.synopsis).toBe('A synopsis.');
         expect(result.summary?.abstractTitle).toBe('A theme');
         expect(result.summary?.literalTitle).toBe('A fact');
-        expect(result.divergences).toHaveLength(1);
-        expect(result.divergences[0].text).toBe('Aldric swore an oath');
-        expect(result.divergences[0].npcIds).toEqual(['npc_1']);
+        expect(result.divergences.newEntries).toHaveLength(1);
+        expect(result.divergences.newEntries[0].text).toBe('Aldric swore an oath');
+        expect(result.divergences.newEntries[0].npcIds).toEqual(['npc_1']);
         expect(result.sceneEventMap?.['001']).toHaveLength(1);
         expect(result.sceneEventMap?.['001'][0].eventType).toBe('promise');
     });
@@ -211,8 +211,8 @@ describe('parseCombinedSealOutput — WO-06 synopsis fields', () => {
         expect(result.summary?.synopsis).toBeUndefined();
         expect(result.summary?.abstractTitle).toBeUndefined();
         expect(result.summary?.literalTitle).toBeUndefined();
-        expect(result.divergences).toHaveLength(1);
-        expect(result.divergences[0].category).toBe('locations');
+        expect(result.divergences.newEntries).toHaveLength(1);
+        expect(result.divergences.newEntries[0].category).toBe('locations');
         // No optional-field warnings (missing is silent per erratum)
         expect(optionalFieldWarnings()).toEqual([]);
     });
@@ -222,7 +222,7 @@ describe('parseCombinedSealOutput — WO-06 synopsis fields', () => {
         const result = parseCombinedSealOutput(garbage, CHAPTER_ID, SCENE_IDS, NPC_LEDGER);
 
         // Existing fallback: summary may be null, divergences empty, divergenceParseError true
-        expect(result.divergences).toEqual([]);
+        expect(result.divergences).toEqual({ newEntries: [], updates: [], invalidations: [] });
         expect(result.divergenceParseError).toBe(true);
         // No synopsis fields populated — they were never parsed
         expect(result.summary?.synopsis).toBeUndefined();
