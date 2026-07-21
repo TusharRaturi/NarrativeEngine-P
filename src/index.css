@@ -391,3 +391,42 @@ html[data-has-bg="true"] .chat-bubble {
   border-color: var(--color-terminal);
   color: var(--color-ice);
 }
+
+/* ═══ LANGUAGE OVERRIDES ════════════════════════════════════════════════
+   Every per-language visual correction lives HERE. Never in a component.
+
+   The app's chrome is styled for English — ALL-CAPS with wide letter-spacing.
+   That does not translate: `uppercase` is a no-op on Hangul, wide tracking
+   makes Hangul read as broken, and Cyrillic runs ~30% longer than English.
+
+   How this is driven: each locale declares a `styleProfile` in its own file
+   (src/i18n/locales/*.ts); `applyLocale()` projects it onto <html> as
+   data-attributes. So a language fix is a data change in one .ts file, not a
+   sweep over 97 components. See MASTERPLAN Locked Decision 4.
+
+   Why these rules win: Tailwind v4 puts its utilities in a cascade layer, and
+   UNLAYERED css (this block) beats any layered rule regardless of specificity.
+   So `text-transform: none` here overrides an inline `uppercase` utility class
+   without !important.
+
+   LIMITATION — inline styles: CSS cannot override a style="" attribute at any
+   specificity. Components that set textTransform/letterSpacing inline must use
+   `chromeText()` from useTranslation() instead. CampaignHub.tsx is the worked
+   example.
+
+   Marker class: chrome text carries `.chrome-label`. Phase 2 must add it while
+   extracting each file — free at extraction time, expensive as a second pass. */
+
+[data-lang-caps="flat"] .chrome-label {
+  text-transform: none;
+}
+
+[data-lang-tracking="tight"] .chrome-label {
+  letter-spacing: normal;
+}
+
+/* Opt-in per-language font stack, set from a locale's styleProfile.fontStack.
+   Unset for every language today — the system stack renders ko/ru correctly. */
+html[style*="--lang-font-stack"] {
+  font-family: var(--lang-font-stack);
+}

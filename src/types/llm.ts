@@ -1,5 +1,7 @@
 // ─── LLM / AI Configuration ───────────────────────────────────────────────
 
+import type { LocaleCode } from '../i18n/types';
+
 export type ApiFormat = 'openai' | 'ollama' | 'claude' | 'gemini';
 
 export type AiTier = 'lite' | 'pro' | 'max';
@@ -78,6 +80,7 @@ export type AppSettings = {
     contextLimit: number;
     debugMode?: boolean;
     theme?: 'light' | 'dark' | 'system';
+    locale?: LocaleCode;             // UI chrome language. Defaults to the browser language on first run, then never auto-changes. Independent of narration language (Phase 3).
     showReasoning?: boolean;
     deepContextSearch?: boolean;
     autoExtractDivergences?: boolean;

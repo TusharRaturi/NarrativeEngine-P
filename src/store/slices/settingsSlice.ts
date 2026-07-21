@@ -11,6 +11,7 @@ import {
     migrateSettings,
     applyTheme,
     applyUIScale,
+    applyLocale,
     debouncedSaveSettings,
     defaultSettings,
 } from './settingsHelpers';
@@ -20,7 +21,7 @@ export {
     DEFAULT_SURPRISE_TYPES, DEFAULT_SURPRISE_TONES, DEFAULT_ENCOUNTER_TYPES, DEFAULT_ENCOUNTER_TONES,
     DEFAULT_WORLD_WHO, DEFAULT_WORLD_WHERE, DEFAULT_WORLD_WHY, DEFAULT_WORLD_WHAT,
     defaultProvider, defaultPreset, defaultSettings,
-    applyTheme, systemTheme, applyUIScale, migrateSettings, debouncedSaveSettings,
+    applyTheme, systemTheme, applyUIScale, applyLocale, migrateSettings, debouncedSaveSettings,
 } from './settingsHelpers';
 
 // ── Slice type ─────────────────────────────────────────────────────────
@@ -89,6 +90,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
                 } as Partial<SettingsSlice>);
                 applyTheme(migrated.theme ?? 'light');
                 applyUIScale(migrated.uiScale ?? 1.0);
+                applyLocale(migrated.locale ?? 'en');
                 return;
             }
 
@@ -102,6 +104,7 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
                 } as Partial<SettingsSlice>);
                 applyTheme(migrated.theme ?? 'light');
                 applyUIScale(migrated.uiScale ?? 1.0);
+                applyLocale(migrated.locale ?? 'en');
                 debouncedSaveSettings(migrated, null);
                 return;
             }
@@ -109,6 +112,9 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
             console.warn('Failed to load settings, using defaults', e);
             toast.warning('Could not load saved settings — using defaults');
         }
+        // No stored settings: state is still `defaultSettings`, whose locale was
+        // seeded from the browser. Project it so the document matches the state.
+        applyLocale(get().settings?.locale ?? 'en');
         set({ settingsLoaded: true });
     },
 
@@ -121,6 +127,9 @@ export const createSettingsSlice: StateCreator<SettingsSlice & { activeCampaignI
             }
             if (patch.uiScale !== undefined) {
                 applyUIScale(patch.uiScale);
+            }
+            if (patch.locale) {
+                applyLocale(patch.locale);
             }
             return { settings: newSettings };
         });

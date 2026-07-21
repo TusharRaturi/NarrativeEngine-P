@@ -1,5 +1,6 @@
 import { useAppStore } from '../../store/useAppStore';
 import { VaultSection } from './VaultSection';
+import { LanguageSection } from './LanguageSection';
 
 export function GlobalSettingsTab() {
   const { settings, updateSettings } = useAppStore();
@@ -12,6 +13,9 @@ export function GlobalSettingsTab() {
           card; compound sections (Rules RAG, Divergence, Auto-Trim, Auto-Archive)
           span both columns. Stacks to a single column on narrow/mobile. */}
       <div className="md:grid md:grid-cols-2 md:gap-4 space-y-4 md:space-y-0">
+
+      {/* Interface Language */}
+      <LanguageSection />
 
       {/* Context Limit */}
       <div>

@@ -3,6 +3,7 @@ import { set as idbSet } from 'idb-keyval';
 import { encryptSettingsProviders } from '../../services/infrastructure/settingsCrypto';
 import { uid } from '../../utils/uid';
 import { toast } from '../../components/Toast';
+import { applyLocale, detectLocale, isLocaleCode } from '../../i18n';
 
 import { API_BASE as API } from '../../lib/apiBase';
 
@@ -83,6 +84,9 @@ export const defaultSettings: AppSettings = {
     contextLimit: 4096,
     debugMode: false,
     theme: 'light',
+    // Seeded from the browser so a first-run Korean user gets Korean chrome
+    // without hunting for the setting. Overridden by any stored value.
+    locale: detectLocale(),
     showReasoning: true,
     deepContextSearch: false,
     autoExtractDivergences: true,
@@ -118,6 +122,11 @@ export function applyTheme(theme: 'light' | 'dark' | 'system') {
 export function systemTheme(): 'light' | 'dark' {
     return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
+
+// Re-exported so callers reach every "apply a global preference to the document"
+// helper from one place. Implementation lives in src/i18n (it must stay free of
+// store imports — see the note at the top of that file).
+export { applyLocale };
 
 export function applyUIScale(scale: number): void {
     const html = document.documentElement;
@@ -298,6 +307,9 @@ export function migrateSettings(data: Record<string, unknown>): AppSettings {
         contextLimit: (raw.contextLimit as number) ?? 4096,
         debugMode: (raw.debugMode as boolean) ?? false,
         theme: (raw.theme as 'light' | 'dark' | 'system') ?? 'light',
+        // First run only: seed from the browser. Once a locale is stored — even
+        // 'en' — it is an explicit choice and is never auto-changed again.
+        locale: isLocaleCode(raw.locale) ? raw.locale : detectLocale(),
         showReasoning: (raw.showReasoning as boolean) ?? true,
         deepContextSearch: (raw.deepContextSearch as boolean) ?? false,
         autoExtractDivergences: (raw.autoExtractDivergences as boolean) ?? true,

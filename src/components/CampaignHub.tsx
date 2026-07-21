@@ -15,8 +15,13 @@ import { CoverflowCarousel } from './CoverflowCarousel';
 import { Backdrop } from './primitives/Backdrop';
 import { GhostBtn, DangerBtn } from './primitives/Buttons';
 import { WorldLoreModal } from './WorldLoreModal';
+import { useTranslation } from '../i18n/useTranslation';
 
 export function CampaignHub() {
+    // `chromeText` handles the inline-styled hero label below: CSS cannot
+    // override a style="" attribute at any specificity, so the [data-lang]
+    // rules in index.css can't reach it. See the LANGUAGE OVERRIDES block.
+    const { t, chromeText } = useTranslation();
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
     const [activeIdx, setActiveIdx] = useState(0);
     const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -67,7 +72,7 @@ export function CampaignHub() {
     const handleExport = async (id: string) => {
         setIsExporting(id);
         try { await exportCampaign(id); }
-        catch (e) { console.error('[Export]', e); alert('Export failed'); }
+        catch (e) { console.error('[Export]', e); alert(t('hub.export.failed')); }
         finally { setIsExporting(null); }
     };
 
@@ -80,10 +85,10 @@ export function CampaignHub() {
             const bundle = JSON.parse(await file.text());
             const result = await importCampaign(bundle);
             await refresh();
-            alert(`"${result.name}" imported — search index rebuilding in background`);
+            alert(t('hub.import.success', { name: result.name }));
         } catch (err) {
             console.error('[Import]', err);
-            alert('Import failed — invalid campaign file');
+            alert(t('hub.import.failed'));
         } finally {
             setIsImporting(false);
         }
@@ -128,7 +133,7 @@ export function CampaignHub() {
             <button
                 onClick={() => importInputRef.current?.click()}
                 disabled={isImporting}
-                title="Import Campaign"
+                title={t('hub.import.tooltip')}
                 style={{
                     position: 'absolute', top: 20, left: 20,
                     width: 36, height: 36, borderRadius: '50%',
@@ -157,7 +162,7 @@ export function CampaignHub() {
             {/* Settings button */}
             <button
                 onClick={() => useAppStore.getState().toggleSettings()}
-                title="Settings"
+                title={t('hub.settings.tooltip')}
                 style={{
                     position: 'absolute', top: 20, right: 20,
                     width: 36, height: 36, borderRadius: '50%',
@@ -182,7 +187,7 @@ export function CampaignHub() {
             {/* World Lore button */}
             <button
                 onClick={() => useAppStore.getState().toggleWorldLoreModal()}
-                title="Create World Lore"
+                title={t('hub.worldLore.tooltip')}
                 style={{
                     position: 'absolute', top: 20, right: 64,
                     width: 36, height: 36, borderRadius: '50%',
@@ -208,11 +213,11 @@ export function CampaignHub() {
             <div style={{ textAlign: 'center', marginBottom: 44, position: 'relative', zIndex: 2 }}>
                 <div style={{
                     fontFamily: "'JetBrains Mono', monospace",
-                    fontSize: 10, letterSpacing: '0.4em',
-                    textTransform: 'uppercase', color: 'rgba(106,159,212,0.65)',
+                    fontSize: 10, color: 'rgba(106,159,212,0.65)',
                     marginBottom: 10,
+                    ...chromeText({ textTransform: 'uppercase', letterSpacing: '0.4em' }),
                 }}>
-                    AI Game Master System
+                    {t('hub.tagline')}
                 </div>
                 <h1 style={{
                     fontFamily: "'Cinzel', 'Times New Roman', serif",
@@ -220,14 +225,14 @@ export function CampaignHub() {
                     color: 'var(--color-text-primary)', letterSpacing: '0.08em',
                     margin: '0 0 10px', lineHeight: 1,
                 }}>
-                    Narrative{' '}
-                    <span style={{ color: 'var(--color-terminal)' }}>Nexus</span>
+                    {t('hub.brand.lead')}{' '}
+                    <span style={{ color: 'var(--color-terminal)' }}>{t('hub.brand.accent')}</span>
                 </h1>
                 <p style={{
                     fontStyle: 'italic', fontSize: 15,
                     color: 'rgba(107,107,107,0.55)', letterSpacing: '0.02em',
                 }}>
-                    Choose your world. Shape its fate.
+                    {t('hub.subtitle')}
                 </p>
                 {/* Divider */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 18, justifyContent: 'center' }}>
@@ -261,11 +266,11 @@ export function CampaignHub() {
                         onClick={e => e.stopPropagation()}
                     >
                         <p style={{ color: 'var(--color-text-primary)', fontSize: 14, marginBottom: 20, lineHeight: 1.6, fontFamily: "'EB Garamond', serif" }}>
-                            Delete this campaign? All data — chat history, lore, saves — will be lost forever.
+                            {t('hub.delete.confirm')}
                         </p>
                         <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
-                            <GhostBtn onClick={() => setConfirmDelete(null)}>Cancel</GhostBtn>
-                            <DangerBtn onClick={() => handleDelete(confirmDelete)}>Delete</DangerBtn>
+                            <GhostBtn onClick={() => setConfirmDelete(null)}>{t('hub.delete.cancel')}</GhostBtn>
+                            <DangerBtn onClick={() => handleDelete(confirmDelete)}>{t('hub.delete.confirmAction')}</DangerBtn>
                         </div>
                     </div>
                 </Backdrop>
