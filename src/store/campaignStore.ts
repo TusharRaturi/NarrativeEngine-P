@@ -126,6 +126,26 @@ export async function getNPCLedger(campaignId: string): Promise<NPCEntry[]> {
         if (!n.isPC && n.pcRelation === undefined) {
             n.pcRelation = affinityToPcRelation(n.affinity ?? 50);
         }
+        // Coerce any scalar NPCEntry fields that were stored as arrays/objects by a pre-coerce
+        // fix in the NPC generator (profile.ts). The render prompt asks the model for strings
+        // (e.g. "aliases": "Comma separated aliases..."), but models often returned arrays
+        // (e.g. ["Scholar", "Caretaker of the Ancients"]) which were assigned verbatim into
+        // `string`-typed fields. The corruption threw `TypeError: x.split is not a function`
+        // from downstream `.split(',')` call sites (scoring.ts, witnessCapture.ts, etc.) and
+        // locked the UI in 'gathering-context' once a chapter was sealed (the only path that
+        // routes through the affected rankChapters→extractContextActivations call). Flatten in
+        // place here so already-corrupted saves recover on load. Idempotent — no-op on healthy
+        // campaigns. Persistence happens via the normal store-update path on the next mutation.
+        if (Array.isArray(n.aliases)) n.aliases = (n.aliases as unknown[]).map(String).filter(Boolean).join(', ');
+        if (Array.isArray(n.goals)) n.goals = (n.goals as unknown[]).map(String).filter(Boolean).join('; ');
+        if (Array.isArray(n.appearance)) n.appearance = (n.appearance as unknown[]).map(String).filter(Boolean).join(' ');
+        if (n.disposition && typeof n.disposition !== 'string') n.disposition = String(n.disposition);
+        if (n.voice && typeof n.voice !== 'string') n.voice = String(n.voice);
+        if (n.personality && typeof n.personality !== 'string') n.personality = String(n.personality);
+        if (n.faction && typeof n.faction !== 'string') n.faction = String(n.faction);
+        if (n.status && typeof n.status !== 'string') n.status = String(n.status);
+        if (n.storyRelevance && typeof n.storyRelevance !== 'string') n.storyRelevance = String(n.storyRelevance);
+        if (n.exampleOutput && typeof n.exampleOutput !== 'string') n.exampleOutput = String(n.exampleOutput);
     }
     return npcs;
 }

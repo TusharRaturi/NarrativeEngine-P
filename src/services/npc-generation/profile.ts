@@ -23,6 +23,24 @@ function offeredTraitNames(matureMode: boolean): string[] {
     return TRAIT_VOCAB.filter(t => matureMode || t.tier !== 'mature').map(t => t.text);
 }
 
+/**
+ * Coerce an LLM-returned scalar field to a string. The render prompt asks the
+ * model for string values (e.g. `"aliases": "String (Comma separated...)"`),
+ * but models frequently return arrays (e.g. `["Scholar", "Caretaker..."]`) or
+ * other non-string shapes for multi-valued fields. Assigning those verbatim
+ * into a `string`-typed NPCEntry field silently corrupts the ledger and later
+ * throws `TypeError: x.split is not a function` from downstream `.split(',')`
+ * call sites. This normalizes any value to a string: arrays are joined with
+ * ", " (preserving all values, matching the prompt's comma-separated contract),
+ * other non-strings are stringified, null/undefined falls back to the default.
+ */
+function coerceStringField(v: unknown, fallback = ''): string {
+    if (typeof v === 'string') return v;
+    if (Array.isArray(v)) return v.map(String).filter(Boolean).join(', ');
+    if (v === null || v === undefined) return fallback;
+    return String(v);
+}
+
 /** Faction-appropriate fallback long want when the model omits or returns an empty one. */
 function defaultLongWant(faction: string): string {
     const f = (faction && faction.trim() && faction !== 'Unknown') ? faction.trim() : 'a name of their own';
@@ -96,25 +114,25 @@ export async function generateNPCProfile(
 
         const newEntry: NPCEntry = {
             id: uid(),
-            name: parsed.name || npcName,
-            aliases: parsed.aliases || '',
-            status: parsed.status || 'Alive',
-            faction: parsed.faction || 'Unknown',
-            storyRelevance: parsed.storyRelevance || 'Unknown',
-            appearance: parsed.appearance || '',
+            name: coerceStringField(parsed.name) || npcName,
+            aliases: coerceStringField(parsed.aliases),
+            status: coerceStringField(parsed.status, 'Alive'),
+            faction: coerceStringField(parsed.faction, 'Unknown'),
+            storyRelevance: coerceStringField(parsed.storyRelevance, 'Unknown'),
+            appearance: coerceStringField(parsed.appearance),
             visualProfile: parsed.visualProfile || {
                 race: 'Unknown', gender: 'Unknown', ageRange: 'Unknown', build: 'Unknown', symmetry: 'Unknown', hairStyle: 'Unknown', eyeColor: 'Unknown', skinTone: 'Unknown', gait: 'Unknown', distinctMarks: 'None', clothing: 'Unknown', artStyle: 'Anime',
             },
-            disposition: parsed.disposition || 'Neutral',
-            goals: parsed.goals || 'Unknown',
-            voice: parsed.voice || '',
-            personality: parsed.personality || parsed.disposition || 'Unknown',
-            exampleOutput: parsed.exampleOutput || '',
+            disposition: coerceStringField(parsed.disposition, 'Neutral'),
+            goals: coerceStringField(parsed.goals, 'Unknown'),
+            voice: coerceStringField(parsed.voice),
+            personality: coerceStringField(parsed.personality, parsed.disposition || 'Unknown'),
+            exampleOutput: coerceStringField(parsed.exampleOutput),
             affinity: 50,
-            drives: parsed.drives ? {
-                coreWant: parsed.drives.coreWant || '',
-                sessionWant: parsed.drives.sessionWant || '',
-                sceneWant: parsed.drives.sceneWant || '',
+            drives: (parsed.drives && typeof parsed.drives === 'object' && !Array.isArray(parsed.drives)) ? {
+                coreWant: coerceStringField(parsed.drives.coreWant),
+                sessionWant: coerceStringField(parsed.drives.sessionWant),
+                sceneWant: coerceStringField(parsed.drives.sceneWant),
             } : undefined,
             behavioralTriggers: Array.isArray(parsed.behavioralTriggers)
                 ? parsed.behavioralTriggers.filter((t: Record<string, unknown>) => t.keyword && t.shift).map((t: Record<string, unknown>) => ({ keyword: String(t.keyword), shift: String(t.shift) }))
@@ -130,8 +148,9 @@ export async function generateNPCProfile(
         // Phase-1 refit: hex comes from the ROLL (rolledHex), NOT the model. Traits come from
         // anchorTraits + engine-drawn consistent traits (finalTraits), NOT the model. The model's
         // traits/personalityHex in `parsed` are ignored on the new path.
-        const longWant = (typeof parsed.longWant === 'string' && parsed.longWant.trim())
-            ? parsed.longWant.trim()
+        const longWantStr = coerceStringField(parsed.longWant).trim();
+        const longWant = longWantStr
+            ? longWantStr
             : defaultLongWant(newEntry.faction);
         newEntry.traits = finalTraits;
         newEntry.wants = {
@@ -142,7 +161,7 @@ export async function generateNPCProfile(
         newEntry.personalityHex = rolledHex;
         newEntry.primaryGroup = primary;
         newEntry.secondaryGroup = secondary;
-        newEntry.region = typeof parsed.region === 'string' ? parsed.region.trim() : '';
+        newEntry.region = coerceStringField(parsed.region);
         newEntry.populated = true;
         // B2 — Generated NPCs are born populated:true but pcRelation was never homed at birth,
         // and populateAgencyFields skips populated NPCs, so pcRelation stayed undefined forever
