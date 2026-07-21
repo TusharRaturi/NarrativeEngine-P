@@ -75,6 +75,8 @@ export function MessageBubble({
     if (thinkMatch) {
         thinkingBlock = thinkMatch[1].trim();
         markdownContent = markdownContent.replace(/<think[\s\S]*?<\/think>/gi, '').trim();
+    } else if (msg.reasoning_content) {
+        thinkingBlock = msg.reasoning_content.trim();
     }
 
     const parsedArgs = (msg as any).parsedArgs;

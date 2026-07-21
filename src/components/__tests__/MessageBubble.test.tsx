@@ -114,6 +114,28 @@ describe('MessageBubble', () => {
             expect(screen.queryByText('secret plan')).not.toBeInTheDocument();
             expect(screen.getByText('Visible narration.')).toBeInTheDocument();
         });
+
+        it('renders the Cognitive Process accordion from native reasoning_content field', () => {
+            const nativeMsg = makeMessage({
+                content: 'Visible narration.',
+                reasoning_content: 'secret plan from native field',
+            });
+            renderBubble(nativeMsg, { showReasoning: true });
+            expect(screen.getByText('Cognitive Process')).toBeInTheDocument();
+            expect(screen.getByText(/secret plan from native field/)).toBeInTheDocument();
+            expect(screen.getByText('Visible narration.')).toBeInTheDocument();
+        });
+
+        it('prefers inline <think> tags over reasoning_content when both are present', () => {
+            const both = makeMessage({
+                content: '<think>inline plan</think>Visible narration.',
+                reasoning_content: 'native plan that should be ignored',
+            });
+            renderBubble(both, { showReasoning: true });
+            expect(screen.getByText(/inline plan/)).toBeInTheDocument();
+            expect(screen.queryByText(/native plan that should be ignored/)).not.toBeInTheDocument();
+            expect(screen.getByText('Visible narration.')).toBeInTheDocument();
+        });
     });
 
     describe('swipe navigation', () => {

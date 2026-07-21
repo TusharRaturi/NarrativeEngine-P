@@ -4,6 +4,8 @@ import { countTokens } from '../infrastructure/tokenizer';
 import type { TraceCollector } from './traceCollector';
 import { renderLodChapters } from './lodRenderer';
 
+const THINK_TAG_REGEX = /<think[\s\S]*?<\/think>\s*/gi;
+
 export function buildHistory(opts: {
     history: ChatMessage[];
     condensedUpToIndex?: number;
@@ -118,6 +120,9 @@ export function buildHistory(opts: {
         if (msg.role === 'user' && typeof content === 'string') {
             content = content.replace(/\n?\[(?:DICE OUTCOMES:|SURPRISE EVENT:|ENCOUNTER EVENT:|WORLD_EVENT:|LOOT DROP:)[^\]]*\]/g, '');
         }
+        if (msg.role === 'assistant' && typeof content === 'string') {
+            content = content.replace(THINK_TAG_REGEX, '').trim() || content;
+        }
         const textToEstimate = content || JSON.stringify(msg.tool_calls || '') || '';
         const cost = countTokens(textToEstimate);
         if (historyUsed + cost > verbatimBudget) break;
@@ -129,7 +134,6 @@ export function buildHistory(opts: {
         if (msg.name) openAIMsg.name = msg.name;
         if (msg.tool_calls) openAIMsg.tool_calls = msg.tool_calls;
         if (msg.tool_call_id) openAIMsg.tool_call_id = msg.tool_call_id;
-        if (msg.reasoning_content) openAIMsg.reasoning_content = msg.reasoning_content;
 
         fitted.unshift(openAIMsg);
         fittedEphemeral.unshift(!!msg.ephemeral);
