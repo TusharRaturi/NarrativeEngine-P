@@ -1,11 +1,18 @@
 // ─── Game Context / Pipeline / Session Types ─────────────────────────────
 
-import type { InventoryItem, CharacterProfile, CharacterProfileState, InventoryItemCategory, SceneStakes } from './character';
+import type { InventoryItem, CharacterProfile, CharacterProfileState, InventoryItemCategory, SceneStakes, NPCEntry } from './character';
 export type { SceneStakes };
 import type { LoreChunk, RuleChunkMeta } from './lore';
 import type { ArcRecord } from './arc';
 export type { ArcRecord };
 import type { LootTree } from './loot';
+
+// WO-A rewrite 2 §2: PlayerCharacter is an NPCEntry-shaped record stored at
+// `context.playerCharacter`. It is NOT a row in `npcLedger`. `isPC` is vestigial
+// for this record (its location *is* its PC-ness). Reusing the NPCEntry shape
+// keeps the prompt pipeline, sanitization helpers, and hex/traits/wants/kit
+// fields identical between PC and NPC without inventing a parallel schema.
+export type PlayerCharacter = NPCEntry;
 
 
 export type PipelinePhase =
@@ -219,6 +226,11 @@ export type GameContext = {
     //    absent on existing campaigns → undefined → "no current place".
     currentPlaceId?: string | null;
     currentFeature?: string | null;   // free-string feature within the current place
+    // ── Player Character (WO-A rewrite 2 §2 — D1: PC leaves npcLedger) ──
+    // The PC is an NPCEntry-shaped record. `null` = no PC created yet. Persisted
+    // as part of the campaign state JSON. Migration (services/character/migratePC.ts)
+    // moves any legacy `isPC: true` row from npcLedger into this field on hydrate.
+    playerCharacter?: PlayerCharacter | null;
 };
 
 export type OpenAITool = {

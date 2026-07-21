@@ -8,8 +8,16 @@ function applySort<T extends { name: string }>(list: T[], order: SortOrder): T[]
     return list;
 }
 
+/**
+ * The NPC ledger excludes the player character (isPC === true) — the PC has its
+ * own dedicated panel. Returns a new array; does not mutate input.
+ */
+export function filterPCOut<T extends { isPC?: boolean }>(list: T[]): T[] {
+    return list.filter(n => !n.isPC);
+}
+
 export function filterNPCs(npcs: NPCEntry[], query: string, order: SortOrder = 'none'): NPCEntry[] {
-    let list = npcs;
+    let list = filterPCOut(npcs);
     if (query.trim()) {
         const q = query.toLowerCase();
         list = list.filter(n =>

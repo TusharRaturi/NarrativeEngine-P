@@ -73,7 +73,7 @@ export function runAgencyTick(
 
     if (!heartbeat.fired) return;
 
-    const pc = npcLedger.find(n => n.isPC);
+    const pc = state.context.playerCharacter ?? npcLedger.find(n => n.isPC);
     const roster = buildProximityRoster(npcLedger, pc);
     if (roster.length === 0) return;
 
@@ -272,7 +272,7 @@ function runTimeskipPath(
     currentTick: number,
     sceneStakes: SceneStakes,
 ): void {
-    const pc = npcLedger.find(n => n.isPC);
+    const pc = state.context.playerCharacter ?? npcLedger.find(n => n.isPC);
     const roster = buildProximityRoster(npcLedger, pc);
 
     // Upgrade wants→goals for all roster NPCs idempotently before simulation

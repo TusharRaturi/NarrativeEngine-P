@@ -1,4 +1,4 @@
-import { Settings, PanelLeftOpen, PanelLeftClose, LogOut, Users, Archive, Save, Pin, Cpu, MapPin } from 'lucide-react';
+import { Settings, PanelLeftOpen, PanelLeftClose, LogOut, Users, Archive, Save, Pin, Cpu, MapPin, UserCircle } from 'lucide-react';
 import { createBackup } from '../store/campaignStore';
 import { flushAllPendingSaves } from '../store/slices/campaignSlice';
 import { toast } from './Toast';
@@ -16,6 +16,7 @@ export function Header() {
         toggleSettings,
         toggleDrawer,
         toggleNPCLedger,
+        togglePCPanel,
         toggleLocationLedger,
         toggleBackupModal,
         togglePinnedMemories,
@@ -100,6 +101,16 @@ export function Header() {
                 >
                     <Archive size={13} />
                     <span className="hidden sm:inline">Backups</span>
+                </button>
+
+                <button
+                    onClick={togglePCPanel}
+                    className="flex items-center gap-1.5 h-8 px-2.5 rounded-sm border border-border/40 hover:border-terminal bg-void-lighter hover:bg-terminal/5 text-text-dim hover:text-terminal transition-colors shrink-0 cursor-pointer text-[10px] font-bold uppercase tracking-wider font-mono"
+                    title="Character"
+                    aria-label="Open character panel"
+                >
+                    <UserCircle size={13} />
+                    <span>Character</span>
                 </button>
 
                 <button

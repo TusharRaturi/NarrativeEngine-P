@@ -13,7 +13,6 @@ import { ChatNavFabs } from './chat/ChatNavFabs';
 import { ChatMessageList } from './chat/ChatMessageList';
 import { useSwipeVariants } from './hooks/useSwipeVariants';
 import { useSceneContinue } from './hooks/useSceneContinue';
-import { toast } from './Toast';
 import { rollbackArchiveFrom } from '../services/archive-memory/archiveManager';
 import { useCondenser } from './hooks/useCondenser';
 import { useChapterSealing } from './hooks/useChapterSealing';
@@ -24,7 +23,6 @@ import { useAutoresizeInput } from '../hooks/useAutoresizeInput';
 import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { InventoryStagingBar } from './inventory/InventoryStagingBar';
 import { IndexingBanner } from './IndexingBanner';
-import { PCCreationWizard } from './pc/PCCreationWizard';
 import { AskGmPanel } from './ooc/AskGmPanel';
 import { ArmedAskGmNote } from './ooc/ArmedAskGmNote';
 
@@ -69,7 +67,6 @@ export function ChatArea() {
     );
 
     const [input, setInput] = useState('');
-    const [showPCCreator, setShowPCCreator] = useState(false);
     // Session-local OOC state stays outside the campaign store and turn lifecycle.
     const [oocOpen, setOocOpen] = useState(false);
     const [oocBusy, setOocBusy] = useState(false);
@@ -210,8 +207,7 @@ export function ChatArea() {
                 pendingMessageId={pendingMessageId}
                 swipe={swipe}
                 sceneContinue={sceneContinue}
-                onOpenSwipeSheet={(id) => setSwipeSheetMessageId(id)}
-                onCreateCharacter={() => setShowPCCreator(true)}
+                onCreateCharacter={() => useAppStore.getState().togglePCPanel()}
                 loadingStatus={loadingStatus}
                 pipelinePhase={pipelinePhase}
                 streamingStats={streamingStats}
@@ -283,21 +279,6 @@ export function ChatArea() {
             )}
 
             <ChatNavFabs scrollContainerRef={scrollContainerRef} bottomRef={bottomRef} />
-
-            {showPCCreator && (
-                <PCCreationWizard
-                    onComplete={(result) => {
-                        useAppStore.getState().updateNPC(result.npcEntry.id, { ...result.npcEntry });
-                        useAppStore.getState().updateContext({
-                            characterProfile: result.characterProfile,
-                            characterProfileActive: true,
-                        });
-                        setShowPCCreator(false);
-                        toast.success(`Character "${result.npcEntry.name}" created!`);
-                    }}
-                    onCancel={() => setShowPCCreator(false)}
-                />
-            )}
 
             <LootRollModal />
             <DiceRollModal />

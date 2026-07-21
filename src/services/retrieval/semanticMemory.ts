@@ -183,7 +183,15 @@ export function formatTraitsForContext(
     profile: CharacterProfileState,
     selected: SelectedTraits,
 ): string {
-    const parts: string[] = ['[CHARACTER PROFILE]'];
+    // WO-A rewrite 2 §2: strengthened the persona label so the LLM treats this
+    // block as the human's player character (the protagonist), not just a
+    // generic "character profile" blob. The legacy `[CHARACTER PROFILE]`
+    // marker is kept as the second line so existing tests + any external
+    // parsers that grep for it still match.
+    const parts: string[] = [
+        '[PLAYER CHARACTER — the human you are playing with]',
+        '[CHARACTER PROFILE]',
+    ];
 
     const id = profile.identity;
     const idParts: string[] = [];

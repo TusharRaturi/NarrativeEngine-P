@@ -1,4 +1,4 @@
-import type { GameContext, InventoryItemCategory, ChatMessage, NPCEntry, SceneEventType, LocationEntry } from '../../types';
+import type { GameContext, InventoryItemCategory, ChatMessage, NPCEntry, SceneEventType, LocationEntry, PlayerCharacter } from '../../types';
 import { CORE_FLOOR_TRAITS } from '../../types';
 import { countTokens } from '../infrastructure/tokenizer';
 import { minifyBookkeepingStub, minifySelectedInventory, minifySelectedProfile } from '../turn/contextMinifier';
@@ -74,7 +74,14 @@ export function buildVolatile(opts: {
                 400,
                 CORE_FLOOR_TRAITS,
             );
-            const profileText = formatTraitsForContext(profile, selected);
+            let profileText = formatTraitsForContext(profile, selected);
+            const kitLine = buildPcKitLine(context.playerCharacter);
+            if (kitLine) {
+                profileText = profileText.replace(
+                    /\[END CHARACTER PROFILE\]$/,
+                    `${kitLine}\n[END CHARACTER PROFILE]`,
+                );
+            }
             if (profileText) {
                 const profileSceneTag = context.characterProfileLastScene && context.characterProfileLastScene !== 'Never'
                     ? `Last Updated: Scene #${context.characterProfileLastScene}`
@@ -207,4 +214,32 @@ export function buildLocationBlock(context: GameContext, ledger: LocationEntry[]
 
     // Last resort: hard truncate
     return block.slice(0, LOCATION_BLOCK_CHAR_CAP);
+}
+
+/**
+ * PC Signature Kit line for the [CHARACTER PROFILE] block (WO-A §5).
+ * Reads the PC record from `context.playerCharacter` (WO-A rewrite 2 §2 — D1:
+ * the PC is no longer a row in `npcLedger`). When the PC has a `signatureKit`,
+ * emits one bounded line: `Kit: <equipment> | Powers: <abilities> | element: <element>`.
+ * Empty segments are omitted; the line is omitted entirely when there is no kit
+ * or no PC record. Returns '' so the caller can skip insertion (byte-identical
+ * to the pre-kit payload when there is no kit — regression guard).
+ *
+ * Legacy `npcLedger.find(n => n.isPC)` fallback: if `playerCharacter` is null
+ * but a stray `isPC` row exists in `npcLedger` (defensive — should not happen
+ * post-migration), we still read the kit off it. This keeps the payload stable
+ * even if a future bug re-introduces a PC row.
+ */
+export function buildPcKitLine(pc: PlayerCharacter | null | undefined, npcLedger?: NPCEntry[]): string {
+    let kitOwner: PlayerCharacter | undefined = pc ?? undefined;
+    if (!kitOwner && npcLedger) {
+        kitOwner = npcLedger.find(n => n.isPC);
+    }
+    if (!kitOwner || !kitOwner.signatureKit) return '';
+    const kit = kitOwner.signatureKit;
+    const segments: string[] = [];
+    if (kit.equipment.length > 0) segments.push(`Kit: ${kit.equipment.join(', ')}`);
+    if (kit.abilities.length > 0) segments.push(`Powers: ${kit.abilities.join(', ')}`);
+    if (kit.element) segments.push(`element: ${kit.element}`);
+    return segments.length > 0 ? segments.join(' | ') : '';
 }

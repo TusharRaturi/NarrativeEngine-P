@@ -36,6 +36,10 @@ export interface WatchdogInput {
     messages: ChatMessage[];
     npcLedger: NPCEntry[];
     onStageNpcIds: string[];
+    // WO-A rewrite 2 §2: PC lives at `context.playerCharacter`. The watchdog
+    // uses it to derive PC name patterns for the one-directional heuristic.
+    // Falls back to a legacy `isPC` row in `npcLedger` (post-migration empty).
+    playerCharacter?: NPCEntry | null;
 }
 
 // ── Tunables (named constants per WO-02 §3/§4/§5) ─────────────────────────────
@@ -282,16 +286,18 @@ function buildInterruptedGoalSignals(
  * Build a deterministic watchdog dossier from the turn's visible inputs.
  * Pure: no I/O, no Date, no Math.random. Same inputs → same output.
  *
- * PC name patterns are derived from `npcLedger` (the entry where `isPC === true`),
- * so the function takes only the spec-mandated input object. When no PC entry is
- * present, the one-directional heuristic treats the PC as never-named, so any NPC
- * that appears as the first subject in an assistant message counts as initiating.
+ * PC name patterns are derived from `input.playerCharacter` (WO-A rewrite 2 §2:
+ * the PC lives at `context.playerCharacter`), with a defensive fallback to a
+ * legacy `isPC` row in `npcLedger` (post-migration this is empty). When no PC
+ * entry is present, the one-directional heuristic treats the PC as never-named,
+ * so any NPC that appears as the first subject in an assistant message counts
+ * as initiating.
  */
 export function buildWatchdogDossier(input: WatchdogInput): WatchdogDossier {
-    const { messages, npcLedger, onStageNpcIds } = input;
+    const { messages, npcLedger, onStageNpcIds, playerCharacter } = input;
     const onStageSet = new Set(onStageNpcIds);
     const onStageNpcs = npcLedger.filter(n => onStageSet.has(n.id) && !n.archived);
-    const pcEntry = npcLedger.find(n => n.isPC);
+    const pcEntry = playerCharacter ?? npcLedger.find(n => n.isPC) ?? null;
     const pcPatterns = pcEntry ? namePatterns(pcEntry) : [];
 
     const signals: WatchdogSignal[] = [

@@ -260,7 +260,9 @@ function autoEnableCharacterProfile(
     npcLedger: NPCEntry[],
 ): void {
     if (state.context.characterProfileActive) return;
-    const pc = npcLedger.find(n => n.isPC);
+    // WO-A rewrite 2 §2: PC lives at `context.playerCharacter`. Defensive
+    // fallback to a legacy `isPC` ledger row (post-migration this is empty).
+    const pc = state.context.playerCharacter ?? npcLedger.find(n => n.isPC);
     if (!pc) return;
     const existing = state.context.characterProfileData || { name: '', race: '', class: '', level: 1, hp: { current: 20, max: 20 }, stats: {}, skills: [], abilities: [], traits: [], notes: '' };
     const seeded: typeof existing = {
@@ -648,10 +650,22 @@ async function runNPCTrack(
     npcLedger: import('../../types').NPCEntry[],
     activeCampaignId: string
 ): Promise<void> {
+    // WO-A rewrite 2 §2: the PC lives at `context.playerCharacter` now, not as
+    // an `isPC` row in the ledger. The NPC detector must skip the PC's name +
+    // aliases so play never spawns an NPC clone of the player character.
+    // Defensive: also check the ledger for a legacy `isPC` row (post-migration
+    // this should be empty, but cheap to guard).
+    const pc = state.context.playerCharacter ?? npcLedger.find(n => n.isPC) ?? null;
     const excludeNames = npcLedger.flatMap(npc => {
         const aliases = (npc.aliases || '').split(',').map(a => a.trim()).filter(Boolean);
         return [npc.name, ...aliases];
     });
+    if (pc) {
+        excludeNames.push(pc.name);
+        if (pc.aliases) {
+            excludeNames.push(...pc.aliases.split(',').map(a => a.trim()).filter(Boolean));
+        }
+    }
     const extractedNames = extractNPCNames(lastAssistantContent, excludeNames);
     if (extractedNames.length === 0) return;
 

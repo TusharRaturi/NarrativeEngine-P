@@ -80,7 +80,7 @@ directory under `src/services/` (or `server/`) with co-located `__tests__/`.
 
 | Subsystem | Primary Directory | Key Files | Role |
 |---|---|---|---|
-| **Turn Orchestration** | `src/services/turn/` | `turnOrchestrator.ts`, `pendingCommit.ts`, `contextGatherer.ts`, `contextRecommender.ts`, `postTurnPipeline.ts`, `aiTier.ts`, `toolHandlers.ts`, `toolRegistry.ts`, `contextMinifier.ts`, `sceneContinue.ts`, `sceneStakesTag.ts`, `swipeGeneration.ts`, `tagGeneration.ts`, `gatherProgress.ts`, `sceneStakesTelemetry.ts` | Main game loop, swipe lifecycle, post-turn NLP, tier feature matrix |
+| **Turn Orchestration** | `src/services/turn/` | `turnOrchestrator.ts`, `turnStages.ts`, `turnContext.ts`, `pendingCommit.ts`, `contextGatherer.ts`, `contextRecommender.ts`, `postTurnPipeline.ts`, `aiTier.ts`, `toolHandlers.ts`, `toolRegistry.ts`, `contextMinifier.ts`, `sceneContinue.ts`, `sceneStakesTag.ts`, `swipeGeneration.ts`, `tagGeneration.ts`, `gatherProgress.ts`, `sceneStakesTelemetry.ts`, `directorBrief.ts`, `directorWatchdog.ts` | Main game loop, turn stages, thread-safe data context bus, swipe lifecycle, post-turn NLP, director brief, NPC watchdog |
 | **NPC Agency** | `src/services/npc/agency/` | `agencyEngine.ts`, `agencyBands.ts`, `agencyPools.ts`, `agencyConstants.ts`, `agencyDice.ts`, `agencyDrift.ts`, `agencyGoals.ts`, `agencyHeartbeat.ts`, `agencyLifecycle.ts`, `agencyProgress.ts`, `agencySelection.ts`, `agencyTimeskip.ts`, `agencyTimeskipRun.ts`, `agencyCollision.ts`, `agencyDigest.ts`, `agencyAudition.ts`, `agencyWantDraw.ts` | Heartbeat-driven off-screen NPC life, goal rolls, hex drift, tier-cross, collision tangling, timeskip |
 | **NPC Generation & Behavior** | `src/services/npc/` (+ `npc-generation/`) | `npcDetector.ts`, `npcBehaviorDirective.ts`, `npcPressureTracker.ts`, `reactionMenu.ts`, `reactionRepression.ts`, `relationMeter.ts`, `hexRoll.ts`, `manualAdd.ts`, `npcManualResolve.ts`, `npcReview.ts`, `portraitPrompt.ts`, `signatureKit.ts`, `troublemaker.ts`, `dispositionGroups.ts`, `hexVoiceGuide.ts` + `npc-generation/` (profile, charIntroEngine, etc.) | Name detection (7-pass), hex roll inside envelope, reaction menu, repression layer, relation meter, drift alerts, knowledge boundary |
 | **Prompt Assembly** | `src/services/payload/` | `payloadBuilder.ts`, `stable.ts`, `volatile.ts`, `world.ts`, `history.ts`, `budgets.ts`, `pinnedMemories.ts`, `traceCollector.ts` | 5-block payload assembly with Anthropic prompt-cache annotations |
@@ -334,17 +334,29 @@ This codebase includes a custom parsing script to build interactive visual depen
 
 ### 9.1 Turn Orchestration (`src/services/turn/`)
 
-**16 production files + 2 test files.**
+**19 production files + 6 test files.**
 
-The main game loop (`runTurn` in `turnOrchestrator.ts`):
-1. **Phase `rolling-dice`**: `rollEngines(context)` pre-rolls the dice pool; if `armedRoll` set, `resolveManualRoll` runs instead and the result is injected as a hard FACT ("This HAPPENED. Do not re-roll."). Loot drop and one-shot event injectors run here too.
-2. **Add user message synchronously** so the bubble appears before heavy async.
-3. **Phase `gathering-context`**: `gatherContext()` runs 5 stages in parallel (planner, semantic candidates, next-scene pre-assign, recommender, lore+rules) with a `Promise.race` safety backstop so slow stages don't block. Per-stage live UI indicator via `useSyncExternalStore`.
-4. **NPC Intro Engine** (tier-gated `introEngine`): LLM call against auxiliary provider.
-5. **Phase `building-prompt`**: `buildPayload()` assembles the 5-block payload.
-6. **Phase `generating`**: `sendMessage` streams via per-endpoint queue. Tool calls dispatched via `TOOL_REGISTRY` (max 5 per turn). On error: 3-tier retry (retry → retry without tools → give up).
-7. **On done**: `extractAndStripSceneStakes`, build `SwipeVariant`, stamp `swipeSet: [variant]` + `pendingCommit: true`, call `capturePendingTurnSnapshot()` to freeze the messages window + cached payload for lazy swipes 2-5.
-8. **Phase `idle`**. Post-turn pipeline does NOT fire here — it waits for `commitPendingTurn`.
+The main game loop flows through `runTurn()` in `turnOrchestrator.ts`, which orchestrates the execution using decoupled stages defined in `turnStages.ts` and threads a unified `TurnContext` data bus.
+
+`turnContext.ts` (118 lines) — TurnContext data bus:
+- Threads a single mutable context object through the turn pipeline, eliminating positional argument coupling (e.g. `buildPayload` parameters are collapsed into options) and local store reads (saves state reads of `useAppStore.getState()`).
+- Holds input, evolving outputs, gathered RAG context, trace collection, and director briefs/watchdog dossiers.
+
+`turnStages.ts` (608 lines) — Decoupled turn loop stages:
+1. **resolveEngineRolls**: Pre-rolls dice pools and resolves armed rolls/loot drops/one-shot injectors.
+2. **addUserTurnMessage**: Synchronously adds the player's message bubble to the state.
+3. **gatherTurnContext**: Gathers parallel context candidates (planner, semantic candidates, recommender, lore, rules) via `gatherContext()`.
+4. **runIntroEngineStage**: Runs tier-gated NPC introductions.
+5. **runDirectorStage**: Evaluates off-stage NPC signals (`directorWatchdog.ts`) and compiles director prompts/nudges (`directorBrief.ts`).
+6. **buildTurnPayload**: Compiles prompt payload blocks via `buildPayload()`.
+7. **runGenerationStage**: Handles the streaming LLM calls, recursive tool executions (max 5), retries, and post-generation swipe snapshot staging.
+
+`directorWatchdog.ts` (336 lines) — Off-screen NPC life signals:
+- Scans current context and active NPCs, constructing a dossiers of off-screen activities, drifts, and signals.
+- Injects subtle warnings/directives into the next turn's payload when NPCs drift or cross conflict boundaries.
+
+`directorBrief.ts` (419 lines) — Director Brief payload injection:
+- Dynamically generates synopsis updates, backfills chapter/scene descriptions, and wires LOD (Level of Detail) history logic into prompt payloads for context efficiency.
 
 `pendingCommit.ts` (298 lines) owns the singleton snapshot:
 - `capturePendingTurnSnapshot()` freezes `turnState`, `messages`, `cachedPayload`, `displayInput`, `activeCampaignId`, `npcLedger` at swipe-1 completion.

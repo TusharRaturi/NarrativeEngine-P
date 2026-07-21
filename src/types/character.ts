@@ -214,6 +214,12 @@ export type NPCEntry = {
     personalityHex?: PersonalityHex;
     // ---- NPC Signature Kit (v1) — durable loadout; anti-drift for gear + powers ----
     signatureKit?: NPCSignatureKit;
+    // ---- PC-only meta (set by the Character module; ignored for NPCs) ----
+    pcMeta?: {
+        archetype?: string;
+        combatTier?: string;           // Phase 7 wiring; display-only today
+        stats?: Record<string, number>;
+    };
     traits?: string[];            // <=5, controlled vocab (see services/npc/agencyPools.ts)
     region?: string;              // coarse location: 'academy' | 'Ryuten' | ...
     haunt?: string;               // flavor only, for reports ('the garden')

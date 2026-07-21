@@ -2,26 +2,8 @@ import { useState } from 'react';
 import { Trash2, Plus, AlertCircle, Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
 import { uid } from '../../utils/uid';
-import type { CharacterProfileState, CharacterTrait, DivergenceCategory, SceneEventType } from '../../types';
-
-const CATEGORIES: DivergenceCategory[] = [
-    'locations', 'npc_events', 'promises_debts', 'world_state', 'party_facts', 'rules_lore', 'misc',
-];
-
-const EVENT_TAGS: SceneEventType[] = [
-    'combat', 'discovery', 'item_acquired', 'item_lost', 'relationship_shift',
-    'travel', 'promise', 'betrayal', 'death', 'revelation', 'quest_milestone', 'other',
-];
-
-const CATEGORY_LABELS: Record<DivergenceCategory, string> = {
-    locations: 'Location',
-    npc_events: 'NPC Event',
-    promises_debts: 'Promise/Debt',
-    world_state: 'World State',
-    party_facts: 'Party Fact',
-    rules_lore: 'Rules/Lore',
-    misc: 'Misc',
-};
+import type { CharacterProfileState, CharacterTrait } from '../../types';
+import { TraitRow, IdentityFields } from '../pc/profileFields';
 
 /**
  * Character Profile editor (WO-11.5) — desktop port of mobile's
@@ -103,36 +85,11 @@ export function CharacterProfileEditor() {
                 {/* Identity section — always injected (Tier 1 core) */}
                 <div className="space-y-1.5">
                     <p className="text-[9px] uppercase tracking-widest text-text-dim/70">Identity (always sent)</p>
-                    <div className="grid grid-cols-2 gap-2">
-                        <input
-                            type="text"
-                            value={profile.identity.name || ''}
-                            onChange={(e) => updateIdentity({ name: e.target.value })}
-                            placeholder="Name"
-                            className="bg-void-dark border border-border rounded px-2 py-1 text-[12px] text-text-bright"
-                        />
-                        <input
-                            type="text"
-                            value={profile.identity.race || ''}
-                            onChange={(e) => updateIdentity({ race: e.target.value })}
-                            placeholder="Race"
-                            className="bg-void-dark border border-border rounded px-2 py-1 text-[12px] text-text-bright"
-                        />
-                        <input
-                            type="text"
-                            value={profile.identity.class || ''}
-                            onChange={(e) => updateIdentity({ class: e.target.value })}
-                            placeholder="Class"
-                            className="bg-void-dark border border-border rounded px-2 py-1 text-[12px] text-text-bright"
-                        />
-                        <input
-                            type="number"
-                            value={profile.identity.level ?? ''}
-                            onChange={(e) => updateIdentity({ level: e.target.value ? Number(e.target.value) : undefined })}
-                            placeholder="Level"
-                            className="bg-void-dark border border-border rounded px-2 py-1 text-[12px] text-text-bright"
-                        />
-                    </div>
+                    <IdentityFields
+                        identity={profile.identity}
+                        onChange={updateIdentity}
+                        disabled={!active}
+                    />
                 </div>
 
                 {/* Active traits */}
@@ -203,74 +160,6 @@ export function CharacterProfileEditor() {
                         </p>
                     </div>
                 )}
-            </div>
-        </div>
-    );
-}
-
-function TraitRow({ trait, onChange, onSupersede, onRemove }: {
-    trait: CharacterTrait;
-    onChange: (patch: Partial<CharacterTrait>) => void;
-    onSupersede: () => void;
-    onRemove: () => void;
-}) {
-    const toggleTag = (tag: SceneEventType) => {
-        const has = trait.eventTags.includes(tag);
-        onChange({
-            eventTags: has
-                ? trait.eventTags.filter(t => t !== tag)
-                : [...trait.eventTags, tag],
-        });
-    };
-
-    return (
-        <div className="space-y-1 bg-void-dark/40 border border-border/40 rounded px-2 py-1.5">
-            <div className="flex items-start gap-2">
-                <textarea
-                    value={trait.text}
-                    onChange={(e) => onChange({ text: e.target.value })}
-                    rows={1}
-                    placeholder="Trait text..."
-                    className="flex-1 bg-void-dark border border-border/40 rounded px-2 py-1 text-[11px] text-text-bright resize-none min-h-[28px]"
-                />
-                <input
-                    type="number"
-                    min={1}
-                    max={10}
-                    value={trait.importance}
-                    onChange={(e) => onChange({ importance: Math.max(1, Math.min(10, Number(e.target.value) || 5)) })}
-                    className="w-10 bg-void-dark border border-border/40 rounded px-1 py-1 text-[10px] text-text-bright text-center"
-                    title="Importance (1-10)"
-                />
-                <button onClick={onSupersede} className="text-text-dim/50 hover:text-ember" title="Mark superseded">
-                    <AlertCircle size={11} />
-                </button>
-                <button onClick={onRemove} className="text-text-dim/50 hover:text-red-400" title="Delete">
-                    <Trash2 size={11} />
-                </button>
-            </div>
-            <div className="flex flex-wrap gap-1 items-center">
-                <select
-                    value={trait.category}
-                    onChange={(e) => onChange({ category: e.target.value as DivergenceCategory })}
-                    className="bg-void-dark border border-border/40 rounded px-1.5 py-0.5 text-[9px] text-text-dim uppercase tracking-wider"
-                >
-                    {CATEGORIES.map(c => <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>)}
-                </select>
-                {EVENT_TAGS.map(tag => {
-                    const active = trait.eventTags.includes(tag);
-                    return (
-                        <button
-                            key={tag}
-                            onClick={() => toggleTag(tag)}
-                            className={`px-1.5 py-0.5 rounded text-[8px] uppercase tracking-wider transition-colors ${
-                                active ? 'bg-terminal/20 text-terminal border border-terminal/40' : 'bg-void-dark/50 text-text-dim/40 border border-border/20 hover:text-text-dim'
-                            }`}
-                        >
-                            {tag}
-                        </button>
-                    );
-                })}
             </div>
         </div>
     );

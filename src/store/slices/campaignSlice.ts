@@ -269,7 +269,18 @@ export const defaultContext: GameContext = {
         why: [...DEFAULT_WORLD_WHY],
         what: [...DEFAULT_WORLD_WHAT],
     },
+    // WO-A rewrite 2 §2: PC lives here, not in npcLedger. Optional — null means
+    // "no PC created yet" (the Character panel shows the creation entry point).
+    playerCharacter: null,
 };
+
+// ── Player Character (WO-A rewrite 2: D1 — PC lives outside npcLedger) ──
+// The PC is an NPCEntry-shaped record stored at `context.playerCharacter`.
+// It is NOT a row in `npcLedger`. `isPC` is vestigial for this record (the
+// record's location *is* its PC-ness). Reusing the NPCEntry shape keeps the
+// prompt pipeline, sanitization helpers, and hex/traits/wants/kit fields
+// identical between PC and NPC without inventing a parallel schema.
+export type PlayerCharacter = NPCEntry;
 
 // ── Slice type ─────────────────────────────────────────────────────────
 
@@ -292,6 +303,11 @@ export type CampaignSlice = {
     archiveNPC: (id: string, turn: number, reason: string) => void;
     restoreNPC: (id: string) => void;
     mergeOrRenameNpc: (from: string, to: string, turn: number) => 'merged' | 'renamed' | 'none';
+    // ── Player character (WO-A rewrite 2 §1 + §2) ──
+    // Stored at `context.playerCharacter`, NOT in npcLedger. `isPC` is vestigial.
+    playerCharacter: PlayerCharacter | null;
+    setPlayerCharacter: (pc: PlayerCharacter | null) => void;
+    updatePlayerCharacter: (patch: Partial<PlayerCharacter>) => void;
     onStageNpcIds: string[];
     setOnStageNpcIds: (ids: string[]) => void;
     // WO-11.3 — NPC suggestions: auto-detected names awaiting player promotion.
@@ -661,6 +677,25 @@ export const createCampaignSlice: StateCreator<CampaignDeps, [], [], CampaignSli
         const newContext = { ...s.context, characterProfileData: p };
         debouncedSaveCampaignState();
         return { context: newContext, characterProfileData: p } as Partial<CampaignDeps>;
+    }),
+
+    // ── Player Character (WO-A rewrite 2 §2) ─────────────────────────────
+    // The PC lives at `context.playerCharacter`, persisted via the normal
+    // debouncedSaveCampaignState path (it rides inside `context`). The slice
+    // also keeps a top-level `playerCharacter` mirror for cheap selector access
+    // that doesn't require destructuring `context`. Both are written together.
+    playerCharacter: null,
+    setPlayerCharacter: (pc) => set((s) => {
+        const newContext = { ...s.context, playerCharacter: pc ?? null };
+        debouncedSaveCampaignState();
+        return { context: newContext, playerCharacter: pc } as Partial<CampaignDeps>;
+    }),
+    updatePlayerCharacter: (patch) => set((s) => {
+        if (!s.playerCharacter) return {} as Partial<CampaignDeps>;
+        const merged = { ...s.playerCharacter, ...patch };
+        const newContext = { ...s.context, playerCharacter: merged };
+        debouncedSaveCampaignState();
+        return { context: newContext, playerCharacter: merged } as Partial<CampaignDeps>;
     }),
 
     bookkeepingTurnCounter: 0,

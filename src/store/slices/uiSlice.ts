@@ -10,6 +10,7 @@ export type UISlice = {
     settingsOpen: boolean;
     drawerOpen: boolean;
     npcLedgerOpen: boolean;
+    pcPanelOpen: boolean;
     locationLedgerOpen: boolean;
     backupModalOpen: boolean;
     lastPayloadTrace?: PayloadTrace[];
@@ -23,6 +24,7 @@ export type UISlice = {
     toggleSettings: () => void;
     toggleDrawer: () => void;
     toggleNPCLedger: () => void;
+    togglePCPanel: () => void;
     toggleLocationLedger: () => void;
     toggleBackupModal: () => void;
     setLastPayloadTrace: (trace?: PayloadTrace[]) => void;
@@ -79,6 +81,7 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     settingsOpen: false,
     drawerOpen: true,
     npcLedgerOpen: false,
+    pcPanelOpen: false,
     locationLedgerOpen: false,
     backupModalOpen: false,
     pipelinePhase: 'idle',
@@ -91,6 +94,7 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     toggleSettings: () => set((s) => ({ settingsOpen: !s.settingsOpen })),
     toggleDrawer: () => set((s) => ({ drawerOpen: !s.drawerOpen })),
     toggleNPCLedger: () => set((s) => ({ npcLedgerOpen: !s.npcLedgerOpen })),
+    togglePCPanel: () => set((s) => ({ pcPanelOpen: !s.pcPanelOpen })),
     toggleLocationLedger: () => set((s) => ({ locationLedgerOpen: !s.locationLedgerOpen })),
     toggleBackupModal: () => set((s) => ({ backupModalOpen: !s.backupModalOpen })),
     setLastPayloadTrace: (trace) => set({ lastPayloadTrace: trace }),

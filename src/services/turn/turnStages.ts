@@ -200,6 +200,7 @@ export async function runDirectorStage(
         messages: state.messages,
         npcLedger,
         onStageNpcIds: state.onStageNpcIds ?? [],
+        playerCharacter: state.context.playerCharacter ?? null,
     });
     const watchdogNudge = watchdogDossier.nudgeText ?? undefined;
 

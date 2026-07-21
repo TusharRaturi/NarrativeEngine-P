@@ -3,11 +3,13 @@ import {
     loadCampaignState, getLoreChunks, getNPCLedger, getLocationLedger,
     loadArchiveIndex, loadTimeline, loadChapters, loadEntities,
     loadDivergenceRegister, saveDivergenceRegister, saveChapters,
+    saveNPCLedger,
 } from './campaignStore';
 import { DEFAULT_CONTEXT, DEFAULT_CONDENSER } from '../services/campaignInit';
 import { migrateLegacyContext } from '../types';
 import type { GameContext, ArchiveChapter, DivergenceRegister, DivergenceEntry } from '../types';
 import { migrateV1ToV2 } from '../services/campaign-state/divergenceRegister';
+import { migratePCIntoContext } from '../services/character/migratePC';
 
 function backfillSceneIds(chapters: ArchiveChapter[]): { chapters: ArchiveChapter[]; changed: boolean } {
     let changed = false;
@@ -60,12 +62,26 @@ export async function hydrateCampaign(campaignId: string) {
         }
     }
 
+    // WO-A rewrite 2 §2: one-time migration of legacy `isPC` row from npcLedger
+    // into `context.playerCharacter`. Idempotent — no-op on already-migrated
+    // campaigns. If migration strips a row, persist the trimmed ledger back to
+    // disk so the legacy row doesn't复活 on next hydrate.
+    const pcMigration = migratePCIntoContext(migratedContext, npcs ?? []);
+    const finalContext = pcMigration.context;
+    const finalNpcLedger = pcMigration.npcLedger;
+    if (pcMigration.migrated) {
+        console.log('[Hydrator] Migrated legacy isPC row from npcLedger into context.playerCharacter');
+        try { await saveNPCLedger(campaignId, finalNpcLedger); } catch (e) {
+            console.warn('[Hydrator] Failed to persist trimmed npcLedger after PC migration:', e);
+        }
+    }
+
     useAppStore.setState({
-        context: migratedContext,
+        context: finalContext,
         messages: state?.messages ?? [],
         condenser: { ...(state?.condenser ?? DEFAULT_CONDENSER) },
         loreChunks: chunks,
-        npcLedger: npcs,
+        npcLedger: finalNpcLedger,
         locationLedger: locations ?? [],
         archiveIndex: archiveIndex ?? [],
         timeline: timeline ?? [],
@@ -73,8 +89,9 @@ export async function hydrateCampaign(campaignId: string) {
         entities: entities ?? [],
         divergenceRegister: register,
         activeCampaignId: campaignId,
-        inventoryItems: migratedContext.inventoryItems,
-        characterProfileData: migratedContext.characterProfileData,
+        inventoryItems: finalContext.inventoryItems,
+        characterProfileData: finalContext.characterProfileData,
+        playerCharacter: finalContext.playerCharacter ?? null,
         pinnedExcerpts: state?.pinnedExcerpts ?? [],
     });
 }
