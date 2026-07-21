@@ -3,26 +3,35 @@ import { countTokens } from '../infrastructure/tokenizer';
 import { DEFAULT_RULES } from '../rules/defaultRules';
 import type { TraceCollector } from './traceCollector';
 
-// Reasoning/thinking-model detector (DeepSeek-R1, Qwen QwQ, etc.). Resolves the
-// active preset's storyAI slot — first via the two-tier `storyAIProviderId`
-// provider lookup, then falls back to the legacy inline `activePreset.storyAI.modelName`.
-// Exported so payloadBuilder.ts can gate the per-turn CoT invocation line on the
-// same test without re-implementing the resolution chain.
-export function isReasoningModel(settings: AppSettings): boolean {
+// Thinking-mode detector. Resolves the active preset's storyAI slot via the
+// two-tier `storyAIProviderId` lookup, then the legacy inline `storyAI` field.
+// Returns true when the resolved provider has `thinkingEffort` set to anything
+// other than 'off' (or unset). This replaces the previous brittle regex over
+// model names (`/deepseek-r|qwq|qwen.*think|r1/i`) — every frontier model in
+// 2026 (GPT-5.x, Claude 4.x, Gemini 2.5, DeepSeek-R) supports thinking via a
+// request param, so the user's per-provider `thinkingEffort` dropdown is the
+// single source of truth. Exported so payloadBuilder.ts can gate the per-turn
+// CoT invocation line on the same test without re-implementing the resolution.
+export function isThinkingEnabled(settings: AppSettings): boolean {
     const activePreset = settings.presets?.find((p) => p.id === settings.activePresetId);
     const storyProviderId: string | undefined = activePreset?.storyAIProviderId;
     const storyProvider = storyProviderId ? settings.providers?.find((p) => p.id === storyProviderId) : undefined;
-    const modelName = storyProvider?.modelName ?? activePreset?.storyAI?.modelName ?? '';
-    return /deepseek-r|qwq|qwen.*think|r1/i.test(modelName);
+    const effort = storyProvider?.thinkingEffort ?? activePreset?.storyAI?.thinkingEffort;
+    return effort !== undefined && effort !== 'off';
 }
 
-// [FABLE-AUTHORED] — verbatim. Block labels verified against world.ts / volatile.ts:
+// [FABLE-AUTHORED] — block labels verified against world.ts / volatile.ts:
 //   [ACTIVE NPC CONTEXT] (world.ts:387), [FACTS KNOWN TO ON-STAGE CHARACTERS] (world.ts:439),
 //   [DICE OUTCOMES: ...] (engineRolls.ts:194 — emitted as a user-message prefix, stripped by history.ts),
 //   [LOCATION] (volatile.ts:189). [DIRECTOR BRIEF] does not exist yet — left verbatim per spec
 //   (Director Brief service lands in WO-04); the conditional "if present" wording keeps it forward-compatible.
+//
+// Phrasing is model-agnostic ("internal reasoning, not shown to the player")
+// so the framework works for any provider: DeepSeek emits it in `reasoning_content`,
+// Claude in `thinking` blocks, GPT-5 in `reasoning` tokens, Gemini in `thinking_config`
+// parts, and legacy non-thinking models reason silently before the narrative.
 const WRITER_COT = `[WRITER REASONING FRAMEWORK]
-Work through these steps inside your thinking block before writing. Never show the steps in the narrative output. Always produce the full narrative response after the thinking block ends.
+Work through these steps in your internal reasoning before writing the narrative. Never show the steps in the narrative output. Always produce the full narrative response after your reasoning ends.
 Step 1 — Deconstruct: break the player's input into discrete intents. Judge each against the rules and MC boundaries. Impossible or implausible demands are narrated as attempts with consequences, not successes.
 Step 2 — Director Brief: if a [DIRECTOR BRIEF] block is present, list its directives, mark each MANDATORY or SUGGESTION as tagged, and plan where each lands in the scene.
 Step 3 — On-stage minds: for each character in [ACTIVE NPC CONTEXT]: current emotional state; what they know and do not know (check [FACTS KNOWN TO ON-STAGE CHARACTERS]); which reaction from their reaction menu fits; whether the player's action crosses their boundaries. A crossed boundary produces push-back, not accommodation.
@@ -85,9 +94,11 @@ export function buildStable(opts: {
     if (context.starterActive && context.starter) stableParts.push(context.starter);
     if (context.continuePromptActive && context.continuePrompt) stableParts.push(context.continuePrompt);
 
-    // Only inject if using a known reasoning/thinking model (DeepSeek-R1, Qwen QwQ, etc.)
-    if (isReasoningModel(settings)) {
-        stableParts.push("IMPORTANT: If you use a 'thinking' or 'reasoning' block (<think>...</think>), you MUST still provide the full narrative response AFTER the closing tag. Never end a turn with only a thinking block.");
+    // Only inject when the active story provider has thinking mode enabled (any
+    // effort level except 'off'). The `thinkingEffort` dropdown on the provider
+    // is the single source of truth — model-name guessing is gone.
+    if (isThinkingEnabled(settings)) {
+        stableParts.push("IMPORTANT: If you use a 'thinking' or 'reasoning' block (or any internal reasoning), you MUST still provide the full narrative response AFTER it ends. Never end a turn with only reasoning.");
         stableParts.push(WRITER_COT);
     }
 

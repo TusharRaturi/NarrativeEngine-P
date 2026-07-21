@@ -625,13 +625,13 @@ describe('buildPayload — scenario 7: scene note depth splice', () => {
     });
 });
 
-// ── Scenario 8: Reasoning-model + tool-mode ───────────────────────────────────
-describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
-    it('thinking-block reminder text appears in stable content when model matches deepseek-r pattern', () => {
+// ── Scenario 8: Thinking-mode + tool-mode ───────────────────────────────────
+describe('buildPayload — scenario 8: thinking mode and tool mode', () => {
+    it('reasoning reminder text appears in stable content when thinkingEffort is enabled', () => {
         const reasoningSettings = {
             ...baseSettings(),
             activePresetId: 'preset_reasoning',
-            providers: [{ id: 'prov_reasoning', modelName: 'deepseek-r1-distill-llama-70b' }],
+            providers: [{ id: 'prov_reasoning', modelName: 'anything', thinkingEffort: 'low' }],
             presets: [
                 {
                     id: 'preset_reasoning',
@@ -643,33 +643,33 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
         const result = buildPayload({ settings: reasoningSettings, context: baseContext(), history: [], userMessage: 'Hello' });
         const firstSystem = result.messages[0];
         expect(typeof firstSystem.content).toBe('string');
-        expect(firstSystem.content as string).toContain('thinking');
+        expect(firstSystem.content as string).toContain('reasoning');
     });
 
-    it('thinking-block reminder appears for qwq model name pattern', () => {
+    it('reasoning reminder appears for thinkingEffort high', () => {
         const reasoningSettings = {
             ...baseSettings(),
-            activePresetId: 'preset_qwq',
-            providers: [{ id: 'prov_qwq', modelName: 'QwQ-32B-Preview' }],
+            activePresetId: 'preset_high',
+            providers: [{ id: 'prov_high', modelName: 'anything', thinkingEffort: 'high' }],
             presets: [
                 {
-                    id: 'preset_qwq',
-                    storyAIProviderId: 'prov_qwq',
+                    id: 'preset_high',
+                    storyAIProviderId: 'prov_high',
                 },
             ],
         } as unknown as AppSettings;
 
         const result = buildPayload({ settings: reasoningSettings, context: baseContext(), history: [], userMessage: 'Hello' });
         const firstSystem = result.messages[0];
-        expect(firstSystem.content as string).toContain('thinking');
+        expect(firstSystem.content as string).toContain('reasoning');
     });
 
     // ── WO-01: Writer CoT injection (Item 1) ──────────────────────────────────
-    it('WRITER_COT present in stable content when model name is deepseek-r1-distill', () => {
+    it('WRITER_COT present in stable content when thinkingEffort is medium', () => {
         const reasoningSettings = {
             ...baseSettings(),
             activePresetId: 'preset_reasoning',
-            providers: [{ id: 'prov_reasoning', modelName: 'deepseek-r1-distill' }],
+            providers: [{ id: 'prov_reasoning', modelName: 'anything', thinkingEffort: 'medium' }],
             presets: [{ id: 'preset_reasoning', storyAIProviderId: 'prov_reasoning' }],
         } as unknown as AppSettings;
 
@@ -680,7 +680,22 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
         expect(firstSystem.content as string).toContain('Step 6 — Final audit');
     });
 
-    it('WRITER_COT absent from stable content when model name is gpt-4o', () => {
+    it('WRITER_COT absent from stable content when thinkingEffort is off (even for reasoning-capable model names)', () => {
+        const normalSettings = {
+            ...baseSettings(),
+            activePresetId: 'preset_normal',
+            providers: [{ id: 'prov_normal', modelName: 'deepseek-r1', thinkingEffort: 'off' }],
+            presets: [{ id: 'preset_normal', storyAIProviderId: 'prov_normal' }],
+        } as unknown as AppSettings;
+
+        const result = buildPayload({ settings: normalSettings, context: baseContext(), history: [], userMessage: 'Hello' });
+        const firstSystem = result.messages[0];
+        expect(firstSystem.content as string).not.toContain('[WRITER REASONING FRAMEWORK]');
+        // Existing reasoning reminder must also be absent when thinking is off.
+        expect(firstSystem.content as string).not.toContain("If you use a 'thinking' or 'reasoning' block");
+    });
+
+    it('WRITER_COT absent from stable content when thinkingEffort is unset', () => {
         const normalSettings = {
             ...baseSettings(),
             activePresetId: 'preset_normal',
@@ -691,15 +706,14 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
         const result = buildPayload({ settings: normalSettings, context: baseContext(), history: [], userMessage: 'Hello' });
         const firstSystem = result.messages[0];
         expect(firstSystem.content as string).not.toContain('[WRITER REASONING FRAMEWORK]');
-        // Existing thinking-block reminder must also be absent for non-reasoning models.
         expect(firstSystem.content as string).not.toContain("If you use a 'thinking' or 'reasoning' block");
     });
 
-    it('CoT invocation line present in final user message when reasoning model', () => {
+    it('CoT invocation line present in final user message when thinking mode enabled', () => {
         const reasoningSettings = {
             ...baseSettings(),
             activePresetId: 'preset_reasoning',
-            providers: [{ id: 'prov_reasoning', modelName: 'deepseek-r1-distill' }],
+            providers: [{ id: 'prov_reasoning', modelName: 'anything', thinkingEffort: 'medium' }],
             presets: [{ id: 'preset_reasoning', storyAIProviderId: 'prov_reasoning' }],
         } as unknown as AppSettings;
 
@@ -707,7 +721,7 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
         const finalUser = result.messages[result.messages.length - 1];
         expect(finalUser.role).toBe('user');
         expect(finalUser.content as string).toContain(
-            'Work through the [WRITER REASONING FRAMEWORK] in your thinking before writing.',
+            'Work through the [WRITER REASONING FRAMEWORK] in your reasoning before writing.',
         );
         // The invocation line must precede the GM_REMINDER (cache-below ordering per WO spec).
         const content = finalUser.content as string;
@@ -717,11 +731,11 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
         expect(reminderIdx).toBeGreaterThan(cotIdx);
     });
 
-    it('CoT invocation line absent from final user message when non-reasoning model (gpt-4o)', () => {
+    it('CoT invocation line absent from final user message when thinkingEffort is off', () => {
         const normalSettings = {
             ...baseSettings(),
             activePresetId: 'preset_normal',
-            providers: [{ id: 'prov_normal', modelName: 'gpt-4o' }],
+            providers: [{ id: 'prov_normal', modelName: 'anything', thinkingEffort: 'off' }],
             presets: [{ id: 'preset_normal', storyAIProviderId: 'prov_normal' }],
         } as unknown as AppSettings;
 
@@ -730,15 +744,15 @@ describe('buildPayload — scenario 8: reasoning model and tool mode', () => {
         expect(finalUser.content as string).not.toContain('[WRITER REASONING FRAMEWORK]');
     });
 
-    it('non-reasoning final user message is byte-identical to pre-WO-01 payload (no CoT, no invocation line)', () => {
-        // Same inputs, only the model name differs. The final user message MUST be byte-identical
+    it('thinking-off final user message is byte-identical to pre-WO-01 payload (no CoT, no invocation line)', () => {
+        // Same inputs, only the thinkingEffort is off. The final user message MUST be byte-identical
         // to what buildPayload produced before WO-01 — i.e. the CoT nudge slot collapses to '' and
         // filter(Boolean) drops it, leaving the original 4-element join (volatileBlock, GM_REMINDER,
         // askGmBrief, userMessage).
         const normalSettings = {
             ...baseSettings(),
             activePresetId: 'preset_normal',
-            providers: [{ id: 'prov_normal', modelName: 'gpt-4o' }],
+            providers: [{ id: 'prov_normal', modelName: 'gpt-4o', thinkingEffort: 'off' }],
             presets: [{ id: 'preset_normal', storyAIProviderId: 'prov_normal' }],
         } as unknown as AppSettings;
 

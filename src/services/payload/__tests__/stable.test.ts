@@ -1,6 +1,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect } from 'vitest';
-import { isReasoningModel } from '../stable';
+import { isThinkingEnabled } from '../stable';
 import type { AppSettings } from '../../../types';
 
 const baseSettings = (): AppSettings => ({
@@ -8,67 +8,120 @@ const baseSettings = (): AppSettings => ({
     contextLimit: 8192,
 } as unknown as AppSettings);
 
-describe('isReasoningModel — provider-slot resolution', () => {
-    it('returns true when active preset storyAIProviderId references a provider with a deepseek-r1 model name', () => {
+describe('isThinkingEnabled — provider-slot resolution', () => {
+    it('returns true when active preset storyAIProviderId references a provider with thinkingEffort low', () => {
         const settings = {
             ...baseSettings(),
             activePresetId: 'preset_1',
-            providers: [{ id: 'prov_a', modelName: 'deepseek-r1-distill-llama-70b' }],
+            providers: [{ id: 'prov_a', modelName: 'anything', thinkingEffort: 'low' }],
             presets: [{ id: 'preset_1', storyAIProviderId: 'prov_a' }],
         } as unknown as AppSettings;
 
-        expect(isReasoningModel(settings)).toBe(true);
+        expect(isThinkingEnabled(settings)).toBe(true);
     });
 
-    it('returns true for QwQ model name pattern (case-insensitive)', () => {
+    it('returns true for medium effort', () => {
         const settings = {
             ...baseSettings(),
             activePresetId: 'preset_1',
-            providers: [{ id: 'prov_a', modelName: 'QwQ-32B-Preview' }],
+            providers: [{ id: 'prov_a', modelName: 'anything', thinkingEffort: 'medium' }],
             presets: [{ id: 'preset_1', storyAIProviderId: 'prov_a' }],
         } as unknown as AppSettings;
 
-        expect(isReasoningModel(settings)).toBe(true);
+        expect(isThinkingEnabled(settings)).toBe(true);
     });
 
-    it('returns true for qwen-think pattern', () => {
+    it('returns true for high effort', () => {
         const settings = {
             ...baseSettings(),
             activePresetId: 'preset_1',
-            providers: [{ id: 'prov_a', modelName: 'qwen2.5-think-32b' }],
+            providers: [{ id: 'prov_a', modelName: 'anything', thinkingEffort: 'high' }],
             presets: [{ id: 'preset_1', storyAIProviderId: 'prov_a' }],
         } as unknown as AppSettings;
 
-        expect(isReasoningModel(settings)).toBe(true);
+        expect(isThinkingEnabled(settings)).toBe(true);
     });
 
-    it('returns false for non-reasoning model name (gpt-4o)', () => {
+    it('returns true for max effort', () => {
         const settings = {
             ...baseSettings(),
             activePresetId: 'preset_1',
-            providers: [{ id: 'prov_a', modelName: 'gpt-4o' }],
+            providers: [{ id: 'prov_a', modelName: 'anything', thinkingEffort: 'max' }],
             presets: [{ id: 'preset_1', storyAIProviderId: 'prov_a' }],
         } as unknown as AppSettings;
 
-        expect(isReasoningModel(settings)).toBe(false);
+        expect(isThinkingEnabled(settings)).toBe(true);
     });
 
-    it('returns false for claude / gemini / ollama non-reasoning names', () => {
-        for (const modelName of ['claude-3-opus', 'gemini-1.5-pro', 'llama-3.1-70b']) {
-            const settings = {
-                ...baseSettings(),
-                activePresetId: 'preset_1',
-                providers: [{ id: 'prov_a', modelName }],
-                presets: [{ id: 'preset_1', storyAIProviderId: 'prov_a' }],
-            } as unknown as AppSettings;
+    it('returns false when thinkingEffort is "off" (regardless of model name)', () => {
+        const settings = {
+            ...baseSettings(),
+            activePresetId: 'preset_1',
+            providers: [{ id: 'prov_a', modelName: 'deepseek-r1-distill', thinkingEffort: 'off' }],
+            presets: [{ id: 'preset_1', storyAIProviderId: 'prov_a' }],
+        } as unknown as AppSettings;
 
-            expect(isReasoningModel(settings)).toBe(false);
-        }
+        expect(isThinkingEnabled(settings)).toBe(false);
+    });
+
+    it('returns false when thinkingEffort is unset (regardless of model name)', () => {
+        const settings = {
+            ...baseSettings(),
+            activePresetId: 'preset_1',
+            providers: [{ id: 'prov_a', modelName: 'deepseek-r1-distill' }],
+            presets: [{ id: 'preset_1', storyAIProviderId: 'prov_a' }],
+        } as unknown as AppSettings;
+
+        // Unset means "user hasn't enabled thinking" — do not inject CoT.
+        expect(isThinkingEnabled(settings)).toBe(false);
+    });
+
+    it('model name alone no longer triggers CoT (regex removed) — gpt-4o with thinkingEffort medium is true', () => {
+        const settings = {
+            ...baseSettings(),
+            activePresetId: 'preset_1',
+            providers: [{ id: 'prov_a', modelName: 'gpt-4o', thinkingEffort: 'medium' }],
+            presets: [{ id: 'preset_1', storyAIProviderId: 'prov_a' }],
+        } as unknown as AppSettings;
+
+        expect(isThinkingEnabled(settings)).toBe(true);
     });
 });
 
-describe('isReasoningModel — legacy fallback', () => {
-    it('falls back to activePreset.storyAI.modelName when storyAIProviderId is missing', () => {
+describe('isThinkingEnabled — legacy fallback', () => {
+    it('falls back to activePreset.storyAI.thinkingEffort when storyAIProviderId is missing', () => {
+        const settings = {
+            ...baseSettings(),
+            activePresetId: 'preset_legacy',
+            providers: [],
+            presets: [
+                {
+                    id: 'preset_legacy',
+                    storyAI: { endpoint: 'http://x', apiKey: '', modelName: 'anything', thinkingEffort: 'high' } as any,
+                },
+            ],
+        } as unknown as AppSettings;
+
+        expect(isThinkingEnabled(settings)).toBe(true);
+    });
+
+    it('returns false when legacy storyAI has thinkingEffort "off"', () => {
+        const settings = {
+            ...baseSettings(),
+            activePresetId: 'preset_legacy',
+            providers: [],
+            presets: [
+                {
+                    id: 'preset_legacy',
+                    storyAI: { endpoint: 'http://x', apiKey: '', modelName: 'anything', thinkingEffort: 'off' } as any,
+                },
+            ],
+        } as unknown as AppSettings;
+
+        expect(isThinkingEnabled(settings)).toBe(false);
+    });
+
+    it('returns false when legacy storyAI has no thinkingEffort (even for old deepseek-r1 model names)', () => {
         const settings = {
             ...baseSettings(),
             activePresetId: 'preset_legacy',
@@ -81,55 +134,40 @@ describe('isReasoningModel — legacy fallback', () => {
             ],
         } as unknown as AppSettings;
 
-        expect(isReasoningModel(settings)).toBe(true);
+        // No thinkingEffort set → user has not opted in → no CoT.
+        expect(isThinkingEnabled(settings)).toBe(false);
     });
 
-    it('returns false when legacy storyAI.modelName is a non-reasoning model', () => {
-        const settings = {
-            ...baseSettings(),
-            activePresetId: 'preset_legacy',
-            providers: [],
-            presets: [
-                {
-                    id: 'preset_legacy',
-                    storyAI: { endpoint: 'http://x', apiKey: '', modelName: 'gpt-4o' } as any,
-                },
-            ],
-        } as unknown as AppSettings;
-
-        expect(isReasoningModel(settings)).toBe(false);
-    });
-
-    it('provider slot takes precedence over legacy storyAI.modelName', () => {
-        // Provider slot points to gpt-4o; legacy storyAI says deepseek-r1.
-        // Two-tier resolution should win → false.
+    it('provider slot takes precedence over legacy storyAI', () => {
+        // Provider slot has thinkingEffort high; legacy storyAI has none.
+        // Two-tier resolution should win → true.
         const settings = {
             ...baseSettings(),
             activePresetId: 'preset_mixed',
-            providers: [{ id: 'prov_normal', modelName: 'gpt-4o' }],
+            providers: [{ id: 'prov_thinking', modelName: 'anything', thinkingEffort: 'high' }],
             presets: [
                 {
                     id: 'preset_mixed',
-                    storyAIProviderId: 'prov_normal',
-                    storyAI: { endpoint: 'http://x', apiKey: '', modelName: 'deepseek-r1' } as any,
+                    storyAIProviderId: 'prov_thinking',
+                    storyAI: { endpoint: 'http://x', apiKey: '', modelName: 'anything' } as any,
                 },
             ],
         } as unknown as AppSettings;
 
-        expect(isReasoningModel(settings)).toBe(false);
+        expect(isThinkingEnabled(settings)).toBe(true);
     });
 });
 
-describe('isReasoningModel — defensive cases', () => {
+describe('isThinkingEnabled — defensive cases', () => {
     it('returns false when no preset is active', () => {
         const settings = {
             ...baseSettings(),
             activePresetId: 'missing',
-            providers: [{ id: 'prov_a', modelName: 'deepseek-r1' }],
+            providers: [{ id: 'prov_a', modelName: 'anything', thinkingEffort: 'high' }],
             presets: [],
         } as unknown as AppSettings;
 
-        expect(isReasoningModel(settings)).toBe(false);
+        expect(isThinkingEnabled(settings)).toBe(false);
     });
 
     it('returns false when active preset references a missing provider and has no legacy storyAI', () => {
@@ -140,7 +178,7 @@ describe('isReasoningModel — defensive cases', () => {
             presets: [{ id: 'preset_1', storyAIProviderId: 'prov_missing' }],
         } as unknown as AppSettings;
 
-        expect(isReasoningModel(settings)).toBe(false);
+        expect(isThinkingEnabled(settings)).toBe(false);
     });
 
     it('returns false when providers/presets arrays are undefined (old campaign hydration)', () => {
@@ -148,6 +186,6 @@ describe('isReasoningModel — defensive cases', () => {
             ...baseSettings(),
         } as unknown as AppSettings;
 
-        expect(isReasoningModel(settings)).toBe(false);
+        expect(isThinkingEnabled(settings)).toBe(false);
     });
 });

@@ -2,7 +2,7 @@ import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, Archiv
 import type { OpenAIMessage } from '../llm/llmService';
 import { createTraceCollector } from './traceCollector';
 import { computeBudgets } from './budgets';
-import { buildStable, isReasoningModel } from './stable';
+import { buildStable, isThinkingEnabled } from './stable';
 import { buildWorld } from './world';
 import { buildVolatile } from './volatile';
 import { buildHistory } from './history';
@@ -157,10 +157,10 @@ export function buildPayload(options: BuildPayloadOptions): { messages: OpenAIMe
     const GM_REMINDER = '[GM REMINDER: NPCs push back when their wants/boundaries are crossed. Do not default to facilitation.]';
     const volatileBlock = [retrievedRulesContent, worldContent, volatileContent].filter(Boolean).join('\n\n');
     const askGmBrief = formatAskGmBrief(nextTurnOocBrief);
-    // Per-turn CoT invocation line (reasoning models only). Rides in the final user message
-    // (below the cache boundary) — kept out of the cached stable prefix so non-reasoning-model
-    // turns stay byte-identical to the pre-WO-01 payload.
-    const writerCotNudge = isReasoningModel(settings) ? 'Work through the [WRITER REASONING FRAMEWORK] in your thinking before writing.' : '';
+    // Per-turn CoT invocation line (thinking-mode only). Rides in the final user
+    // message (below the cache boundary) — kept out of the cached stable prefix so
+    // thinking-off turns stay byte-identical to the pre-CoT payload.
+    const writerCotNudge = isThinkingEnabled(settings) ? 'Work through the [WRITER REASONING FRAMEWORK] in your reasoning before writing.' : '';
 
     // Director Watchdog nudge (WO-03): rides adjacent to GM_REMINDER in the final user message
     // (below the cache boundary) so it never perturbs the cached prefix. Suppressed when a
