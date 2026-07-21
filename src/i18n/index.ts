@@ -12,6 +12,8 @@
 import { en, type TranslationKey } from './locales/en';
 import { ko } from './locales/ko';
 import { ru } from './locales/ru';
+import { pl } from './locales/pl';
+import { id } from './locales/id';
 import { pseudo } from './locales/pseudo';
 import type { LocaleCode, LocalePack, StyleProfile } from './types';
 
@@ -28,11 +30,13 @@ export const LOCALES: Record<LocaleCode, LocalePack> = {
     en: { code: 'en', label: 'English', strings: en },
     ko,
     ru,
+    pl,
+    id,
     pseudo,
 };
 
 /** Order shown in the language dropdown. `pseudo` is last — it is a test tool. */
-export const LOCALE_ORDER: LocaleCode[] = ['en', 'ko', 'ru', 'pseudo'];
+export const LOCALE_ORDER: LocaleCode[] = ['en', 'ko', 'ru', 'pl', 'id', 'pseudo'];
 
 export const DEFAULT_LOCALE: LocaleCode = 'en';
 

@@ -17,6 +17,8 @@ Translations live in `src/i18n/locales/`:
 | English (the source — do not edit) | `en.ts` |
 | Korean | `ko.ts` |
 | Russian | `ru.ts` |
+| Polish | `pl.ts` |
+| Indonesian | `id.ts` |
 
 If your language is not there, copy `ko.ts` to a new file (for example
 `ja.ts` for Japanese) and open an issue — a maintainer adds one line to register
@@ -68,8 +70,8 @@ is often necessary for word order.
 Some keys come in variants ending `.one`, `.few`, `.many`, `.other`. Use the set
 your language actually needs — the app picks the right one for the number.
 
-- **Korean** has no plural agreement: `.other` alone is enough.
-- **Russian** needs `.one` (1, 21, 31…), `.few` (2–4), `.many` (5+, 11–14).
+- **Korean** and **Indonesian** have no plural agreement: `.other` alone is enough.
+- **Russian** and **Polish** need `.one` (1, 21, 31…), `.few` (2–4), `.many` (5+, 11–14).
 
 ```ts
 'settings.language.untranslated.one': '{{count}} строка ещё на английском.',

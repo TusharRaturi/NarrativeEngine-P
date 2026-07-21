@@ -1,6 +1,6 @@
 import type { TranslationKey } from './locales/en';
 
-export type LocaleCode = 'en' | 'ko' | 'ru' | 'pseudo';
+export type LocaleCode = 'en' | 'ko' | 'ru' | 'pl' | 'id' | 'pseudo';
 
 /**
  * Per-language visual corrections.

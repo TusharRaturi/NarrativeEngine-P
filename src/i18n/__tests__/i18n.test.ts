@@ -121,6 +121,43 @@ describe('plurals (Locked Decision 7)', () => {
         }
     });
 
+    it('selects the Polish form matching the count', () => {
+        const original = LOCALES.pl;
+        try {
+            LOCALES.pl = {
+                ...original,
+                strings: {
+                    'settings.language.untranslated.one': '{{count}} pozycja',
+                    'settings.language.untranslated.few': '{{count}} pozycje',
+                    'settings.language.untranslated.many': '{{count}} pozycji',
+                },
+            };
+            // Polish: 1 → one, 2-4 → few, 5+ → many.
+            expect(translateIn('pl', 'settings.language.untranslated', { count: 1 })).toBe('1 pozycja');
+            expect(translateIn('pl', 'settings.language.untranslated', { count: 3 })).toBe('3 pozycje');
+            expect(translateIn('pl', 'settings.language.untranslated', { count: 9 })).toBe('9 pozycji');
+        } finally {
+            LOCALES.pl = original;
+        }
+    });
+
+    it('uses the single Indonesian form for every count', () => {
+        const original = LOCALES.id;
+        try {
+            LOCALES.id = {
+                ...original,
+                strings: { 'settings.language.untranslated.other': '{{count}} item' },
+            };
+            // Indonesian has no plural agreement — `.other` must serve every count
+            // rather than falling through to the English one/other split.
+            for (const count of [1, 2, 5, 21]) {
+                expect(translateIn('id', 'settings.language.untranslated', { count })).toBe(`${count} item`);
+            }
+        } finally {
+            LOCALES.id = original;
+        }
+    });
+
     it('falls back to .other when the locale has not supplied that plural form', () => {
         const original = LOCALES.ru;
         try {
@@ -197,10 +234,22 @@ describe('registry', () => {
     it('gives every locale a label written in its own language', () => {
         expect(LOCALES.ko.label).toBe('한국어');
         expect(LOCALES.ru.label).toBe('Русский');
+        expect(LOCALES.pl.label).toBe('Polski');
+        expect(LOCALES.id.label).toBe('Bahasa Indonesia');
+    });
+
+    it('registers each locale under the code it declares', () => {
+        // A copy-pasted locale file that forgets to change `code` would silently
+        // mis-stamp data-lang and pick the wrong plural rules.
+        for (const [key, pack] of Object.entries(LOCALES)) {
+            expect(pack.code).toBe(key);
+        }
     });
 
     it('validates locale codes', () => {
         expect(isLocaleCode('ko')).toBe(true);
+        expect(isLocaleCode('pl')).toBe(true);
+        expect(isLocaleCode('id')).toBe(true);
         expect(isLocaleCode('de')).toBe(false);
         expect(isLocaleCode(undefined)).toBe(false);
     });
