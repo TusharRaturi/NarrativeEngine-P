@@ -49,13 +49,18 @@ export function parseNPCsFromLore(chunks: LoreChunk[]): NPCEntry[] {
 
     for (const chunk of characterChunks) {
         let name = chunk.header.replace(/\[CHUNK:\s*[A-Z_]+[—\-\s]*\]/i, '').trim();
-        // Strip "TYPE -- Name" prefix (e.g. "CHARACTER -- Kaiser Aldricht Voss" → "Kaiser Aldricht Voss")
+        // Strip "TYPE -- Name" or "TYPE — Name" prefix (e.g. "CHARACTER -- Kaiser Aldricht Voss" or "CHARACTER — Cao Cao")
         const doubleDashMatch = name.match(/^[A-Z][A-Z_\s]*--\s*(.+)/);
         if (doubleDashMatch) {
             name = doubleDashMatch[1].trim();
         } else {
-            // Fallback: em-dash / en-dash separator (old format)
-            name = name.split(/[—–]/)[0].trim();
+            const emDashMatch = name.match(/^[A-Z][A-Z_\s]*[—–]\s*(.+)/);
+            if (emDashMatch) {
+                name = emDashMatch[1].trim();
+            } else {
+                // Fallback: em-dash / en-dash separator (old format where name is first, e.g. "Cao Cao — The Tyrant")
+                name = name.split(/[—–]/)[0].trim();
+            }
         }
         if (!name) continue;
 

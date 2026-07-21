@@ -214,6 +214,7 @@ function baseCallbacks(): TurnCallbacks {
         addMessage: noop,
         updateLastAssistant: noop,
         updateLastMessage: noop,
+        updateLastAssistantMessage: noop,
         updateContext: noop,
         setArchiveIndex: noop,
         updateNPC: noop,

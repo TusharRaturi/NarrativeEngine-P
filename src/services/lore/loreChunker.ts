@@ -195,10 +195,20 @@ function generateSummary(_header: string, content: string): string | undefined {
     return cleanLines.length > 0 ? cleanLines[0].substring(0, 100) : undefined;
 }
 
+function extractEntityName(header: string): string {
+    let name = header.replace(/\[CHUNK:\s*[A-Z_]+[—\-\s]*\]/i, '').trim();
+    // Strip TYPE -- Name or TYPE — Name
+    const prefixMatch = name.match(/^[A-Z][A-Z_\s]*(?:--|[—–])\s*(.+)/);
+    if (prefixMatch) {
+        return prefixMatch[1].trim();
+    }
+    // Fallback: name is first
+    return name.split(/[—–-]/)[0].trim();
+}
+
 function extractLinkedEntities(chunks: LoreChunk[]) {
     const entityDict = chunks.map(c => {
-        let name = c.header.replace(/\[CHUNK:\s*[A-Z_]+[—\-\s]*\]/i, '').trim();
-        name = name.split(/[—–-]/)[0].trim();
+        const name = extractEntityName(c.header);
         return { name, id: c.id, nameLower: name.toLowerCase() };
     }).filter(e => e.nameLower.length > 3);
 

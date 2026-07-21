@@ -91,6 +91,7 @@ const makeCallbacks = (): TurnCallbacks => ({
     addMessage: vi.fn(),
     updateLastAssistant: vi.fn(),
     updateLastMessage: vi.fn(),
+    updateLastAssistantMessage: vi.fn(),
     updateContext: vi.fn(),
     setArchiveIndex: vi.fn(),
     setTimeline: vi.fn(),

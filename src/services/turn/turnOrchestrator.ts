@@ -17,6 +17,17 @@ export type TurnCallbacks = {
     addMessage: (msg: ChatMessage) => void;
     updateLastAssistant: (content: string) => void;
     updateLastMessage: (patch: Partial<ChatMessage>) => void;
+    /**
+     * Patches the LAST assistant message (scans back from the tail). Use this
+     * instead of `updateLastMessage` whenever the patch is meant for the
+     * assistant bubble that produced the turn — e.g. swipeSet, pendingCommit,
+     * sceneId, reasoning_content, tool_calls. After a tool call, the literal
+     * last message in the array is the tool message (desktop reuses the same
+     * assistant id across iterations instead of pushing a fresh bubble per
+     * call like mobile does), so `updateLastMessage` would stamp the wrong
+     * bubble and silently break the swipe UI + commit pipeline.
+     */
+    updateLastAssistantMessage: (patch: Partial<ChatMessage>) => void;
     updateContext: (patch: Partial<GameContext>) => void;
     setArchiveIndex: (entries: ArchiveIndexEntry[]) => void;
     setTimeline?: (events: TimelineEvent[]) => void;

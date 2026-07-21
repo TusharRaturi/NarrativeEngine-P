@@ -306,8 +306,15 @@ async function runArchiveTrack(
     // surgical-delete + edit-sync UI hooks can map an on-screen GM reply back to its
     // long-term-memory scene. (Mirrors mobile's scene-marker system message, via a direct
     // field instead since main has no scene-marker message stream.)
+    //
+    // Use `updateLastAssistantMessage` (scans back to the last assistant), NOT
+    // `updateLastMessage` (literal last message). After a tool call, the literal
+    // last message is the tool message — desktop reuses the same assistant id
+    // across tool iterations instead of pushing a fresh bubble per call like
+    // mobile does, so `updateLastMessage` would stamp sceneId on the tool
+    // message and the assistant would never receive its archive-anchor sceneId.
     if (appendedSceneId) {
-        callbacks.updateLastMessage({ sceneId: appendedSceneId });
+        callbacks.updateLastAssistantMessage?.({ sceneId: appendedSceneId });
     }
 
     const [freshIndex, freshTimeline, freshChapters] = await Promise.all([

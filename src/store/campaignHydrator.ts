@@ -3,11 +3,11 @@ import {
     loadCampaignState, getLoreChunks, getNPCLedger, getLocationLedger,
     loadArchiveIndex, loadTimeline, loadChapters, loadEntities,
     loadDivergenceRegister, saveDivergenceRegister, saveChapters,
-    saveNPCLedger,
+    saveNPCLedger, saveCampaignState,
 } from './campaignStore';
 import { DEFAULT_CONTEXT, DEFAULT_CONDENSER } from '../services/campaignInit';
 import { migrateLegacyContext } from '../types';
-import type { GameContext, ArchiveChapter, DivergenceRegister, DivergenceEntry } from '../types';
+import type { GameContext, ArchiveChapter, DivergenceRegister, DivergenceEntry, ChatMessage } from '../types';
 import { migrateV1ToV2 } from '../services/campaign-state/divergenceRegister';
 import { migratePCIntoContext } from '../services/character/migratePC';
 
@@ -24,6 +24,39 @@ function backfillSceneIds(chapters: ArchiveChapter[]): { chapters: ArchiveChapte
         return { ...ch, sceneIds: ids };
     });
     return { chapters: updated, changed };
+}
+
+/**
+ * Swipe Generation v1 bug recovery — strip orphaned swipe-set state from
+ * non-assistant messages. A pre-fix bug stamped `swipeSet` / `pendingCommit`
+ * / `swipeActiveIndex` on the literal last message in the array (`updateLastMessage`),
+ * which after a tool call was the `tool` message — NOT the assistant. Those
+ * orphaned fields on tool messages broke `findPendingCommitMessage` (it only
+ * returns assistants with `pendingCommit=true`), so `commitPendingTurn`
+ * silently no-op'd and the post-turn pipeline (archive append, sceneId stamp,
+ * timeline, NPC bookkeeping, witness capture) never ran for the affected turn.
+ *
+ * This one-pass migration cleans up the orphans already on disk. Idempotent
+ * — no-op on healthy campaigns. Returns the cleaned messages and a flag.
+ * Exported for direct unit testing.
+ */
+export function stripOrphanedSwipeState(messages: ChatMessage[]): { messages: ChatMessage[]; changed: boolean } {
+    let changed = false;
+    const cleaned = messages.map(m => {
+        if (m.role === 'assistant') return m;
+        const hasOrphan = m.pendingCommit === true || m.swipeSet !== undefined || m.swipeActiveIndex !== undefined;
+        if (!hasOrphan) return m;
+        changed = true;
+        // Strip the orphaned swipe-set state. These fields never belonged on
+        // a non-assistant message — they were stamped here by the pre-fix
+        // `updateLastMessage` bug. Drop them in place without mutating.
+        const rest = { ...m };
+        delete rest.pendingCommit;
+        delete rest.swipeSet;
+        delete rest.swipeActiveIndex;
+        return rest as ChatMessage;
+    });
+    return { messages: cleaned, changed };
 }
 
 export async function hydrateCampaign(campaignId: string) {
@@ -76,9 +109,21 @@ export async function hydrateCampaign(campaignId: string) {
         }
     }
 
+    // Swipe Generation v1 bug recovery — strip orphaned swipeSet / pendingCommit
+    // / swipeActiveIndex from non-assistant messages left by a pre-fix bug. See
+    // `stripOrphanedSwipeState` doc for the full mechanism.
+    const rawMessages = state?.messages ?? [];
+    const { messages: cleanedMessages, changed: swipeOrphansChanged } = stripOrphanedSwipeState(rawMessages);
+    if (swipeOrphansChanged) {
+        console.log('[Hydrator] Stripped orphaned swipeSet/pendingCommit from non-assistant messages (pre-fix recovery)');
+        try { await saveCampaignState(campaignId, { context: finalContext, messages: cleanedMessages, condenser: state?.condenser ?? DEFAULT_CONDENSER, pinnedExcerpts: state?.pinnedExcerpts ?? [] }); } catch (e) {
+            console.warn('[Hydrator] Failed to persist cleaned messages after orphan strip:', e);
+        }
+    }
+
     useAppStore.setState({
         context: finalContext,
-        messages: state?.messages ?? [],
+        messages: cleanedMessages,
         condenser: { ...(state?.condenser ?? DEFAULT_CONDENSER) },
         loreChunks: chunks,
         npcLedger: finalNpcLedger,

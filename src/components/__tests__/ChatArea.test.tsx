@@ -54,6 +54,7 @@ vi.mock('../../store/useAppStore', () => {
         setChapters: vi.fn(),
         addMessage: vi.fn(),
         updateLastMessage: vi.fn(),
+        updateLastAssistantMessage: vi.fn(),
         updateNPC: vi.fn(),
         addNPC: vi.fn(),
         setLastPayloadTrace: vi.fn(),

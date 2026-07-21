@@ -435,7 +435,7 @@ export async function runGenerationStage(
                     }
                     callbacks.updateLastAssistant(accumulatedContent);
 
-                    callbacks.updateLastMessage({
+                    callbacks.updateLastAssistantMessage({
                         tool_calls: [{
                             id: toolCall.id,
                             type: 'function' as const,
@@ -517,13 +517,24 @@ export async function runGenerationStage(
                 // stored on this message from that first response; overwriting it with the second
                 // response's reasoning would corrupt the history and cause 400 on the next turn.
                 if (reasoningContent && !accumulatedContent) {
-                    callbacks.updateLastMessage({ reasoning_content: reasoningContent });
+                    callbacks.updateLastAssistantMessage({ reasoning_content: reasoningContent });
                 }
 
                 // ── Swipe Generation v1: stamp the swipe set + pendingCommit on the
                 // latest GM message and capture the snapshot for lazy swipes + late commit.
                 // runPostTurnPipeline + auto-condense are DEFERRED to commitPendingTurn
                 // (called by the next send / Arc Injector / campaign switch).
+                //
+                // NOTE: use `updateLastAssistantMessage` (scans back to the last
+                // assistant), NOT `updateLastMessage` (literal last message). After a
+                // tool call, the literal last message is the tool message — desktop
+                // reuses the same assistant id across tool iterations instead of
+                // pushing a fresh bubble per call like mobile does, so the literal
+                // `updateLastMessage` would stamp the swipe set on the tool message,
+                // the assistant bubble would never get it, the swipe UI would
+                // silently disappear, and `findPendingCommitMessage` would return
+                // null so `commitPendingTurn` would no-op and the post-turn pipeline
+                // (archive/timeline/NPC bookkeeping) would silently skip the turn.
                 const variant: SwipeVariant = {
                     id: uid(),
                     text: stakesStrippedText,
@@ -531,7 +542,7 @@ export async function runGenerationStage(
                     sceneStakes: parsedStakes,
                     tagPresent,
                 };
-                callbacks.updateLastMessage({
+                callbacks.updateLastAssistantMessage({
                     swipeSet: [variant],
                     pendingCommit: true,
                     swipeActiveIndex: 0,

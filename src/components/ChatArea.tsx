@@ -213,6 +213,7 @@ export function ChatArea() {
                 streamingStats={streamingStats}
                 directorBriefRunning={directorBriefRunning}
                 onSkipDirectorBrief={handleSkipDirectorBrief}
+                onOpenSwipeSheet={setSwipeSheetMessageId}
             />
 
             <ChatActionStrip

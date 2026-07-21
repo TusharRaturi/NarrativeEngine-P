@@ -128,7 +128,8 @@ function makeCallbacks(): TurnCallbacks {
     const noop = () => {};
     return {
         onCheckingNotes: noop, addMessage: noop, updateLastAssistant: noop,
-        updateLastMessage: noop, updateContext: noop, setArchiveIndex: noop,
+        updateLastMessage: noop, updateLastAssistantMessage: noop,
+        updateContext: noop, setArchiveIndex: noop,
         updateNPC: noop, addNPC: noop, setCondensed: noop, setStreaming: noop,
         archiveNPC: noop, restoreNPC: noop,
     } as any as TurnCallbacks;

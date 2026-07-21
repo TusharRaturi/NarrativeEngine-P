@@ -76,6 +76,19 @@ export type ChatSlice = {
     addMessage: (msg: ChatMessage) => void;
     updateLastAssistant: (content: string) => void;
     updateLastMessage: (patch: Partial<ChatMessage>) => void;
+    /**
+     * Patches the LAST assistant message (scanning back from the tail, so a
+     * trailing tool / system message doesn't intercept the patch). Use this
+     * instead of `updateLastMessage` whenever the caller intends to stamp
+     * state on the assistant bubble that produced the turn — e.g. swipeSet,
+     * pendingCommit, sceneId, reasoning_content, tool_calls. The literal
+     * `updateLastMessage` operates on `messages[length-1]`, which after a
+     * tool call is the tool message (desktop reuses the same assistant id
+     * across tool iterations instead of pushing a fresh bubble per call like
+     * mobile does), causing the swipe set + pendingCommit to land on the
+     * tool message and the swipe UI to silently disappear.
+     */
+    updateLastAssistantMessage: (patch: Partial<ChatMessage>) => void;
     updateMessageContent: (id: string, content: string) => void;
     /** Returns true if the span was located and spliced; false if the original text could not be found. */
     replaceMessageText: (messageId: string, oldText: string, newText: string) => boolean;
@@ -335,6 +348,17 @@ export const createChatSlice: StateCreator<ChatDeps, [], [], ChatSlice> = (set) 
             const lastIdx = msgs.length - 1;
             if (lastIdx >= 0) {
                 msgs[lastIdx] = { ...msgs[lastIdx], ...patch };
+            }
+            return { messages: msgs };
+        }),
+    updateLastAssistantMessage: (patch) =>
+        set((s) => {
+            const msgs = [...s.messages];
+            for (let i = msgs.length - 1; i >= 0; i--) {
+                if (msgs[i].role === 'assistant') {
+                    msgs[i] = { ...msgs[i], ...patch };
+                    return { messages: msgs };
+                }
             }
             return { messages: msgs };
         }),

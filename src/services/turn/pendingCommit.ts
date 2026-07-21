@@ -107,6 +107,15 @@ function buildCommitCallbacks(activeCampaignId: string): TurnCallbacks {
             const msgs = useAppStore.getState().messages;
             if (msgs.length > 0) useAppStore.getState().updateLastMessage(patch);
         },
+        // Swipe Generation v1 / WO-F sceneId stamp — must target the LAST
+        // ASSISTANT message, not the literal last message. After a tool call,
+        // the literal last message is the tool message (desktop reuses the
+        // same assistant id across iterations instead of pushing a fresh
+        // bubble per call like mobile does), so `updateLastMessage` would
+        // stamp sceneId on the tool message and the assistant would never
+        // receive its archive-anchor sceneId — breaking surgical-delete,
+        // edit-sync, and LOD history mapping for that turn.
+        updateLastAssistantMessage: (patch) => useAppStore.getState().updateLastAssistantMessage(patch),
         updateContext: (patch) => useAppStore.getState().updateContext(patch),
         setArchiveIndex: (entries) => useAppStore.getState().setArchiveIndex(entries),
         setTimeline: (events) => useAppStore.getState().setTimeline(events),

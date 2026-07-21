@@ -46,13 +46,14 @@ export function useChatOperations({
     );
 
     const {
-        setArchiveIndex, updateLastAssistant, updateContext, setCondensed,
+        setArchiveIndex, updateLastAssistant, updateLastAssistantMessage, updateContext, setCondensed,
         setTimeline, setChapters,
         pipelinePhase, setPipelinePhase, setStreamingStats,
     } = useAppStore(
         useShallow(s => ({
             setArchiveIndex: s.setArchiveIndex,
             updateLastAssistant: s.updateLastAssistant,
+            updateLastAssistantMessage: s.updateLastAssistantMessage,
             updateContext: s.updateContext,
             setCondensed: s.setCondensed,
             setTimeline: s.setTimeline,
@@ -193,6 +194,7 @@ export function useChatOperations({
             addMessage: storeSnapshot.addMessage,
             updateLastAssistant: updateLastAssistant,
             updateLastMessage: storeSnapshot.updateLastMessage,
+            updateLastAssistantMessage: updateLastAssistantMessage,
             updateContext: updateContext,
             setArchiveIndex: setArchiveIndex,
             setTimeline: setTimeline,
