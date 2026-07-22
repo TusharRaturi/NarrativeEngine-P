@@ -1,71 +1,26 @@
 {
-  "name": "narrative-engine",
+  "name": "narrative-engine-monorepo",
   "private": true,
   "version": "1.0.2",
   "type": "module",
-  "engines": {
-    "node": ">=20.19.0"
-  },
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
-    "dev": "concurrently \"node server.js\" \"vite\"",
-    "build": "tsc -b && vite build",
-    "lint": "eslint .",
-    "preview": "vite preview",
-    "test": "vitest",
-    "test:run": "vitest run",
-    "test:coverage": "vitest run --coverage",
-    "i18n:check": "node scripts/i18n-check.mjs"
-  },
-  "dependencies": {
-    "@huggingface/transformers": "^4.0.1",
-    "@narrative/engine": "file:packages/engine",
-    "@tailwindcss/typography": "^0.5.19",
-    "better-sqlite3": "^12.8.0",
-    "cors": "^2.8.6",
-    "express": "^5.2.1",
-    "idb-keyval": "^6.2.2",
-    "js-tiktoken": "^1.0.21",
-    "kokoro-js": "^1.2.1",
-    "lucide-react": "^0.564.0",
-    "pixi-filters": "^6.1.5",
-    "pixi.js": "^8.18.1",
-    "react": "^19.2.0",
-    "react-dom": "^19.2.0",
-    "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1",
-    "sqlite-vec": "^0.1.9",
-    "zustand": "^5.0.11"
-  },
-  "devDependencies": {
-    "@eslint/js": "^9.39.1",
-    "@tailwindcss/vite": "^4.1.18",
-    "@testing-library/jest-dom": "^6.9.1",
-    "@testing-library/react": "^16.3.2",
-    "@testing-library/user-event": "^14.6.1",
-    "@types/node": "^24.10.1",
-    "@types/react": "^19.2.7",
-    "@types/react-dom": "^19.2.3",
-    "@types/supertest": "^7.2.0",
-    "@vitejs/plugin-react": "^5.1.1",
-    "@vitest/ui": "^4.1.8",
-    "concurrently": "^10.0.3",
-    "esbuild": "^0.28.1",
-    "eslint": "^9.39.1",
-    "eslint-plugin-react-hooks": "^7.0.1",
-    "eslint-plugin-react-refresh": "^0.4.24",
-    "globals": "^16.5.0",
-    "jsdom": "^26.0.0",
-    "supertest": "^7.2.2",
-    "tailwindcss": "^4.1.18",
-    "typescript": "~5.9.3",
-    "typescript-eslint": "^8.48.0",
-    "vite": "^8.0.16",
-    "vitest": "^4.1.8"
+    "dev": "npm run dev --workspaces --if-present",
+    "build": "npm run build --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present",
+    "test:e2e": "playwright test",
+    "lint": "npm run lint --workspaces --if-present"
   },
   "overrides": {
     "onnxruntime-node": {
       "adm-zip": "^0.6.0"
     },
     "shell-quote": "^1.9.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1"
   }
 }

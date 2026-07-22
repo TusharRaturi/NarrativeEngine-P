@@ -14,7 +14,7 @@ The Narrative Engine is a **Monorepo** consisting of three primary workspaces:
 ```mermaid
 graph TD
     %% ================= FRONTEND =================
-    subgraph Frontend ["Frontend (Vite + React + TS)"]
+    subgraph Frontend ["Frontend (Vite + React + TS) - apps/web"]
 
         subgraph Components ["UI Components (src/components/)"]
             ChatArea["ChatArea.tsx: Main dialogue UI"]
@@ -72,9 +72,9 @@ graph TD
     end
 
     %% ================= BACKEND =================
-    subgraph Backend ["Backend API (Express/Node.js)"]
+    subgraph Backend ["Backend API (Express/Node.js) - apps/server"]
 
-        subgraph Routes ["API Routes (server/routes/)"]
+        subgraph Routes ["API Routes (apps/server/src/routes/)"]
             CampaignRoute["campaigns.js / chapters.js: Game saves"]
             LLMProxy["llmProxy.js: Proxies local/remote LLM calls"]
             TTSRoute["tts.js: Audio generation endpoints"]
@@ -86,9 +86,10 @@ graph TD
             StateRoutes["backups.js / transfer.js / assets.js: State & asset mgmt"]
         end
 
-        subgraph Lib ["Backend Core Logic (server/lib/)"]
+        subgraph Lib ["Backend Core Logic (apps/server/src/lib/)"]
             FileStore["fileStore.js: JSON flat-file db I/O"]
-            VectorStore["vectorStore.js: sqlite-vec vector DB interface"]
+            VectorStore["vectorStore.js: sqlite-vec interface proxy"]
+            DBWorker["workers/dbWorker.js: SQLite worker thread for unblocking vectors"]
             Embedder["embedder.js: Local huggingface/transformers embedding"]
             TTSLib["tts.js: Local kokoro-js execution"]
             NLP["nlp.js: Entity extraction and resolution"]
@@ -106,6 +107,7 @@ graph TD
     %% ================= PACKAGES =================
     subgraph Packages ["Monorepo Packages"]
         Engine["@narrative/engine (packages/engine): Shared pure-TS game logic (dice, loot, RRF fusion, JSON repairs) consumed by both apps"]
+        ApiTypes["@narrative/api-types (packages/api-types): Shared Express API schemas and types"]
     end
 
     %% ================= MOBILE =================
@@ -146,12 +148,12 @@ graph TD
      absolute http://localhost:3001 in Electron)           |
                +-----------------------+--------------------+
                                        |
-                +----------------------v----------------------+
-                |                server.js                    |
-                | KeyVault auto-init → ensureDirs → initDb →  |
-                | warmupEmbedder → warmupTts → mount 16       |
-                | routers → listen 127.0.0.1:3001             |
-                +-------+-----------------+-------------------+
+                 +----------------------v----------------------+
+                 |          apps/server/server.js              |
+                 | KeyVault auto-init → ensureDirs → initDb →  |
+                 | warmupEmbedder → warmupTts → mount 16       |
+                 | routers → listen 127.0.0.1:3001             |
+                 +-------+-----------------+-------------------+
                         |                 |
               +---------v------+   +-------v----------+
               | better-sqlite3 |   | File I/O         |
@@ -299,20 +301,20 @@ All routes are mounted under `/api` in the backend Express router.
 
 | Subsystem | Primary Directory | Key Files | Role |
 |---|---|---|---|
-| **Turn Orchestration** | `src/services/turn/` | `turnOrchestrator.ts`, `pendingCommit.ts`, `contextGatherer.ts`, `absoluteCommand.ts` | Main game loop, swipe lifecycle, tier feature matrix, OOC escape hatches |
-| **NPC Agency** | `src/services/npc/agency/` | `agencyEngine.ts`, `agencyBands.ts`, `agencyGoals.ts`, `agencyCollision.ts` | Heartbeat-driven off-screen NPC life, goal rolls, hex drift, timeskip |
-| **NPC Generation** | `src/services/npc/` | `npcDetector.ts`, `npcBehaviorDirective.ts`, `reactionMenu.ts`, `hexRoll.ts` | Name detection (7-pass), hex roll inside envelope, reaction menu |
-| **Prompt Assembly** | `src/services/payload/` | `payloadBuilder.ts`, `stable.ts`, `volatile.ts`, `world.ts`, `history.ts` | 5-block payload assembly with Anthropic prompt-cache annotations |
-| **Archive Memory** | `src/services/archive-memory/` | `recall.ts`, `idf.ts`, `deepArchiveSearch.ts`, `archiveChapterEngine.ts`, `turnDivergenceExtractor.ts` | RRF hybrid retrieval, IDF, dynamic ceiling, deep search, chapter funnel, fact & entity extraction |
-| **Rules/Lore RAG** | `src/services/rules|lore/`| `defaultRules.ts`, `loreChunker.ts`, `loreRetriever.ts` | RAG rules chunking + IDF+RRF retrieval, lore-consistency verifier |
-| **i18n & Localization**| `src/i18n/`          | `index.ts`, `useTranslation.ts`, `en.ts` | UI language framework, pluralization via Intl, locale registration |
-| **LLM Interface** | `src/services/llm/` | `llmService.ts`, `llmRequestQueue.ts`, `llmFetch.ts` | Streaming chat, per-endpoint adaptive concurrency queue |
+| **Turn Orchestration** | `apps/web/src/services/turn/` | `turnOrchestrator.ts`, `pendingCommit.ts`, `contextGatherer.ts`, `absoluteCommand.ts` | Main game loop, swipe lifecycle, tier feature matrix, OOC escape hatches |
+| **NPC Agency** | `apps/web/src/services/npc/agency/` | `agencyEngine.ts`, `agencyBands.ts`, `agencyGoals.ts`, `agencyCollision.ts` | Heartbeat-driven off-screen NPC life, goal rolls, hex drift, timeskip |
+| **NPC Generation** | `apps/web/src/services/npc/` | `npcDetector.ts`, `npcBehaviorDirective.ts`, `reactionMenu.ts`, `hexRoll.ts` | Name detection (7-pass), hex roll inside envelope, reaction menu |
+| **Prompt Assembly** | `apps/web/src/services/payload/` | `payloadBuilder.ts`, `stable.ts`, `volatile.ts`, `world.ts`, `history.ts` | 5-block payload assembly with Anthropic prompt-cache annotations |
+| **Archive Memory** | `apps/web/src/services/archive-memory/` | `recall.ts`, `idf.ts`, `deepArchiveSearch.ts`, `archiveChapterEngine.ts`, `turnDivergenceExtractor.ts` | RRF hybrid retrieval, IDF, dynamic ceiling, deep search, chapter funnel, fact & entity extraction |
+| **Rules/Lore RAG** | `apps/web/src/services/rules\|lore/`| `defaultRules.ts`, `loreChunker.ts`, `loreRetriever.ts` | RAG rules chunking + IDF+RRF retrieval, lore-consistency verifier |
+| **i18n & Localization**| `apps/web/src/i18n/`          | `index.ts`, `useTranslation.ts`, `en.ts` | UI language framework, pluralization via Intl, locale registration |
+| **LLM Interface** | `apps/web/src/services/llm/` | `llmService.ts`, `llmRequestQueue.ts`, `llmFetch.ts` | Streaming chat, per-endpoint adaptive concurrency queue |
 | **Shared Engine** | `packages/engine/` | `src/{json,loot,retrieval,rolls}/` | Platform-pure shared core (no DOM/Node) consumed by both apps |
 
 ### Deep Dive: Context Gathering & Vector Search (`sqlite-vec` + `Transformers`)
-To preserve user privacy and offline capabilities, the engine relies heavily on local ML executing within the Node process (`server/lib/`):
+To preserve user privacy and offline capabilities, the engine relies heavily on local ML executing within the Node process (`apps/server/src/lib/`):
 *   **Local Embedding (`embedder.js`)**: Uses `@huggingface/transformers` to vectorize chat messages and lore *locally*, preventing token leakage to third parties.
-*   **Vector DB (`vectorStore.js`)**: Instead of relying on Pinecone or Milvus, the backend uses `sqlite-vec` to manage a local `embeddings.db` file. When `ContextGatherer` runs, it asks `vectorStore` to calculate Cosine Similarity between the current chat and all stored timeline events to pull "memories".
+*   **Vector DB (`vectorStore.js` & `dbWorker.js`)**: Instead of relying on Pinecone or Milvus, the backend uses `sqlite-vec` to manage a local `embeddings.db` file, utilizing a dedicated Node Worker thread to prevent Express event loop blockage. When `ContextGatherer` runs, it calculates Cosine Similarity between the current chat and all stored timeline events to pull "memories".
 *   **Local Voice (`tts.js`)**: Uses `kokoro-js` to locally synthesize speech for NPC dialogue without API costs.
 
 ### Deep Dive: Encryption & `KeyVault` (`vault.js`)
@@ -375,25 +377,25 @@ When modifying core files, consult this matrix to trace downstream effects to pr
 
 | MODIFIED FILE / COMPONENT | DIRECTLY AFFECTED | DOWNSTREAM IMPACTS |
 |===========================|===================|====================|
-| **`server/lib/vectorStore.js`** <br/> (sqlite-vec schema, MMR, dims) | `vectorService`, `archiveService`, `archive.js`, `apiClient` | Semantic recall fails, MMR rankings break, Campaign loads lock up |
-| **`server/vault.js`** <br/> (AES-256-GCM, PBKDF2, binary format) | `vault.js`, `settings.js`, `settingsSlice`, `settingsCrypto.ts` | Settings unlock fails, API keys lost, Startup routing breaks |
-| **`src/store/slices/campaignSlice.ts`** <br/> (Zustand campaign state) | `useAppStore.ts`, `ContextDrawer`, `ChatArea.tsx`, `chatSlice.ts` | UI render loop breaks, Campaign hydration fails, debouncedSave breaks |
-| **`src/services/llm/llmRequestQueue.ts`** <br/> (adaptive concurrency) | `llmService.ts`, `llmCall.ts`, `postTurnPipe` | Network deadlocks, Tool calls queue indefinitely |
-| **`src/services/turn/pendingCommit.ts`** <br/> (swipe lifecycle / commit) | `ChatArea.tsx`, `postTurnPipe`, `chatSlice.ts`, `App.tsx` | Message swiping breaks, NLP updates skipped, Ghost messages on crash |
-| **`src/services/payload/payloadBuilder.ts`** <br/> (5-block assembly + cache control)| `turnOrchestrator`, `sceneContinue`, `TokenGauge.tsx` | LLM payload malformed, Token budget overflow, Cache busts every turn |
-| **`src/types/gamecontext.ts`** | All `src/` files importing types, `packages/engine/src/*` | Compile errors, Defaults change, **Campaign migrations fail** |
+| **`apps/server/src/lib/workers/dbWorker.js`** <br/> (sqlite-vec schema, MMR) | `vectorStore.js`, `archiveService`, `archive.js`, `apiClient` | Semantic recall fails, MMR rankings break, Campaign loads lock up |
+| **`apps/server/src/vault.js`** <br/> (AES-256-GCM, PBKDF2) | `vault.js`, `settings.js`, `settingsSlice`, `settingsCrypto.ts` | Settings unlock fails, API keys lost, Startup routing breaks |
+| **`apps/web/src/store/slices/campaignSlice.ts`** <br/> (Zustand campaign state) | `useAppStore.ts`, `ContextDrawer`, `ChatArea.tsx`, `chatSlice.ts` | UI render loop breaks, Campaign hydration fails, debouncedSave breaks |
+| **`apps/web/src/services/llm/llmRequestQueue.ts`** <br/> (adaptive concurrency) | `llmService.ts`, `llmCall.ts`, `postTurnPipe` | Network deadlocks, Tool calls queue indefinitely |
+| **`apps/web/src/services/turn/pendingCommit.ts`** <br/> (swipe lifecycle) | `ChatArea.tsx`, `postTurnPipe`, `chatSlice.ts`, `App.tsx` | Message swiping breaks, NLP updates skipped, Ghost messages on crash |
+| **`apps/web/src/services/payload/payloadBuilder.ts`** <br/> (Token boundaries)| `turnOrchestrator`, `sceneContinue`, `TokenGauge.tsx` | LLM payload malformed, Token budget overflow, Cache busts every turn |
+| **`apps/web/src/types/gamecontext.ts`** | All `src/` files importing types, `packages/engine/src/*` | Compile errors, Defaults change, **Campaign migrations fail** |
 
 ---
 
 ## 7. Developer Tooling & Commands
 
 ### Build, Test & Run Commands
-- **Start App (Frontend + Server concurrently)**: `npm run dev` (starts server on port 3001, Vite frontend on port 5173). Alternatively, use `Start_Narrative_Engine.bat` or `start.sh`.
-- **Start Backend Server only**: `node server.js`
-- **Build Frontend Assets**: `npm run build`
-- **Lint Codebase**: `npm run lint` or `npx eslint .`
-- **Run Tests**: `npm run test` or `npx vitest`
-- **Run Tests with Coverage**: `npm run test:coverage`
+- **Start App (Frontend + Server concurrently)**: `npm run dev` (uses npm workspaces to run both concurrently). Alternatively, use `Start_Narrative_Engine.bat` or `start.sh`.
+- **Start Backend Server only**: `npm run dev -w @narrative/server`
+- **Build App**: `npm run build`
+- **Lint Codebase**: `npm run lint`
+- **Run Unit Tests**: `npm test` or `npm test --workspaces` (runs Vitest across all workspace packages)
+- **Run E2E Tests**: `npm run test:e2e` (runs Playwright tests to test full campaign flow)
 - **Update App**: `Update_Narrative_Engine.bat` (pulls from Git and syncs npm dependencies without touching `data/`).
 - **Repair App**: `Repair_Narrative_Engine.bat` or `.sh` (Fixes `NODE_MODULE_VERSION` mismatches or native binding Rolldown errors).
 

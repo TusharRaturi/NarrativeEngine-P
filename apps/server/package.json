@@ -1,0 +1,26 @@
+{
+  "name": "@narrative/server",
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js",
+    "test": "vitest"
+  },
+  "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "cors": "^2.8.6",
+    "express": "^5.2.1",
+    "js-tiktoken": "^1.0.21",
+    "kokoro-js": "^1.2.1",
+    "sqlite-vec": "^0.1.9",
+    "@huggingface/transformers": "^4.0.1",
+    "@narrative/engine": "*",
+    "@narrative/api-types": "*"
+  },
+  "devDependencies": {
+    "vitest": "^4.1.8",
+    "supertest": "^7.2.2",
+    "@types/supertest": "^7.2.0"
+  }
+}

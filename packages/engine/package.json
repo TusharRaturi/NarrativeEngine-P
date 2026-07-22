@@ -16,7 +16,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsc -p tsconfig.build.json",
     "pretest": "node scripts/boundary-gate.mjs",
     "test": "vitest run",
     "prepare": "npm run build"
