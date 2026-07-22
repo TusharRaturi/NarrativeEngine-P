@@ -299,12 +299,13 @@ All routes are mounted under `/api` in the backend Express router.
 
 | Subsystem | Primary Directory | Key Files | Role |
 |---|---|---|---|
-| **Turn Orchestration** | `src/services/turn/` | `turnOrchestrator.ts`, `pendingCommit.ts`, `contextGatherer.ts`, `aiTier.ts` | Main game loop, swipe lifecycle, tier feature matrix |
+| **Turn Orchestration** | `src/services/turn/` | `turnOrchestrator.ts`, `pendingCommit.ts`, `contextGatherer.ts`, `absoluteCommand.ts` | Main game loop, swipe lifecycle, tier feature matrix, OOC escape hatches |
 | **NPC Agency** | `src/services/npc/agency/` | `agencyEngine.ts`, `agencyBands.ts`, `agencyGoals.ts`, `agencyCollision.ts` | Heartbeat-driven off-screen NPC life, goal rolls, hex drift, timeskip |
 | **NPC Generation** | `src/services/npc/` | `npcDetector.ts`, `npcBehaviorDirective.ts`, `reactionMenu.ts`, `hexRoll.ts` | Name detection (7-pass), hex roll inside envelope, reaction menu |
 | **Prompt Assembly** | `src/services/payload/` | `payloadBuilder.ts`, `stable.ts`, `volatile.ts`, `world.ts`, `history.ts` | 5-block payload assembly with Anthropic prompt-cache annotations |
-| **Archive Memory** | `src/services/archive-memory/` | `recall.ts`, `idf.ts`, `deepArchiveSearch.ts`, `archiveChapterEngine.ts` | RRF hybrid retrieval, IDF, dynamic ceiling, deep search, chapter funnel |
+| **Archive Memory** | `src/services/archive-memory/` | `recall.ts`, `idf.ts`, `deepArchiveSearch.ts`, `archiveChapterEngine.ts`, `turnDivergenceExtractor.ts` | RRF hybrid retrieval, IDF, dynamic ceiling, deep search, chapter funnel, fact & entity extraction |
 | **Rules/Lore RAG** | `src/services/rules|lore/`| `defaultRules.ts`, `loreChunker.ts`, `loreRetriever.ts` | RAG rules chunking + IDF+RRF retrieval, lore-consistency verifier |
+| **i18n & Localization**| `src/i18n/`          | `index.ts`, `useTranslation.ts`, `en.ts` | UI language framework, pluralization via Intl, locale registration |
 | **LLM Interface** | `src/services/llm/` | `llmService.ts`, `llmRequestQueue.ts`, `llmFetch.ts` | Streaming chat, per-endpoint adaptive concurrency queue |
 | **Shared Engine** | `packages/engine/` | `src/{json,loot,retrieval,rolls}/` | Platform-pure shared core (no DOM/Node) consumed by both apps |
 
@@ -329,8 +330,8 @@ The store relies on a specific dependency structure with 6 composed slices, mana
 
 ### Deep Dive: UI Component Key Surfaces (`src/components/`)
 *   **`App.tsx`**: Contains the Vault-gate loader.
-*   **`ChatArea.tsx`**: Master shell managing swipe generation, scene notes, OOC side panel, PC creation wizard, and indexing banners.
-*   **`MessageBubble.tsx`**: Implements touch-swipe navigation (50px threshold), TTS karaoke highlighting, and a `<dim>` block extraction spinning ReasoningViewer.
+*   **`ChatArea.tsx`**: Master shell managing swipe generation, scene notes, OOC side panel, PC editing (`PCEditForm`), and indexing banners.
+*   **`MessageBubble.tsx`**: Implements touch-swipe navigation (50px threshold), TTS karaoke highlighting, Gemini/DeepSeek reasoning block parsing (`<think>` tags), and Smart Retry generation for aborted turns.
 *   **`ContextDrawer.tsx`**: Contains 8 context tabs (System Context, Rules, World Info, Engines, Chapters, Memory, PC Profile, Bookkeeping).
 
 ### Deep Dive: Cross-Cutting Concerns
@@ -344,6 +345,10 @@ The fact extraction pipeline uses a bifurcated schema to handle chronological su
 *   **Schema**: Outputs an `ExtractedDivergences` object containing `new_facts`, `updated_facts` (with `target_fact_id`), and `invalidated_facts`.
 *   **RAG Injection**: Active facts from the `divergenceRegister` are injected into the prompt using semantic entity matching, ensuring the LLM has historical context for updates.
 *   **Lifecycle**: Updates and invalidations automatically tombstone the old fact (`isActive: false`) and set a `supersededBy` lineage to maintain chronological integrity.
+
+### Deep Dive: Absolute Command & Smart Retry
+*   **Absolute Command**: An out-of-character (OOC) escape hatch (`WO-absolute-command`) bypassing standard narrative rules. It travels as a `buildPayload` parameter appended *after* the user's message to explicitly outrank other directives, firing exactly once.
+*   **Smart Retry**: Failed or aborted GM turns stamp a "retryable" state onto the assistant bubble, taking an early precontext snapshot. Retrying bypasses context regathering and directly resumes generation.
 
 ### Deep Dive: Supported LLM Provider Roles
 The engine supports decoupled providers across 5 configurable endpoints:
