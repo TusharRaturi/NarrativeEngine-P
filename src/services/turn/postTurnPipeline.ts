@@ -399,7 +399,19 @@ async function runArchiveTrack(
                                 console.log(`[Archive] Post-turn divergences extracted for scene #${extractArchiveId} (${extracted.newEntries.length} new, ${extracted.updates.length} updates, ${extracted.invalidations.length} invalidations)`);
                                 
                                 // Dispatch divergence-based suggestions
-                                const npcsToSuggest = allEntries.flatMap(e => e.unrecognizedNpcNames || []);
+                                const pc = postExtractStoreState.context.playerCharacter;
+                                const excludeNames = new Set<string>();
+                                if (pc) {
+                                    excludeNames.add(pc.name.toLowerCase());
+                                    if (pc.aliases) {
+                                        pc.aliases.split(',').forEach(a => excludeNames.add(a.trim().toLowerCase()));
+                                    }
+                                }
+
+                                const npcsToSuggest = allEntries
+                                    .flatMap(e => e.unrecognizedNpcNames || [])
+                                    .filter(name => !excludeNames.has(name.toLowerCase()));
+
                                 if (npcsToSuggest.length > 0 && postExtractStoreState.addNpcSuggestions) {
                                     postExtractStoreState.addNpcSuggestions(npcsToSuggest);
                                 }
@@ -702,10 +714,22 @@ export async function runCombinedSeal(
         }
 
         const storeState = useAppStore.getState();
+        
+        const pc = storeState.context.playerCharacter;
+        const excludeNames = new Set<string>();
+        if (pc) {
+            excludeNames.add(pc.name.toLowerCase());
+            if (pc.aliases) {
+                pc.aliases.split(',').forEach(a => excludeNames.add(a.trim().toLowerCase()));
+            }
+        }
+
         const npcsToSuggest = [
             ...result.divergences.newEntries,
             ...result.divergences.updates.map(u => u.newEntry)
-        ].flatMap(e => e.unrecognizedNpcNames || []);
+        ]
+            .flatMap(e => e.unrecognizedNpcNames || [])
+            .filter(name => !excludeNames.has(name.toLowerCase()));
         
         if (npcsToSuggest.length > 0 && storeState.addNpcSuggestions) {
             storeState.addNpcSuggestions(npcsToSuggest);
