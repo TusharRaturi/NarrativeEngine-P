@@ -399,7 +399,7 @@ async function runArchiveTrack(
                                 console.log(`[Archive] Post-turn divergences extracted for scene #${extractArchiveId} (${extracted.newEntries.length} new, ${extracted.updates.length} updates, ${extracted.invalidations.length} invalidations)`);
                                 
                                 // Dispatch divergence-based suggestions
-                                const pc = postExtractStoreState.context.playerCharacter;
+                                const pc = postExtractStoreState.context?.playerCharacter;
                                 const excludeNames = new Set<string>();
                                 if (pc) {
                                     excludeNames.add(pc.name.toLowerCase());
@@ -715,7 +715,7 @@ export async function runCombinedSeal(
 
         const storeState = useAppStore.getState();
         
-        const pc = storeState.context.playerCharacter;
+        const pc = storeState.context?.playerCharacter;
         const excludeNames = new Set<string>();
         if (pc) {
             excludeNames.add(pc.name.toLowerCase());
