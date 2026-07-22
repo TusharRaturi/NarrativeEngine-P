@@ -105,7 +105,22 @@ for (const file of localeFiles) {
         if (missing.length > 15) console.log(`      … and ${missing.length - 15} more`);
     }
 
-    if (orphans.length === 0 && badPlaceholders.length === 0 && missing.length === 0) {
+    // A key present but byte-identical to English reads as 100% translated in
+    // the count above while still showing English to the user. Some of these are
+    // correct (product names, "Debug"); the rest are lines a translator scrolled
+    // past. Only a human can tell which, so this reports rather than fails.
+    const sameAsEnglish = translated.filter((k) => strings.get(k) === en.get(k));
+    if (sameAsEnglish.length > 0) {
+        console.log(`  · ${sameAsEnglish.length} identical to English — intentional (brand names) or overlooked:`);
+        for (const k of sameAsEnglish) console.log(`      ${k}  =  "${en.get(k)}"`);
+    }
+
+    if (
+        orphans.length === 0 &&
+        badPlaceholders.length === 0 &&
+        missing.length === 0 &&
+        sameAsEnglish.length === 0
+    ) {
         console.log('  ✓ complete');
     }
 }
