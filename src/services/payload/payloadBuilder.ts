@@ -1,7 +1,7 @@
 import type { AppSettings, ChatMessage, GameContext, LoreChunk, NPCEntry, ArchiveScene, ArchiveIndexEntry, PayloadTrace, TimelineEvent, DebugSection, InventoryItemCategory, DivergenceRegister, ArchiveChapter, PinnedExcerpt, SceneEventType, LocationEntry } from '../../types';
 import type { OpenAIMessage } from '../llm/llmService';
 import { createTraceCollector } from './traceCollector';
-import { computeBudgets } from './budgets';
+import { computeBudgets, ContextLimitExceededError } from './budgets';
 import { buildStable, isThinkingEnabled } from './stable';
 import { buildWorld } from './world';
 import { buildVolatile } from './volatile';
@@ -97,65 +97,21 @@ export function buildPayload(options: BuildPayloadOptions): { messages: OpenAIMe
     } = options;
     const isDebug = settings.debugMode === true;
     const limit = settings.contextLimit || 8192;
+
+    const userTokens = countTokens(userMessage);
+    const briefTokens = directorBrief ? countTokens(directorBrief) : 0;
+    const absoluteCommandTokens = absoluteCommand ? countTokens(absoluteCommand) : 0;
+    // Scale down the safety margin if the limit itself is very small (for unit tests)
+    const baseMinimumContextTokens = limit < 2000 ? Math.floor(limit * 0.2) : 1000; 
+    if (userTokens + briefTokens + absoluteCommandTokens + baseMinimumContextTokens > limit) {
+        throw new ContextLimitExceededError(`The combined size of your message and the GM's brief exceeds the model's absolute context limit of ${limit} tokens. Please shorten your input.`);
+    }
+
     const collector = createTraceCollector(isDebug);
     const { rulesBudget, budgetMap } = computeBudgets(limit, settings.rulesBudgetPct, !!deepContextSummary);
     const { stableContent, stableTokens, retrievedRulesContent } = buildStable({ settings, context, relevantRules, rulesManifest, rulesBudget, budgetStable: budgetMap.stable, collector });
     const { worldContent, currentWorldTokens, divergenceContent, divergenceTokens, plannerEventTypes: resolvedEventTypes } = buildWorld({ history, userMessage, condensedUpToIndex, relevantLore, npcLedger, archiveRecall, recommendedNPCNames, semanticFactText, archiveIndex, timelineEvents, deepContextSummary, divergenceRegister, chapters, onStageNpcIds, loreRaw: context.loreRaw, agencyDigest: context.agencyDigest, arcDigest: context.arcDigest, budgetWorld: budgetMap.world, npcBudgetFloor: budgetMap.npc, plannerEventTypes, matureMode: settings.matureMode, isDebug, collector, elevatedScenes, slottedRagSnippets });
     const { volatileContent, volatileTokens } = buildVolatile({ context, inventoryCategories, profileFields, budgetVolatile: budgetMap.volatile, collector, plannerEventTypes: resolvedEventTypes, userMessage, history, npcLedger, locationLedger });
-    const fitted = buildHistory({
-        history,
-        condensedUpToIndex,
-        userMessage,
-        limit,
-        stableTokens: stableTokens + divergenceTokens,
-        currentWorldTokens,
-        volatileTokens,
-        context,
-        collector,
-        // WO-09: plumb the existing `chapters`, `archiveIndex`, `onStageNpcIds`
-        // params (already in buildPayload's signature) plus the two LOD knobs.
-        chapters,
-        archiveIndex,
-        onStageNpcIds,
-        lodSummaryChapters: settings.lodSummaryChapters,
-        lodImportanceBonus: settings.lodImportanceBonus,
-    });
-
-    // --- 8. Final Assembly ---
-    // Stable, divergence, and pinned blocks get cache_control: ephemeral for Anthropic prompt caching.
-    // These blocks change infrequently across turns, making them ideal cache hit candidates.
-    const cacheControl = { type: 'ephemeral' as const };
-    const messages: OpenAIMessage[] = [];
-    if (stableContent) messages.push({ role: 'system', content: stableContent, cache_control: cacheControl });
-    if (divergenceContent) messages.push({ role: 'system', content: divergenceContent, cache_control: cacheControl });
-    if (pinnedExcerpts && pinnedExcerpts.length > 0) {
-        messages.push({ role: 'system', content: buildPinnedMemoriesBlock(pinnedExcerpts), cache_control: cacheControl });
-    }
-
-    // Push history BEFORE the volatile block so the growing campaign log rides in the cached prefix.
-    messages.push(...fitted);
-
-    // Stamp cache_control: ephemeral on the last history message so prefix-caching covers all of history.
-    // WO-09b: widened the role check from `user || assistant` to `system || user || assistant` so
-    // the LOD-only history shape (every chat message at or before `condensedUpToIndex` → `fitted`
-    // contains only the LOD `system` message) still lands a cache breakpoint. Without this, the
-    // LOD block would be emitted after the prior breakpoint but receive none itself, falling outside
-    // the cached prefix. The final volatile user message is appended below and is never stamped here.
-    //
-    // WO-09c §1: `tool`-role history messages are intentionally NOT stamped here — tool-role
-    // stamping was not authorized by WO-09/09b/09c (not a type-capability issue: the internal
-    // OpenAIMessage type can carry cache_control on any role). Tool-message caching is out of
-    // scope and left for a separate design decision. The Claude wire transform preserves any
-    // marker already placed on `system`/`user`/`assistant` messages; unstamped messages (including
-    // all `tool` messages) keep their current wire shapes.
-    if (fitted.length > 0) {
-        const last = messages.length - 1;
-        const lastMsg = messages[last];
-        if (lastMsg.role === 'system' || lastMsg.role === 'user' || lastMsg.role === 'assistant') {
-            messages[last] = { ...lastMsg, cache_control: { type: 'ephemeral' } };
-        }
-    }
-
     // Fold the per-turn volatile world/NPC block and the GM reminder into the final user message
     // (below the cache boundary) so they never perturb the cached prefix.
     // RAG-retrieved rules are per-turn dynamic (re-selected by semantic match to user input),
@@ -213,6 +169,65 @@ export function buildPayload(options: BuildPayloadOptions): { messages: OpenAIMe
         volatileBlock, writerCotNudge, directorBriefBlock, gmReminderActive,
         watchdogNudgeActive, askGmBrief, userMessage, absoluteCommandBlock,
     ].filter(Boolean).join('\n\n');
+
+    // Calculate final user message tokens to pass to buildHistory so we reserve space for it
+    const finalUserTokens = countTokens(finalUserContent);
+
+    const fitted = buildHistory({
+        history,
+        condensedUpToIndex,
+        userMessage: finalUserContent, // Pass the final user content so it budgets accurately
+        limit,
+        stableTokens: stableTokens + divergenceTokens,
+        currentWorldTokens,
+        volatileTokens,
+        context,
+        collector,
+        // WO-09: plumb the existing `chapters`, `archiveIndex`, `onStageNpcIds`
+        // params (already in buildPayload's signature) plus the two LOD knobs.
+        chapters,
+        archiveIndex,
+        onStageNpcIds,
+        lodSummaryChapters: settings.lodSummaryChapters,
+        lodImportanceBonus: settings.lodImportanceBonus,
+    });
+
+    // --- 8. Final Assembly ---
+    // Stable, divergence, and pinned blocks get cache_control: ephemeral for Anthropic prompt caching.
+    // These blocks change infrequently across turns, making them ideal cache hit candidates.
+    const cacheControl = { type: 'ephemeral' as const };
+    const messages: OpenAIMessage[] = [];
+    if (stableContent) messages.push({ role: 'system', content: stableContent, cache_control: cacheControl });
+    if (divergenceContent) messages.push({ role: 'system', content: divergenceContent, cache_control: cacheControl });
+    if (pinnedExcerpts && pinnedExcerpts.length > 0) {
+        messages.push({ role: 'system', content: buildPinnedMemoriesBlock(pinnedExcerpts), cache_control: cacheControl });
+    }
+
+    // Push history BEFORE the final user message so the growing campaign log rides in the cached prefix.
+    messages.push(...fitted);
+
+    // Stamp cache_control: ephemeral on the last history message so prefix-caching covers all of history.
+    // WO-09b: widened the role check from `user || assistant` to `system || user || assistant` so
+    // the LOD-only history shape (every chat message at or before `condensedUpToIndex` → `fitted`
+    // contains only the LOD `system` message) still lands a cache breakpoint. Without this, the
+    // LOD block would be emitted after the prior breakpoint but receive none itself, falling outside
+    // the cached prefix. The final volatile user message is appended below and is never stamped here.
+    //
+    // WO-09c §1: `tool`-role history messages are intentionally NOT stamped here — tool-role
+    // stamping was not authorized by WO-09/09b/09c (not a type-capability issue: the internal
+    // OpenAIMessage type can carry cache_control on any role). Tool-message caching is out of
+    // scope and left for a separate design decision. The Claude wire transform preserves any
+    // marker already placed on `system`/`user`/`assistant` messages; unstamped messages (including
+    // all `tool` messages) keep their current wire shapes.
+    if (fitted.length > 0) {
+        const last = messages.length - 1;
+        const lastMsg = messages[last];
+        if (lastMsg.role === 'system' || lastMsg.role === 'user' || lastMsg.role === 'assistant') {
+            messages[last] = { ...lastMsg, cache_control: { type: 'ephemeral' } };
+        }
+    }
+
+    // Final user content is now assembled before buildHistory, but we push it here.
     messages.push({ role: 'user', content: finalUserContent });
 
     // Trace the watchdog so debug mode shows the dossier (source: 'Watchdog' per WO-03 §4).

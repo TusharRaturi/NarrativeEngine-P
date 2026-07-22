@@ -1,6 +1,7 @@
 import type { NPCEntry, LoreChunk } from '../../types';
 import type { TurnState } from '../turn/turnOrchestrator';
 import { API_BASE as API } from '../../lib/apiBase';
+import { embedClient } from '../llm/embedClient';
 import { rerankCandidates, type RerankCandidate } from '../retrieval/semanticReranker';
 import { llmCall } from '../../utils/llmCall';
 import { extractJsonRobust } from '../infrastructure/jsonExtract';
@@ -75,7 +76,9 @@ export async function gatherSemanticCandidates(
             }
         }
 
-        const queryBody = queries.length > 1 ? { queries } : { query: input };
+        const queryEmbeddings = await embedClient.embedBatch(queries);
+        const queryBody = { queries, queryEmbeddings };
+
         const [archiveRes, loreRes, rulesRes] = await Promise.all([
             fetch(`${API}/campaigns/${activeCampaignId}/archive/semantic-candidates`, {
                 method: 'POST',

@@ -150,5 +150,14 @@ export function createArchiveRouter() {
         res.json(await svc.reindexEmbeddings(req.params.id, type));
     }));
 
+    router.get('/api/campaigns/:id/embeddings/stale-texts', wrapAsync(async (req, res) => {
+        res.json(await svc.getStaleTexts(req.params.id));
+    }));
+
+    router.post('/api/campaigns/:id/embeddings/sync', wrapAsync(async (req, res) => {
+        const { type, items } = req.body; // type: 'scene' | 'lore', items: [{ id, embedding }]
+        res.json(await svc.syncEmbeddings(req.params.id, type, items));
+    }));
+
     return router;
 }

@@ -13,6 +13,13 @@ import { beginGatherStage, endGatherStage, clearGatherStages } from './gatherPro
 import { AI_CALL_TIMEOUT_MS } from '../llm/timeouts';
 import type { LoreChunk } from '../../types';
 
+export class ContextGatherTimeoutError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'ContextGatherTimeoutError';
+    }
+}
+
 // Friendly, user-facing labels for the live step indicator (keyed by internal stage id).
 const STAGE_LABELS: Record<string, string> = {
     'planner': 'Planning search',
@@ -138,6 +145,25 @@ export async function gatherContext(
     // Timeline events — from state, used directly
     const timelineEvents: TimelineEvent[] = state.timeline || [];
 
+    const makePollable = <T,>(p: Promise<T>) => {
+        let isDone = false;
+        let value: T;
+        let error: any;
+        p.then(v => { isDone = true; value = v; }, e => { isDone = true; error = e; });
+        return {
+            get isDone() { return isDone; },
+            get value() { if (error) throw error; return value; },
+            promise: p
+        };
+    };
+
+    const pSemantic = makePollable(semanticPromise);
+    const pArchive = makePollable(archiveRecallPromise);
+    const pRecommender = makePollable(recommenderPromise);
+    const pLore = makePollable(loreRulesPromise);
+    const pPlanner = makePollable(plannerPromise);
+    const pElevation = makePollable(elevationPromise);
+
     // ─── Await all async operations with a safety backstop ───
     // Raised to match the AI-call budget: gather waits for slow stages rather than
     // bailing early, and the live step indicator (GenerationProgress) shows what's
@@ -146,19 +172,46 @@ export async function gatherContext(
     const CONTEXT_GATHER_TIMEOUT_MS = AI_CALL_TIMEOUT_MS;
     await Promise.race([
         Promise.all([timelinePromise, archiveRecallPromise, recommenderPromise, loreRulesPromise, plannerPromise, elevationPromise]),
-        new Promise<void>((resolve) => setTimeout(() => {
-            console.warn('[ContextGatherer] Context gather timeout — proceeding with partial results');
-            resolve();
+        new Promise<void>((resolve, reject) => setTimeout(() => {
+            if (state.ignoreContextTimeout) {
+                console.warn('[ContextGatherer] Context gather timeout ignored — proceeding with partial results');
+                resolve();
+            } else {
+                reject(new ContextGatherTimeoutError('Context gathering is taking too long.'));
+            }
         }, CONTEXT_GATHER_TIMEOUT_MS)),
     ]);
 
-    let archiveRecall = await archiveRecallPromise;
-    const recommender = await recommenderPromise;
-    const { relevantLore, relevantRules, rulesManifest } = await loreRulesPromise.catch(() => ({ relevantLore: undefined, relevantRules: [], rulesManifest: '' }));
-    const semanticCandidates = await semanticPromise;
-    const plannerSceneIds = await plannerPromise;
-    // WO-11: never let elevation failure block the turn — default to empty.
-    const elevation = await elevationPromise.catch(() => ({ scenes: [] as ElevatedScene[], rankedSceneIds: [] as string[] }));
+    let archiveRecall = pArchive.isDone ? pArchive.value : [];
+    const recommender = pRecommender.isDone ? pRecommender.value : { recommendedNPCNames: [], inventoryCategories: [], profileFields: [] };
+    
+    let relevantLore, relevantRules, rulesManifest;
+    if (pLore.isDone) {
+        try {
+            const loreRes = pLore.value;
+            relevantLore = loreRes.relevantLore;
+            relevantRules = loreRes.relevantRules;
+            rulesManifest = loreRes.rulesManifest;
+        } catch {
+            relevantLore = undefined; relevantRules = []; rulesManifest = '';
+        }
+    } else {
+        relevantLore = undefined; relevantRules = []; rulesManifest = '';
+    }
+
+    const semanticCandidates = pSemantic.isDone ? pSemantic.value : { semanticArchiveIds: [], semanticLoreIds: [], semanticRuleIds: [] };
+    const plannerSceneIds = pPlanner.isDone ? pPlanner.value : [];
+    
+    let elevation;
+    if (pElevation.isDone) {
+        try {
+            elevation = pElevation.value;
+        } catch {
+            elevation = { scenes: [] as ElevatedScene[], rankedSceneIds: [] as string[] };
+        }
+    } else {
+        elevation = { scenes: [] as ElevatedScene[], rankedSceneIds: [] as string[] };
+    }
 
     // WO-12: Slotted RAG — consume WO-11's scoped search results (one search, two
     // consumers). Pure computation from the ranked IDs + archive index; no second

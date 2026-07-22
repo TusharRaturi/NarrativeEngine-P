@@ -104,6 +104,7 @@ export type TurnState = {
      *  combines this signal with the turn's abort signal via `AbortSignal.any`
      *  so an outer stop still aborts the Director (preserves WO-04 behavior). */
     directorSkipController?: AbortController | null;
+    ignoreContextTimeout?: boolean;
 };
 
 

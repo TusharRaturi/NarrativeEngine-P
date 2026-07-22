@@ -1,0 +1,6 @@
+{
+  "name": "@narrative/api-types",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "types": "index.ts"
+}

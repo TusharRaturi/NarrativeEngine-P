@@ -5,6 +5,7 @@ import { useAppStore } from '../store/useAppStore';
 import { findPendingCommitMessage } from '../services/turn/pendingCommit';
 import { LootRollModal } from './chat/LootRollModal';
 import { DiceRollModal } from './chat/DiceRollModal';
+import { ContextTimeoutModal } from './chat/ContextTimeoutModal';
 import { RegenerateSheet } from './chat/RegenerateSheet';
 import { SelectionActionsMenu } from './chat/SelectionActionsMenu';
 import { ChatActionStrip } from './chat/ChatActionStrip';
@@ -137,6 +138,7 @@ export function ChatArea() {
         isStreaming, loadingStatus, pendingProposal, setPendingProposal,
         handleSend, handleStop,
         directorBriefRunning, handleSkipDirectorBrief,
+        contextTimeoutError, setContextTimeoutError,
     } = useChatOperations({
         input,
         setInput,
@@ -343,6 +345,24 @@ export function ChatArea() {
 
             <LootRollModal />
             <DiceRollModal />
+            <ContextTimeoutModal 
+                isOpen={!!contextTimeoutError}
+                onRetry={() => {
+                    if (contextTimeoutError) {
+                        const { text, deepSearch } = contextTimeoutError;
+                        setContextTimeoutError(null);
+                        handleSend(text, deepSearch, false);
+                    }
+                }}
+                onContinuePartial={() => {
+                    if (contextTimeoutError) {
+                        const { text, deepSearch } = contextTimeoutError;
+                        setContextTimeoutError(null);
+                        handleSend(text, deepSearch, true);
+                    }
+                }}
+                onCancel={() => setContextTimeoutError(null)}
+            />
             <RegenerateSheet
                 messageId={swipeSheetMessageId}
                 onClose={() => setSwipeSheetMessageId(null)}

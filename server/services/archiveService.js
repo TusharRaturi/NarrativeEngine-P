@@ -40,7 +40,7 @@ import {
 import {
     storeArchiveEmbedding, storeLoreEmbedding, deleteArchiveEmbedding, getEmbeddingStatus,
     EMBEDDING_VERSION, getDb,
-    embedText, buildArchiveText, buildLoreText, warmup, embedBatch,
+    buildArchiveText, buildLoreText, warmup, embedBatch,
     getActiveDims, getActiveModelId, isModelReady, isJobRunning,
     searchArchiveCandidates, searchLoreCandidates,
 } from './vectorService.js';
@@ -131,10 +131,8 @@ export async function appendScene(campaignId, payload) {
         writeIndexAt(idxp, existing);
     });
 
-    // Fire-and-forget embedding (NOT awaited — same as original).
-    embedText(buildArchiveText(indexEntry))
-        .then(embedding => storeArchiveEmbedding(campaignId, sceneId, embedding))
-        .catch(err => console.warn('[Archive] Embedding failed:', err.message));
+    // Fire-and-forget embedding has been removed; embeddings are now generated
+    // by the frontend WebGPU worker which polls for unversioned scenes.
 
     // Pre-compute the entity-name union used by the deferred timeline extraction.
     const entitiesFile = entitiesPath(campaignId);
@@ -608,13 +606,7 @@ export async function updateSceneAssistant(campaignId, sceneIdParam, assistantCo
     };
     writeIndexAt(idxp, entries.map(e => parseInt(e.sceneId, 10) === targetNum ? newIndexEntry : e));
 
-    // Re-embed — awaited here (different from appendScene's fire-and-forget).
-    try {
-        const embedding = await embedText(buildArchiveText(newIndexEntry));
-        if (embedding) storeArchiveEmbedding(campaignId, targetId, embedding);
-    } catch (err) {
-        console.warn('[Archive] Re-embed failed on scene edit:', err.message);
-    }
+    // Re-embed removed; the frontend WebGPU worker will handle stale scenes.
 
     return { ok: true, sceneId: targetId, userContent };
 }
@@ -685,8 +677,8 @@ export async function archiveSemanticCandidates(campaignId, body) {
     if (!isModelReady() || isJobRunning(campaignId, 'archive')) {
         return { sceneIds: [], pending: true };
     }
-    const { query, queries, limit, diversity = true, scopeSceneIds } = body;
-    const sceneIds = await searchArchiveCandidates(campaignId, { query, queries, limit, diversity, scopeSceneIds });
+    const { query, queries, queryEmbedding, queryEmbeddings, limit, diversity = true, scopeSceneIds } = body;
+    const sceneIds = await searchArchiveCandidates(campaignId, { query, queries, queryEmbedding, queryEmbeddings, limit, diversity, scopeSceneIds });
     return { sceneIds };
 }
 
@@ -698,8 +690,8 @@ export async function loreSemanticCandidates(campaignId, body) {
     if (!isModelReady() || isJobRunning(campaignId, 'lore')) {
         return { loreIds: [], pending: true };
     }
-    const { query, queries, limit, diversity = true } = body;
-    const loreIds = await searchLoreCandidates(campaignId, { query, queries, limit, diversity });
+    const { query, queries, queryEmbedding, queryEmbeddings, limit, diversity = true } = body;
+    const loreIds = await searchLoreCandidates(campaignId, { query, queries, queryEmbedding, queryEmbeddings, limit, diversity });
     return { loreIds };
 }
 
@@ -731,102 +723,65 @@ export function getEmbeddingsInfo() {
  * itself is a stable, public schema (added in the same `initDb()` block that
  * creates the vss tables), so this is safe to keep here.
  */
-export async function reindexEmbeddings(campaignId, type) {
-    console.log(`[Reindex] Starting reindex for campaign ${campaignId}, type=${type || 'all'}`);
-
-    await warmup();
-
-    const status = getEmbeddingStatus(campaignId);
+export async function getStaleTexts(campaignId) {
     const db = getDb();
-    const currentVersion = EMBEDDING_VERSION;
+    if (!db) return { scenes: [], lore: [] };
 
-    let reindexedScenes = 0;
-    let reindexedLore = 0;
+    const { stale: staleScenes, unversioned: unversionedScenes } = await getStaleAndUnversionedIds(campaignId, 'scene');
+    const { stale: staleLore, unversioned: unversionedLore } = await getStaleAndUnversionedIds(campaignId, 'lore');
 
-    // ── Re-index stale scene embeddings ──
-    if ((!type || type === 'all' || type === 'scene') && status.scenes.stale > 0) {
-        const staleScenes = db.prepare(
-            `SELECT item_id FROM embedding_meta WHERE campaign_id = ? AND item_type = 'scene' AND version < ?`
-        ).all(campaignId, currentVersion);
-
-        if (staleScenes.length > 0) {
-            const indexPath = archiveIndexPath(campaignId);
-            const indexEntries = readIndexAt(indexPath, []);
-            const indexMap = new Map(indexEntries.map(e => [e.sceneId, e]));
-
-            const sceneIds = staleScenes.map(r => r.item_id).filter(id => indexMap.has(id));
-            const texts = sceneIds.map(id => buildArchiveText(indexMap.get(id)));
-            const embeddings = await embedBatch(texts, 10, 100);
-
-            for (let i = 0; i < sceneIds.length; i++) {
-                storeArchiveEmbedding(campaignId, sceneIds[i], embeddings[i]);
-                reindexedScenes++;
-            }
-            console.log(`[Reindex] Re-indexed ${reindexedScenes} scene embeddings`);
-        }
+    // Also check for missing scene embeddings (in index but not in vss)
+    const idxPath = archiveIndexPath(campaignId);
+    const indexEntries = readIndexAt(idxPath, []);
+    let missingScenes = [];
+    if (indexEntries.length > 0) {
+        const vssScenes = await getVssIds(campaignId, 'scene');
+        const vssSet = new Set(vssScenes);
+        missingScenes = indexEntries.map(e => e.sceneId).filter(id => !vssSet.has(id));
     }
 
-    // ── Re-index stale lore embeddings ──
-    if ((!type || type === 'all' || type === 'lore') && status.lore.stale > 0) {
-        const staleLore = db.prepare(
-            `SELECT item_id FROM embedding_meta WHERE campaign_id = ? AND item_type = 'lore' AND version < ?`
-        ).all(campaignId, currentVersion);
+    const allScenesSet = new Set([...staleScenes, ...unversionedScenes, ...missingScenes]);
+    const allLoreSet = new Set([...staleLore, ...unversionedLore]);
 
-        if (staleLore.length > 0) {
-            const lorePath = path.join(CAMPAIGNS_DIR, `${campaignId}.lore.json`);
-            const loreChunks = readJsonSafe(lorePath, []);
-            const loreMap = new Map(loreChunks.map(c => [c.id, c]));
-
-            const loreIds = staleLore.map(r => r.item_id).filter(id => loreMap.has(id));
-            const texts = loreIds.map(id => buildLoreText(loreMap.get(id)));
-            const embeddings = await embedBatch(texts, 10, 100);
-
-            for (let i = 0; i < loreIds.length; i++) {
-                storeLoreEmbedding(campaignId, loreIds[i], embeddings[i]);
-                reindexedLore++;
-            }
-            console.log(`[Reindex] Re-indexed ${reindexedLore} lore embeddings`);
-        }
-    }
-
-    // ── Backfill unversioned scene embeddings (no meta entry) ──
-    const scenesNoMeta = (!type || type === 'all' || type === 'scene')
-        ? db.prepare(`SELECT scene_id FROM archive_vss WHERE campaign_id = ? AND scene_id NOT IN (SELECT item_id FROM embedding_meta WHERE campaign_id = ? AND item_type = 'scene')`).all(campaignId, campaignId)
-        : [];
-    if (scenesNoMeta.length > 0) {
-        const idxPath = archiveIndexPath(campaignId);
-        const indexEntries = readIndexAt(idxPath, []);
+    const scenes = [];
+    if (allScenesSet.size > 0 && indexEntries.length > 0) {
         const indexMap = new Map(indexEntries.map(e => [e.sceneId, e]));
-        const ids = scenesNoMeta.map(r => r.scene_id).filter(id => indexMap.has(id));
-        const texts = ids.map(id => buildArchiveText(indexMap.get(id)));
-        const embeddings = await embedBatch(texts, 10, 100);
-        for (let i = 0; i < ids.length; i++) {
-            storeArchiveEmbedding(campaignId, ids[i], embeddings[i]);
-            reindexedScenes++;
+        for (const id of allScenesSet) {
+            if (indexMap.has(id)) scenes.push({ id, text: buildArchiveText(indexMap.get(id)).slice(0, 500) });
         }
-        console.log(`[Reindex] Backfilled ${ids.length} unversioned scene embeddings`);
     }
 
-    const loreNoMeta = (!type || type === 'all' || type === 'lore')
-        ? db.prepare(`SELECT lore_id FROM lore_vss WHERE campaign_id = ? AND lore_id NOT IN (SELECT item_id FROM embedding_meta WHERE campaign_id = ? AND item_type = 'lore')`).all(campaignId, campaignId)
-        : [];
-    if (loreNoMeta.length > 0) {
+    const lore = [];
+    if (allLoreSet.size > 0) {
         const lorePath = path.join(CAMPAIGNS_DIR, `${campaignId}.lore.json`);
         const loreChunks = readJsonSafe(lorePath, []);
         const loreMap = new Map(loreChunks.map(c => [c.id, c]));
-        const ids = loreNoMeta.map(r => r.lore_id).filter(id => loreMap.has(id));
-        const texts = ids.map(id => buildLoreText(loreMap.get(id)));
-        const embeddings = await embedBatch(texts, 10, 100);
-        for (let i = 0; i < ids.length; i++) {
-            storeLoreEmbedding(campaignId, ids[i], embeddings[i]);
-            reindexedLore++;
+        for (const id of allLoreSet) {
+            if (loreMap.has(id)) lore.push({ id, text: buildLoreText(loreMap.get(id)).slice(0, 500) });
         }
-        console.log(`[Reindex] Backfilled ${ids.length} unversioned lore embeddings`);
     }
 
-    const newStatus = getEmbeddingStatus(campaignId);
-    console.log(`[Reindex] Complete: ${reindexedScenes} scenes, ${reindexedLore} lore re-indexed`);
-    return { reindexedScenes, reindexedLore, status: newStatus };
+    return { scenes, lore };
+}
+
+export async function syncEmbeddings(campaignId, type, items) {
+    let synced = 0;
+    if (type === 'scene') {
+        for (const item of items) {
+            if (item.id && item.embedding) {
+                await storeArchiveEmbedding(campaignId, item.id, item.embedding);
+                synced++;
+            }
+        }
+    } else if (type === 'lore') {
+        for (const item of items) {
+            if (item.id && item.embedding) {
+                await storeLoreEmbedding(campaignId, item.id, item.embedding);
+                synced++;
+            }
+        }
+    }
+    return { synced, status: await getEmbeddingStatus(campaignId) };
 }
 
 // Local helper — readJson with the same fallback semantics the original used,

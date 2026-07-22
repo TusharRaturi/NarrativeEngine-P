@@ -1,3 +1,10 @@
+export class ContextLimitExceededError extends Error {
+    constructor(message: string) {
+        super(message);
+        this.name = 'ContextLimitExceededError';
+    }
+}
+
 export function computeBudgets(
     limit: number,
     rulesBudgetPct: number | undefined,

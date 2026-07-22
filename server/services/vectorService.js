@@ -19,11 +19,12 @@ import {
     searchLore,
     getEmbeddingStatus,
     deleteArchiveEmbedding,
+    getStaleAndUnversionedIds,
+    getVssIds,
     EMBEDDING_VERSION,
     getDb,
 } from '../lib/vectorStore.js';
 import {
-    embedText,
     buildArchiveText,
     buildLoreText,
     warmup,
@@ -42,9 +43,10 @@ export {
     searchLore,
     getEmbeddingStatus,
     deleteArchiveEmbedding,
+    getStaleAndUnversionedIds,
+    getVssIds,
     EMBEDDING_VERSION,
     getDb,
-    embedText,
     buildArchiveText,
     buildLoreText,
     warmup,
@@ -56,27 +58,6 @@ export {
 };
 
 // ─── Thin compositions ─────────────────────────────────────────────────────
-
-/**
- * Embed `text` and store it as a scene embedding. Fire-and-forget semantics
- * are the caller's responsibility (the append route uses .then().catch(); the
- * edit-sync route awaits). This function just chains the two calls.
- *
- * Returns the storeArchiveEmbedding result (void) once the embedding is stored.
- * Throws if embedText throws; the caller decides whether to swallow.
- */
-export async function embedAndStoreArchive(campaignId, sceneId, text) {
-    const embedding = await embedText(text);
-    if (embedding) storeArchiveEmbedding(campaignId, sceneId, embedding);
-}
-
-/**
- * Embed `text` and store it as a lore embedding. Mirrors `embedAndStoreArchive`.
- */
-export async function embedAndStoreLore(campaignId, loreId, text) {
-    const embedding = await embedText(text);
-    if (embedding) storeLoreEmbedding(campaignId, loreId, embedding);
-}
 
 /**
  * Search the archive for `query` (single or multi-query). Used by the
@@ -91,21 +72,23 @@ export async function embedAndStoreLore(campaignId, loreId, text) {
  * function — see `createSearchFn` in `vectorStore.js` for the SQL IN / fallback
  * implementation.
  */
-export async function searchArchiveCandidates(campaignId, { query, queries, limit, diversity = true, scopeSceneIds } = {}) {
+export async function searchArchiveCandidates(campaignId, { query, queries, queryEmbedding, queryEmbeddings, limit, diversity = true, scopeSceneIds } = {}) {
     if (queries && Array.isArray(queries) && queries.length > 0) {
         const allSceneIds = new Set();
-        for (const q of queries) {
+        for (let i = 0; i < queries.length; i++) {
+            const q = queries[i];
             if (!q?.trim()) continue;
-            const embedding = await embedText(q);
-            const results = searchArchive(campaignId, embedding, limit || 20, diversity, { scopeIds: scopeSceneIds });
+            const embedding = queryEmbeddings ? queryEmbeddings[i] : null;
+            if (!embedding) continue;
+            const results = await searchArchive(campaignId, embedding, limit || 20, diversity, { scopeIds: scopeSceneIds });
             for (const r of results) allSceneIds.add(r.sceneId);
         }
         console.log(`[VectorStore] archive candidates for ${queries.length} queries: [${[...allSceneIds].join(', ')}]`);
         return [...allSceneIds];
     }
     if (!query?.trim()) return [];
-    const embedding = await embedText(query);
-    const results = searchArchive(campaignId, embedding, limit || 20, diversity, { scopeIds: scopeSceneIds });
+    if (!queryEmbedding) return [];
+    const results = await searchArchive(campaignId, queryEmbedding, limit || 20, diversity, { scopeIds: scopeSceneIds });
     console.log(`[VectorStore] archive candidates for "${query.slice(0, 50)}": [${results.map(r => r.sceneId).join(', ')}]`);
     return results.map(r => r.sceneId);
 }
@@ -115,21 +98,23 @@ export async function searchArchiveCandidates(campaignId, { query, queries, limi
  * `searchArchiveCandidates` but returns loreIds. Used by the lore
  * semantic-candidates route.
  */
-export async function searchLoreCandidates(campaignId, { query, queries, limit, diversity = true }) {
+export async function searchLoreCandidates(campaignId, { query, queries, queryEmbedding, queryEmbeddings, limit, diversity = true }) {
     if (queries && Array.isArray(queries) && queries.length > 0) {
         const allLoreIds = new Set();
-        for (const q of queries) {
+        for (let i = 0; i < queries.length; i++) {
+            const q = queries[i];
             if (!q?.trim()) continue;
-            const embedding = await embedText(q);
-            const results = searchLore(campaignId, embedding, limit || 15, diversity);
+            const embedding = queryEmbeddings ? queryEmbeddings[i] : null;
+            if (!embedding) continue;
+            const results = await searchLore(campaignId, embedding, limit || 15, diversity);
             for (const r of results) allLoreIds.add(r.loreId);
         }
         console.log(`[VectorStore] lore candidates for ${queries.length} queries: [${[...allLoreIds].join(', ')}]`);
         return [...allLoreIds];
     }
     if (!query?.trim()) return [];
-    const embedding = await embedText(query);
-    const results = searchLore(campaignId, embedding, limit || 15, diversity);
+    if (!queryEmbedding) return [];
+    const results = await searchLore(campaignId, queryEmbedding, limit || 15, diversity);
     console.log(`[VectorStore] lore candidates for "${query.slice(0, 50)}": [${results.map(r => r.loreId).join(', ')}]`);
     return results.map(r => r.loreId);
 }

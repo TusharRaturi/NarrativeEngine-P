@@ -4,6 +4,7 @@ import { useAppStore } from '../store/useAppStore';
 import { runTurn } from '../services/turn/turnOrchestrator';
 import { commitPendingTurn, findRetryableMessage } from '../services/turn/pendingCommit';
 import { debouncedSaveCampaignState } from '../store/slices/campaignSlice';
+import { toast } from '../components/Toast';
 import type { InventoryProposal } from '../types';
 import type { useSceneContinue } from '../components/hooks/useSceneContinue';
 
@@ -67,6 +68,7 @@ export function useChatOperations({
     const [isStreaming, setStreaming] = useState(false);
     const [, setIsCheckingNotes] = useState(false);
     const [loadingStatus, setLoadingStatus] = useState<string | null>(null);
+    const [contextTimeoutError, setContextTimeoutError] = useState<{text: string, deepSearch: boolean} | null>(null);
     // Phase 6: GM-proposed inventory change awaiting user confirmation.
     const [pendingProposal, setPendingProposal] = useState<InventoryProposal | null>(null);
     // WO-05: Director Brief UI state. `directorBriefRunning` toggles the
@@ -85,6 +87,23 @@ export function useChatOperations({
         }
     }, [pipelinePhase]);
 
+    // Phase 2: Turn Orchestration Safety - Abort on campaign switch
+    const prevCampaignIdRef = useRef<string | null>(activeCampaignId);
+    useEffect(() => {
+        if (prevCampaignIdRef.current !== null && prevCampaignIdRef.current !== activeCampaignId) {
+            if (isStreaming || pipelinePhase !== 'idle') {
+                console.warn('[ChatOperations] Campaign switched mid-turn, aborting Orchestrator');
+                if (abortControllerRef.current) {
+                    abortControllerRef.current.abort();
+                    abortControllerRef.current = null;
+                }
+                setStreaming(false);
+                setPipelinePhase('idle');
+            }
+        }
+        prevCampaignIdRef.current = activeCampaignId;
+    }, [activeCampaignId, isStreaming, pipelinePhase, setPipelinePhase]);
+
     useEffect(() => {
         if (pipelinePhase !== 'generating') {
             setStreamingStats(null);
@@ -102,7 +121,7 @@ export function useChatOperations({
         return () => clearInterval(interval);
     }, [pipelinePhase, setStreamingStats]);
 
-    const handleSend = async (overrideText?: string, deepSearch = false) => {
+    const handleSend = async (overrideText?: string, deepSearch = false, ignoreTimeout = false) => {
         const textToUse = overrideText || input.trim();
         if (!textToUse || isStreaming || oocBusy) return;
 
@@ -213,6 +232,7 @@ export function useChatOperations({
             },
             nextTurnOocBrief: useAskGmBrief,
             directorSkipController: directorAbortRef.current,
+            ignoreContextTimeout: ignoreTimeout,
         }, {
             onCheckingNotes: setIsCheckingNotes,
             addMessage: storeSnapshot.addMessage,
@@ -245,7 +265,27 @@ export function useChatOperations({
                     directorAbortRef.current = null;
                 }
             },
-        }, abortControllerRef.current);
+        }, abortControllerRef.current).catch(e => {
+            if (e.name === 'ContextGatherTimeoutError') {
+                setContextTimeoutError({ text: textToUse, deepSearch: useDeepSearch });
+                setStreaming(false);
+                setIsCheckingNotes(false);
+                setLoadingStatus(null);
+                setPipelinePhase('idle');
+                directorAbortRef.current = null;
+                // DO NOT reset input/height here, user might want to retry.
+            } else if (e.name === 'ContextLimitExceededError') {
+                toast.error(e.message);
+                setStreaming(false);
+                setIsCheckingNotes(false);
+                setLoadingStatus(null);
+                setPipelinePhase('idle');
+                directorAbortRef.current = null;
+            } else {
+                console.error('[ChatArea] turn failed:', e);
+                handleStop();
+            }
+        });
 
         if (activeCampaignId) {
             checkAndSealChapter(activeCampaignId);
@@ -300,5 +340,7 @@ export function useChatOperations({
         handleStop,
         directorBriefRunning,
         handleSkipDirectorBrief,
+        contextTimeoutError,
+        setContextTimeoutError,
     };
 }

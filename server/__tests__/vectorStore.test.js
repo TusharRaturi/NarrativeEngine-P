@@ -7,6 +7,7 @@ import fs from 'fs';
 // throwaway temp dir BEFORE dynamically importing the module under test.
 let tmpDir;
 let vs;
+import { cosineSimilarity, mmrSelect } from '../lib/workers/dbWorker.js';
 
 beforeAll(async () => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'vecstore-'));
@@ -23,13 +24,13 @@ afterAll(() => {
 
 describe('cosineSimilarity', () => {
     it('returns 1 for identical direction', () => {
-        expect(vs.cosineSimilarity([1, 0, 0], [2, 0, 0])).toBeCloseTo(1, 5);
+        expect(cosineSimilarity([1, 0, 0], [2, 0, 0])).toBeCloseTo(1, 5);
     });
     it('returns ~0 for orthogonal vectors', () => {
-        expect(vs.cosineSimilarity([1, 0], [0, 1])).toBeCloseTo(0, 5);
+        expect(cosineSimilarity([1, 0], [0, 1])).toBeCloseTo(0, 5);
     });
     it('returns ~-1 for opposite vectors', () => {
-        expect(vs.cosineSimilarity([1, 0], [-1, 0])).toBeCloseTo(-1, 5);
+        expect(cosineSimilarity([1, 0], [-1, 0])).toBeCloseTo(-1, 5);
     });
 });
 
@@ -52,14 +53,14 @@ const POOL = [
 
 describe('mmrSelect', () => {
     it('drops a near-duplicate in favour of diverse hits', () => {
-        const ids = vs.mmrSelect(POOL, 4).map(h => h.id);
+        const ids = mmrSelect(POOL, 4).map(h => h.id);
         expect(ids).toContain('s1');          // top-1 always kept
         expect(ids).not.toContain('s2');      // near-dup of s1 evicted
         expect(ids).toEqual(['s1', 's3', 's4', 's5']);
     });
 
     it('keeps the most relevant hit first (top-1 unchanged)', () => {
-        expect(vs.mmrSelect(POOL, 4)[0].id).toBe('s1');
+        expect(mmrSelect(POOL, 4)[0].id).toBe('s1');
     });
 
     it('is a no-op order-wise when all hits are fully diverse', () => {
@@ -71,26 +72,26 @@ describe('mmrSelect', () => {
             mk('e', 0.75, [[4, 1]]),
         ];
         // orthogonal → no diversity penalty → pure relevance order
-        expect(vs.mmrSelect(diverse, 4).map(h => h.id)).toEqual(['a', 'b', 'c', 'd']);
+        expect(mmrSelect(diverse, 4).map(h => h.id)).toEqual(['a', 'b', 'c', 'd']);
     });
 
     it('lambda=1 → pure relevance order', () => {
-        expect(vs.mmrSelect(POOL, 4, 1).map(h => h.id)).toEqual(['s1', 's2', 's3', 's4']);
+        expect(mmrSelect(POOL, 4, 1).map(h => h.id)).toEqual(['s1', 's2', 's3', 's4']);
     });
 
     it('lambda=0 → pure diversity (ignores relevance after seed)', () => {
-        const ids = vs.mmrSelect(POOL, 4, 0).map(h => h.id);
+        const ids = mmrSelect(POOL, 4, 0).map(h => h.id);
         expect(ids[0]).toBe('s1');       // seed is always top relevance
         expect(ids).not.toContain('s2'); // most-similar item never chosen
     });
 
     it('returns unchanged order when pool.length <= topK', () => {
         const small = POOL.slice(0, 3);
-        expect(vs.mmrSelect(small, 4).map(h => h.id)).toEqual(['s1', 's2', 's3']);
+        expect(mmrSelect(small, 4).map(h => h.id)).toEqual(['s1', 's2', 's3']);
     });
 
     it('strips the vector from returned hits', () => {
-        for (const h of vs.mmrSelect(POOL, 4)) {
+        for (const h of mmrSelect(POOL, 4)) {
             expect(h).not.toHaveProperty('vector');
             expect(h).toHaveProperty('score');
         }
@@ -103,7 +104,7 @@ describe('mmrSelect', () => {
             { id: 'bad2', score: 0.50, vector: undefined },
         ];
         let ids;
-        expect(() => { ids = vs.mmrSelect(withNull, 4).map(h => h.id); }).not.toThrow();
+        expect(() => { ids = mmrSelect(withNull, 4).map(h => h.id); }).not.toThrow();
         expect(ids).not.toContain('bad1');
         expect(ids).not.toContain('bad2');
         expect(ids[0]).toBe('s1'); // valid relevance order preserved
@@ -136,15 +137,15 @@ describe('searchArchive (MMR applied)', () => {
         }
     });
 
-    it('diversifies: drops the near-duplicate, surfaces a more distinct scene', () => {
-        const ids = vs.searchArchive(CAMP, QUERY, 4).map(r => r.sceneId);
+    it('diversifies: drops the near-duplicate, surfaces a more distinct scene', async () => {
+        const ids = (await vs.searchArchive(CAMP, QUERY, 4)).map(r => r.sceneId);
         expect(ids[0]).toBe('s1');        // top-1 unchanged
         expect(ids).toContain('s5');      // diverse scene pulled in
         expect(ids).not.toContain('s2');  // near-dup evicted
     });
 
-    it('diversity:false → pure cosine order (near-dup retained)', () => {
-        const ids = vs.searchArchive(CAMP, QUERY, 4, false).map(r => r.sceneId);
+    it('diversity:false → pure cosine order (near-dup retained)', async () => {
+        const ids = (await vs.searchArchive(CAMP, QUERY, 4, false)).map(r => r.sceneId);
         expect(ids).toEqual(['s1', 's2', 's3', 's4']);
     });
 });
@@ -156,10 +157,10 @@ describe('searchRules (never diversified)', () => {
         }
     });
 
-    it('ignores the diversity flag: output identical with and without it', () => {
-        const withFlag = vs.searchRules(CAMP, QUERY, 4, true).map(r => r.ruleId);
-        const withoutFlag = vs.searchRules(CAMP, QUERY, 4, false).map(r => r.ruleId);
-        const defaulted = vs.searchRules(CAMP, QUERY, 4).map(r => r.ruleId);
+    it('ignores the diversity flag: output identical with and without it', async () => {
+        const withFlag = (await vs.searchRules(CAMP, QUERY, 4, true)).map(r => r.ruleId);
+        const withoutFlag = (await vs.searchRules(CAMP, QUERY, 4, false)).map(r => r.ruleId);
+        const defaulted = (await vs.searchRules(CAMP, QUERY, 4)).map(r => r.ruleId);
         expect(withFlag).toEqual(withoutFlag);
         expect(withFlag).toEqual(defaulted);
         // pure cosine relevance order — the near-dup s2 is kept
@@ -175,8 +176,8 @@ describe('searchRules (never diversified)', () => {
 describe('searchArchive — scoped (WO-10)', () => {
     // Reuse the SCENE_VECS seeded above (camp-test). All five scenes are stored.
 
-    it('unscoped path is unchanged when opts is omitted', () => {
-        const ids = vs.searchArchive(CAMP, QUERY, 4).map(r => r.sceneId);
+    it('unscoped path is unchanged when opts is omitted', async () => {
+        const ids = (await vs.searchArchive(CAMP, QUERY, 4)).map(r => r.sceneId);
         // Same behavior as the 'diversifies' test above — proves the default
         // `opts = {}` param didn't perturb the unscoped path.
         expect(ids[0]).toBe('s1');
@@ -184,26 +185,26 @@ describe('searchArchive — scoped (WO-10)', () => {
         expect(ids).not.toContain('s2');
     });
 
-    it('unscoped path is unchanged when opts.scopeIds is absent', () => {
-        const ids = vs.searchArchive(CAMP, QUERY, 4, true, {}).map(r => r.sceneId);
+    it('unscoped path is unchanged when opts.scopeIds is absent', async () => {
+        const ids = (await vs.searchArchive(CAMP, QUERY, 4, true, {})).map(r => r.sceneId);
         expect(ids[0]).toBe('s1');
         expect(ids).toContain('s5');
         expect(ids).not.toContain('s2');
     });
 
-    it('empty / null / non-array scopeIds collapse to unscoped (additive no-op)', () => {
-        const emptyIds = vs.searchArchive(CAMP, QUERY, 4, true, { scopeIds: [] }).map(r => r.sceneId);
-        const nullIds = vs.searchArchive(CAMP, QUERY, 4, true, { scopeIds: null }).map(r => r.sceneId);
-        const nonArr = vs.searchArchive(CAMP, QUERY, 4, true, { scopeIds: 's1' }).map(r => r.sceneId);
-        const baseline = vs.searchArchive(CAMP, QUERY, 4, true).map(r => r.sceneId);
+    it('empty / null / non-array scopeIds collapse to unscoped (additive no-op)', async () => {
+        const emptyIds = (await vs.searchArchive(CAMP, QUERY, 4, true, { scopeIds: [] })).map(r => r.sceneId);
+        const nullIds = (await vs.searchArchive(CAMP, QUERY, 4, true, { scopeIds: null })).map(r => r.sceneId);
+        const nonArr = (await vs.searchArchive(CAMP, QUERY, 4, true, { scopeIds: 's1' })).map(r => r.sceneId);
+        const baseline = (await vs.searchArchive(CAMP, QUERY, 4, true)).map(r => r.sceneId);
         expect(emptyIds).toEqual(baseline);
         expect(nullIds).toEqual(baseline);
         expect(nonArr).toEqual(baseline);
     });
 
-    it('scoped path returns only in-scope IDs', () => {
+    it('scoped path returns only in-scope IDs', async () => {
         // Scope to {s3, s4, s5} — s1 and s2 must NOT appear regardless of relevance.
-        const ids = vs.searchArchive(CAMP, QUERY, 4, true, { scopeIds: ['s3', 's4', 's5'] }).map(r => r.sceneId);
+        const ids = (await vs.searchArchive(CAMP, QUERY, 4, true, { scopeIds: ['s3', 's4', 's5'] })).map(r => r.sceneId);
         expect(ids.length).toBeGreaterThan(0);
         for (const id of ids) {
             expect(['s3', 's4', 's5']).toContain(id);
@@ -212,20 +213,20 @@ describe('searchArchive — scoped (WO-10)', () => {
         expect(ids).not.toContain('s2');
     });
 
-    it('scoped path with diversity:false returns in-scope IDs in pure cosine order', () => {
-        const ids = vs.searchArchive(CAMP, QUERY, 4, false, { scopeIds: ['s3', 's4', 's5'] }).map(r => r.sceneId);
+    it('scoped path with diversity:false returns in-scope IDs in pure cosine order', async () => {
+        const ids = (await vs.searchArchive(CAMP, QUERY, 4, false, { scopeIds: ['s3', 's4', 's5'] })).map(r => r.sceneId);
         // s3 is the most relevant of {s3,s4,s5} (highest e0 component), then s4, then s5.
         expect(ids).toEqual(['s3', 's4', 's5']);
     });
 
-    it('scoped path with a scope that excludes everything returns empty', () => {
-        const ids = vs.searchArchive(CAMP, QUERY, 4, true, { scopeIds: ['nonexistent'] }).map(r => r.sceneId);
+    it('scoped path with a scope that excludes everything returns empty', async () => {
+        const ids = (await vs.searchArchive(CAMP, QUERY, 4, true, { scopeIds: ['nonexistent'] })).map(r => r.sceneId);
         expect(ids).toEqual([]);
     });
 
-    it('scoped path filters non-string / empty entries in scopeIds before querying', () => {
+    it('scoped path filters non-string / empty entries in scopeIds before querying', async () => {
         // The normalizer drops non-strings and empties; {s3, '', 42, s5} → {s3, s5}.
-        const ids = vs.searchArchive(CAMP, QUERY, 4, false, { scopeIds: ['s3', '', 42, 's5'] }).map(r => r.sceneId);
+        const ids = (await vs.searchArchive(CAMP, QUERY, 4, false, { scopeIds: ['s3', '', 42, 's5'] })).map(r => r.sceneId);
         expect(ids).toEqual(['s3', 's5']);
     });
 });
@@ -242,16 +243,16 @@ describe('searchArchive — scoped fallback filter correctness (WO-10)', () => {
     // returns only in-scope IDs' test above already exercises the live path
     // against the real driver; this block pins the filter contract.
 
-    it('a scope of {s2, s4} against the full row set returns exactly those, in distance order', () => {
+    it('a scope of {s2, s4} against the full row set returns exactly those, in distance order', async () => {
         // diversity:false so we get the raw cosine order, no MMR rerank.
-        const ids = vs.searchArchive(CAMP, QUERY, 4, false, { scopeIds: ['s2', 's4'] }).map(r => r.sceneId);
+        const ids = (await vs.searchArchive(CAMP, QUERY, 4, false, { scopeIds: ['s2', 's4'] })).map(r => r.sceneId);
         // Whether the live driver ran SQL IN or the fallback, the observable
         // contract is identical: only in-scope IDs, in distance order.
         expect(ids).toEqual(['s2', 's4']);
     });
 
-    it('a scope smaller than limit returns at most the scope size', () => {
-        const ids = vs.searchArchive(CAMP, QUERY, 10, false, { scopeIds: ['s5'] }).map(r => r.sceneId);
+    it('a scope smaller than limit returns at most the scope size', async () => {
+        const ids = (await vs.searchArchive(CAMP, QUERY, 10, false, { scopeIds: ['s5'] })).map(r => r.sceneId);
         expect(ids).toEqual(['s5']);
     });
 

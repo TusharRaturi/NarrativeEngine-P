@@ -324,13 +324,56 @@ function rebuildStateFromLiveStore(store: ReturnType<typeof useAppStore.getState
 // On app launch, if any message has pendingCommit=true, fire runPostTurnPipeline
 // with the then-visible variant's text, then clear the marker. Covers
 // Electron/renderer death mid-browse.
+// Phase 4 Crash Recovery: Also verifies sqlite-vec index matches the latest scene,
+// triggering background re-indexing on detected desync.
 export async function reconcilePendingCommitOnLaunch(): Promise<void> {
     const store = useAppStore.getState();
     const pendingMsg = findPendingCommitMessage(store.messages);
-    if (!pendingMsg || !pendingMsg.swipeSet) return;
+    if (pendingMsg && pendingMsg.swipeSet) {
+        console.log('[Reconcile] Found pendingCommit on launch — firing deferred runPostTurnPipeline');
+        await commitPendingTurn();
+    }
 
-    console.log('[Reconcile] Found pendingCommit on launch — firing deferred runPostTurnPipeline');
-    await commitPendingTurn();
+    // Phase 4: Crash recovery check for sqlite-vec desync
+    // Re-read store state (in case commitPendingTurn mutated it)
+    const freshStore = useAppStore.getState();
+    const messages = freshStore.messages;
+    const archiveIndex = freshStore.archiveIndex;
+    const activeCampaignId = freshStore.activeCampaignId;
+
+    if (!activeCampaignId) return;
+
+    // Find highest archived scene in messages
+    let maxMsgSceneId = -1;
+    for (let i = messages.length - 1; i >= 0; i--) {
+        if (messages[i].sceneId) {
+            const id = parseInt(messages[i].sceneId as string, 10);
+            if (!isNaN(id)) {
+                maxMsgSceneId = id;
+                break;
+            }
+        }
+    }
+
+    // Find highest scene in archiveIndex (which means vector indexed)
+    let maxArchiveSceneId = -1;
+    for (const entry of archiveIndex) {
+        const id = parseInt(entry.sceneId, 10);
+        if (!isNaN(id) && id > maxArchiveSceneId) {
+            maxArchiveSceneId = id;
+        }
+    }
+
+    if (maxMsgSceneId > maxArchiveSceneId) {
+        console.warn(`[Reconcile] Detected vector index desync! Max msg scene: ${maxMsgSceneId}, Max archive scene: ${maxArchiveSceneId}. Triggering background re-index.`);
+        import('../llm/apiClient').then(({ api }) => {
+            // @ts-ignore - reindexEmbeddings is dynamically added in Phase 4
+            if (api.archive.reindexEmbeddings) {
+                // @ts-ignore
+                api.archive.reindexEmbeddings(activeCampaignId, 'scene');
+            }
+        }).catch(e => console.error('[Reconcile] Failed to trigger reindex:', e));
+    }
 }
 
 // ── Swipe-set helpers ──────────────────────────────────────────────────

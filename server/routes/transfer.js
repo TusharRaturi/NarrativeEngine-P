@@ -5,7 +5,6 @@ import {
     archivePath, archiveIndexPath, chaptersPath, factsPath,
     entitiesPath, timelinePath, validateCampaignId,
 } from '../lib/fileStore.js';
-import { embedText, buildArchiveText, buildLoreText } from '../lib/embedder.js';
 import { storeArchiveEmbedding, storeLoreEmbedding } from '../lib/vectorStore.js';
 import { wrapAsync } from '../lib/asyncHandler.js';
 import path from 'path';
@@ -155,26 +154,9 @@ export function createTransferRouter() {
         if (bundle.timeline?.length) writeJson(timelinePath(newId), bundle.timeline);
         if (bundle.entities?.length) writeJson(entitiesPath(newId), bundle.entities);
 
-        // Background re-embedding
-        setImmediate(async () => {
-            let embedOk = 0;
-            let embedFail = 0;
-            for (const entry of bundle.archiveIndex || []) {
-                try {
-                    const vec = await embedText(buildArchiveText(entry));
-                    storeArchiveEmbedding(newId, entry.sceneId, vec);
-                    embedOk++;
-                } catch (e) { console.warn('[Transfer] Archive embed failed:', entry.sceneId, e.message); embedFail++; }
-            }
-            for (const chunk of bundle.lore || []) {
-                try {
-                    const vec = await embedText(buildLoreText(chunk));
-                    storeLoreEmbedding(newId, chunk.id, vec);
-                    embedOk++;
-                } catch (e) { console.warn('[Transfer] Lore embed failed:', chunk.id, e.message); embedFail++; }
-            }
-            if (embedOk || embedFail) console.log(`[Transfer] Background embed: ${embedOk} ok, ${embedFail} failed`);
-        });
+        // Note: Emdeddings are not automatically generated here anymore because
+        // the WebGPU model runs in the browser. The user must click "Re-index
+        // Embeddings" in the Advanced Tab to embed the imported campaign data.
 
         res.json({ ok: true, id: newId, name: campaign.name });
     }));

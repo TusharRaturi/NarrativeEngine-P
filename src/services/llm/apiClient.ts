@@ -1,6 +1,7 @@
 import type { AppSettings, ArchiveChapter, ArchiveIndexEntry, SemanticFact, EntityEntry, BackupMeta, TimelineEvent, SceneEvent } from '../../types';
 
 import { API_BASE as API } from '../../lib/apiBase';
+import { embedClient } from './embedClient';
 
 export const api = {
     archive: {
@@ -117,6 +118,19 @@ export const api = {
                 console.warn('[Archive] Failed to rename text:', err);
             }
             return { scenesTouched: 0 };
+        },
+        async reindexEmbeddings(campaignId: string, type: 'scene' | 'lore' | 'all'): Promise<boolean> {
+            try {
+                const res = await fetch(`${API}/campaigns/${campaignId}/embeddings/reindex`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ type }),
+                });
+                return res.ok;
+            } catch (err) {
+                console.warn('[Archive] Failed to trigger reindex:', err);
+                return false;
+            }
         },
     },
     chapters: {
@@ -378,10 +392,11 @@ export const api = {
     rules: {
         async upsertEmbedding(campaignId: string, chunkId: string, text: string): Promise<{ chunkId: string; modelId: string; version: number } | undefined> {
             try {
+                const embedding = (await embedClient.embedBatch([text.slice(0, 500)]))[0];
                 const res = await fetch(`${API}/campaigns/${campaignId}/rules/embed`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ chunkId, text }),
+                    body: JSON.stringify({ chunkId, text, embedding }),
                 });
                 if (res.ok) return await res.json();
             } catch (err) {
@@ -402,10 +417,15 @@ export const api = {
         },
         async search(campaignId: string, query: string, limit?: number): Promise<{ ruleIds: string[] }> {
             try {
+                let body: any = { query, limit };
+                if (query && query.trim()) {
+                    const queryEmbedding = (await embedClient.embedBatch([query]))[0];
+                    body = { query, queryEmbedding, limit };
+                }
                 const res = await fetch(`${API}/campaigns/${campaignId}/rules/search`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ query, limit }),
+                    body: JSON.stringify(body),
                 });
                 if (res.ok) return await res.json();
             } catch (err) {

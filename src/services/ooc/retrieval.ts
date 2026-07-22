@@ -1,5 +1,6 @@
 import { API_BASE as API } from '../../lib/apiBase';
 import { fetchArchiveScenes, retrieveArchiveMemory } from '../archiveMemory';
+import { embedClient } from '../llm/embedClient';
 import type { OocCampaignSnapshot, OocSource } from './types';
 
 const SEARCH_HINT = /\b(archive|earlier|previous|past|history|remember|happened|when|where|who|lore|rule|rules|record|canon|named)\b/i;
@@ -12,7 +13,8 @@ export function shouldSearchOoc(question: string, forceSearch = false): boolean 
 
 async function semanticIds(campaignId: string, question: string, signal?: AbortSignal): Promise<{ archive: string[]; lore: string[]; rules: string[] }> {
     try {
-        const body = JSON.stringify({ query: question, limit: 4 });
+        const queryEmbedding = (await embedClient.embedBatch([question]))[0];
+        const body = JSON.stringify({ query: question, queryEmbeddings: [queryEmbedding], limit: 4 });
         const [archive, lore, rules] = await Promise.all([
             fetch(`${API}/campaigns/${campaignId}/archive/semantic-candidates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal }),
             fetch(`${API}/campaigns/${campaignId}/lore/semantic-candidates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, signal }),

@@ -2,8 +2,6 @@ import fs from 'fs';
 import path from 'path';
 import { Router } from 'express';
 import { CAMPAIGNS_DIR, SETTINGS_FILE, campaignFiles, readJson, writeJson, ensureDirs, validateCampaignId } from '../lib/fileStore.js';
-import { embedText, buildLoreText, resolveIndexingSpeed } from '../lib/embedder.js';
-import { storeLoreEmbedding, deleteCampaignEmbeddings } from '../lib/vectorStore.js';
 import { startJob, tickJob, endJob } from '../lib/embedJobs.js';
 import { wrapAsync } from '../lib/asyncHandler.js';
 
@@ -59,14 +57,14 @@ export function createCampaignsRouter() {
         res.json({ ok: true });
     }));
 
-    router.delete('/api/campaigns/:id', wrapAsync((req, res) => {
+    router.delete('/api/campaigns/:id', wrapAsync(async (req, res) => {
         validateCampaignId(req.params.id);
         const id = req.params.id;
         const files = campaignFiles(id);
         for (const f of files) {
             fs.unlinkSync(path.join(CAMPAIGNS_DIR, f));
         }
-        deleteCampaignEmbeddings(id);
+        await deleteCampaignEmbeddings(id);
         res.json({ ok: true });
     }));
 
@@ -147,37 +145,9 @@ export function createCampaignsRouter() {
         const chunks = req.body;
         if (Array.isArray(chunks) && chunks.length > 0) {
             const campaignId = req.params.id;
-            // Indexing speed governs batch size + inter-batch yield. Read fresh each
-            // import so a settings change takes effect without a server restart.
-            const serverSettings = readJson(SETTINGS_FILE, {});
-            const { batchSize, delayMs } = resolveIndexingSpeed(serverSettings?.settings?.indexingSpeed);
-            (async () => {
-                startJob(campaignId, 'lore', chunks.length);
-                let ok = 0;
-                let fail = 0;
-                try {
-                    for (let i = 0; i < chunks.length; i += batchSize) {
-                        const batch = chunks.slice(i, i + batchSize);
-                        await Promise.all(batch.map(async (chunk) => {
-                            try {
-                                const embedding = await embedText(buildLoreText(chunk));
-                                storeLoreEmbedding(campaignId, chunk.id, embedding);
-                                ok++;
-                            } catch (err) {
-                                console.warn(`[Lore Embed] Failed for ${chunk.id}: ${err.message}`);
-                                fail++;
-                            }
-                        }));
-                        tickJob(campaignId, 'lore', batch.length);
-                        if (i + batchSize < chunks.length && delayMs > 0) {
-                            await new Promise(r => setTimeout(r, delayMs));
-                        }
-                    }
-                    console.log(`[Lore Embed] Stored ${ok}/${chunks.length} lore embeddings for ${campaignId}${fail ? ` (${fail} failed)` : ''}`);
-                } finally {
-                    endJob(campaignId, 'lore');
-                }
-            })().catch(err => { endJob(campaignId, 'lore'); console.error('[Lore Embed] Batch failed:', err.message); });
+            // Note: Emdeddings are not automatically generated here anymore because
+            // the WebGPU model runs in the browser. The user must click "Re-index
+            // Embeddings" in the Advanced Tab to embed the imported campaign data.
         }
     }));
 
