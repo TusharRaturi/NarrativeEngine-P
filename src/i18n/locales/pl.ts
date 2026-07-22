@@ -88,8 +88,8 @@ export const pl: LocalePack = {
     // Plural reference example. English needs one/other; Russian additionally
     // needs few/many. Only `.other` is mandatory — a locale that defines just
     // `.other` still renders correctly. Call as: t('...untranslated', { count }).
-    'settings.language.untranslated.one': '{{count}} item still shows in English.',
-    'settings.language.untranslated.other': '{{count}} items still show in English.',
+    'settings.language.untranslated.one': '{{count}} pozycja nadal wyświetla się w języku angielskim.',
+    'settings.language.untranslated.other': '{{count}} pozycje nadal wyświetlają się w języku angielskim.',
 
     // ── Campaign hub ─────────────────────────────────────────────────────
     'hub.import.tooltip': 'Importuj kampanię',
@@ -103,7 +103,7 @@ export const pl: LocalePack = {
     'hub.delete.cancel': 'Anuluj',
     'hub.delete.confirmAction': 'Usuń',
     'hub.export.failed': 'Eksport nie powiódł się',
-    'hub.import.success': '"{{name}}" imported — search index rebuilding in background',
+    'hub.import.success': '"{{name}}" zaimportowany — odbudowa indeksu wyszukiwania w tle',
     'hub.import.failed': 'Import nie powiódł się — nieprawidłowy plik kampanii',
     },
 };

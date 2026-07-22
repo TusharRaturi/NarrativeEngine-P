@@ -3,6 +3,7 @@ import { useAppStore } from '../../store/useAppStore';
 import { toast } from '../Toast';
 import { ArcInjectorButton } from '../ArcInjectorButton';
 import { OneShotInjectorButton } from '../OneShotInjectorButton';
+import { AbsoluteCommandButton } from '../AbsoluteCommandButton';
 
 /**
  * The horizontal button strip above the composer: Save, Trim, Deep Search,
@@ -124,6 +125,9 @@ export function ChatActionStrip({
             )}
             {activeCampaignId && (
                 <OneShotInjectorButton />
+            )}
+            {activeCampaignId && (
+                <AbsoluteCommandButton />
             )}
             <button
                 onClick={onOpenOoc}

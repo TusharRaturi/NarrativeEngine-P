@@ -1,4 +1,5 @@
 import { useRef } from 'react';
+import { AlertCircle, RotateCw } from 'lucide-react';
 import type { ChatMessage, DebugSection } from '../types';
 import { DebugPayloadView } from './DebugPayloadView';
 import { ToolCallChips } from './chat/ToolCallChips';
@@ -42,6 +43,8 @@ interface MessageBubbleProps {
     swipeGenLoading?: boolean;
     /** Global stream lock — true while a real turn is streaming (mutual exclusion — Continue is disabled during turns). */
     globalIsStreaming?: boolean;
+    /** Smart Retry v1: called when the user taps Retry on a failed/aborted GM bubble. */
+    onRetry?: (messageId: string) => void;
 }
 
 export function MessageBubble({
@@ -65,6 +68,7 @@ export function MessageBubble({
     sceneContinueLoading,
     swipeGenLoading,
     globalIsStreaming,
+    onRetry,
 }: MessageBubbleProps) {
     let markdownContent: string = typeof msg.displayContent === 'string'
         ? msg.displayContent
@@ -230,6 +234,20 @@ export function MessageBubble({
                         </div>
                     )}
                 </div>
+
+                {msg.retryable && !isStreaming && onRetry && (
+                    <div className="mt-2 mb-1 flex items-center gap-2 py-2 px-3 bg-void-darker border border-amber-500/30 rounded">
+                        <AlertCircle size={12} className="text-amber-400 shrink-0" />
+                        <span className="text-[11px] text-amber-400/80 truncate flex-1">Story AI halted — context preserved</span>
+                        <button
+                            onClick={() => onRetry(msg.id)}
+                            className="text-[10px] uppercase tracking-wider text-text-dim hover:text-amber-300 shrink-0 flex items-center gap-1"
+                        >
+                            <RotateCw size={10} />
+                            Retry
+                        </button>
+                    </div>
+                )}
 
                 {hasSwipeSet(msg) && (
                     <div className="mt-2 flex items-center justify-center gap-3 select-none">

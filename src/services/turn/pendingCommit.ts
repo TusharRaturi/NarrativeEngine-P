@@ -97,6 +97,22 @@ export function findPendingCommitMessage(messages: ChatMessage[]): ChatMessage |
     return null;
 }
 
+// Smart Retry v1: find the latest assistant message marked retryable (the story
+// AI was aborted or failed its final retry). Like findPendingCommitMessage but
+// for the pre-commit failure state. Used by the commit guard (skip the snapshot
+// clear so the Retry button stays armed), delete/regenerate handlers (clear the
+// orphaned precontext + in-memory snapshot when the turn is discarded), and the
+// new-turn-clears-stale-flags step.
+export function findRetryableMessage(messages: ChatMessage[]): ChatMessage | null {
+    for (let i = messages.length - 1; i >= 0; i--) {
+        const m = messages[i];
+        if (m.role === 'assistant' && m.retryable) return m;
+        if (m.role === 'assistant' && m.sceneId) break;
+        if (m.role === 'user') break;
+    }
+    return null;
+}
+
 // ── Build fresh callbacks from the live store for commit ────────────────
 function buildCommitCallbacks(activeCampaignId: string): TurnCallbacks {
     return {
@@ -158,8 +174,19 @@ export async function commitPendingTurn(): Promise<void> {
 
     const pendingMsg = findPendingCommitMessage(messages);
     if (!pendingMsg || !pendingMsg.swipeSet) {
-        // No pending turn (normal first-turn case, or already committed).
-        clearPendingTurnSnapshot();
+        // Smart Retry v1: a retryable bubble holds a live in-memory snapshot captured
+        // before the Story AI run (the Retry button re-enters generation from it). The
+        // unconditional `clearPendingTurnSnapshot()` here would wipe that payload and
+        // kill the Retry button — e.g. arming an Arc Injector after a failure fires
+        // `commitPendingTurn()` unconditionally (ArcInjectorButton.tsx) and would have
+        // orphaned the retry. Guard: skip the clear when the tail assistant message is
+        // retryable. A failed turn has neither `pendingCommit` nor `swipeSet`, so this
+        // early return is otherwise inert — the orphan early snapshot hits here and is
+        // safe to keep (commitPendingTurn only acts on a pendingCommit+swipeSet msg).
+        const tailRetryable = findRetryableMessage(messages);
+        if (!tailRetryable) {
+            clearPendingTurnSnapshot();
+        }
         return;
     }
 

@@ -95,6 +95,8 @@ vi.mock('../../store/useAppStore', () => {
         armLoot: vi.fn(),
         armedOneShot: null,
         setArmedOneShot: vi.fn(),
+        armedAbsoluteCommand: null,
+        setArmedAbsoluteCommand: vi.fn(),
     };
     const subscribe = vi.fn(() => vi.fn());
     const getState = vi.fn(() => state);
@@ -119,6 +121,7 @@ vi.mock('../../services/turn/turnOrchestrator', () => ({
 vi.mock('../../services/turn/pendingCommit', () => ({
     commitPendingTurn: vi.fn(async () => {}),
     findPendingCommitMessage: vi.fn(() => null),
+    findRetryableMessage: vi.fn(() => null),
     hasSwipeSet: vi.fn(() => false),
 }));
 

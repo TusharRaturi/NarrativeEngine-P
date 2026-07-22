@@ -1,27 +1,23 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-// WO-04b §7: focused `runTurn` call-site tests for the Director Brief gate.
+// Absolute Command v1 — orchestrator stage tests (WO §7 invariants 4 & 5).
 //
-// Asserts that `turnOrchestrator.ts` owns the tier gate for `runDirectorBrief`:
-//   - lite tier completes the pre-payload path without invoking runDirectorBrief
-//   - pro tier invokes runDirectorBrief exactly once
-//   - max tier invokes runDirectorBrief exactly once
+// Asserts the contract in `turnStages.ts`:
+//   - invariant 5: on `max` tier with an absolute command armed,
+//     `runDirectorBrief` is called ZERO times. The gate at the top of
+//     `runDirectorStage` returns before the tier-gated Director call.
+//   - invariant 4 (corollary): `buildWatchdogDossier` is NOT invoked when
+//     the command is armed (the gate returns before the dossier computation).
+//     This leaves `ctx.watchdogNudge` undefined so `buildPayload` emits no
+//     [STAGE NOTE] block (also asserted in the payload test file).
 //
-// The service itself is ungated (its tests cover its own contract). This file
-// mocks heavy collaborators (`gatherContext`, `buildPayload`, `sendMessage`,
-// `buildWatchdogDossier`, `capturePendingTurnSnapshot`, the engine rolls, the
-// loot engine, the one-shot injector, `toast`, `sanitizePayloadForApi`,
-// `extractAndStripSceneStakes`, tool handlers, `useAppStore`) so the test
-// reaches the gate at `turnOrchestrator.ts:245` without any real I/O. The real
-// `aiTier.tierAllows` is used — the gate's behavior is the SUT, not a mock.
+// Mocks heavy collaborators so the test reaches the gate without any real
+// I/O. The real `aiTier.tierAllows` is used — the gate's behavior is the SUT.
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import type { AppSettings, GameContext, ChatMessage, NPCEntry, CondenserState, ArchiveIndexEntry, ArchiveChapter, DivergenceRegister, EndpointConfig } from '../../../types';
 import type { TurnState, TurnCallbacks } from '../turnOrchestrator';
 
 // ── Mocks (hoisted by vitest) ────────────────────────────────────────────────
 
-// The Director service mock — tracks invocations. The real `lastAssistantContent`
-// is a pure function but we mock it too so the test never touches the real module
-// (keeps the SUT's only Director dependency the gated `runDirectorBrief` call).
 const runDirectorBriefMock = vi.fn(async () => null as string | null);
 const lastAssistantContentMock = vi.fn(() => 'LAST_GM_TEXT');
 vi.mock('../directorBrief', () => ({
@@ -30,19 +26,15 @@ vi.mock('../directorBrief', () => ({
     clearDirectorBriefCache: vi.fn(),
 }));
 
-// The watchdog dossier mock — returns an empty dossier so the orchestrator's
-// `watchdogNudge` is undefined (no nudge in the payload; irrelevant to the gate).
+const buildWatchdogDossierMock = vi.fn(() => ({ signals: [], dossierText: '', nudgeText: null }));
 vi.mock('../directorWatchdog', () => ({
-    buildWatchdogDossier: vi.fn(() => ({ signals: [], dossierText: '', nudgeText: null })),
+    buildWatchdogDossier: (...args: unknown[]) => buildWatchdogDossierMock(...args),
 }));
 
-// pendingCommit mock — capturePendingTurnSnapshot is called in the onDone path.
 vi.mock('../pendingCommit', () => ({
     capturePendingTurnSnapshot: vi.fn(),
 }));
 
-// gatherContext mock — returns the minimal GatheredContext shape. The
-// orchestrator destructures these fields, so they must all be present.
 vi.mock('../contextGatherer', () => ({
     gatherContext: vi.fn(async () => ({
         sceneNumber: undefined,
@@ -59,8 +51,6 @@ vi.mock('../contextGatherer', () => ({
     })),
 }));
 
-// chatEngine mock — buildPayload returns a one-message payload; sendMessage
-// invokes the onDone callback synchronously so `runTurn` resolves cleanly.
 const buildPayloadMock = vi.fn(() => ({
     messages: [{ role: 'user', content: 'hello' }],
     trace: [],
@@ -72,31 +62,21 @@ vi.mock('../../chatEngine', () => ({
     sendMessage: (...args: unknown[]) => sendMessageMock(...args),
 }));
 
-// payloadSanitizer mock — identity (returns the payload as-is).
 vi.mock('../../lib/payloadSanitizer', () => ({
     sanitizePayloadForApi: (p: unknown) => p,
 }));
-
-// toast mock — no-op.
 vi.mock('../../components/Toast', () => ({
     toast: { warning: vi.fn(), error: vi.fn(), info: vi.fn() },
 }));
-
-// sceneStakesTag mock — identity (no stakes to strip).
 vi.mock('../sceneStakesTag', () => ({
     extractAndStripSceneStakes: (text: string) => ({ displayText: text, stakes: 'calm' as const }),
 }));
-
-// Tool handlers / registry mocks — no tools, no handler.
 vi.mock('../toolHandlers', () => ({
     getToolDefinitions: vi.fn(() => []),
 }));
 vi.mock('../toolRegistry', () => ({
     resolveToolHandler: vi.fn(() => null),
 }));
-
-// Engine mocks — no-op rolls. Path resolves to src/services/engine/engineRolls
-// (the SUT imports from '../engine/engineRolls' relative to src/services/turn/).
 vi.mock('../../engine/engineRolls', () => ({
     rollEngines: vi.fn(() => ({ appendToInput: '', updatedDCs: {} })),
     rollDiceFairness: vi.fn(() => ''),
@@ -107,15 +87,10 @@ vi.mock('../../engine/engineRolls', () => ({
 vi.mock('../../engine/lootEngine', () => ({
     resolveLootDrop: vi.fn(() => ({ appendToInput: '' })),
 }));
-
-// One-shot mock — no directive. Path resolves to src/services/oneshot/oneShotEvents.
 vi.mock('../../oneshot/oneShotEvents', () => ({
     buildOneShotDirective: vi.fn(() => null),
 }));
 
-// useAppStore mock — the orchestrator reads `getActiveAuxiliaryEndpoint()`
-// (only if npcIntroEngineActive — we set it false) and `locationLedger` (read
-// unconditionally at buildPayload time). Return a minimal state.
 vi.mock('../../../store/useAppStore', () => ({
     useAppStore: {
         getState: () => ({
@@ -142,9 +117,6 @@ function baseSettings(aiTier: 'lite' | 'pro' | 'max'): AppSettings {
 }
 
 function baseContext(): GameContext {
-    // npcIntroEngineActive = false → skips the intro-engine branch (which
-    // reads useAppStore.getState().getActiveAuxiliaryEndpoint). All other
-    // engine flags off so the engine rolls are no-ops.
     return {
         npcIntroEngineActive: false,
         surpriseEngineActive: false,
@@ -167,7 +139,7 @@ function baseContext(): GameContext {
     } as any as GameContext;
 }
 
-function baseState(aiTier: 'lite' | 'pro' | 'max'): TurnState {
+function baseState(aiTier: 'lite' | 'pro' | 'max', absoluteCommand: string | null): TurnState {
     return {
         input: 'I look around.',
         displayInput: 'I look around.',
@@ -200,89 +172,91 @@ function baseState(aiTier: 'lite' | 'pro' | 'max'): TurnState {
         armedRoll: null,
         armedLoot: null,
         armedOneShot: null,
-        absoluteCommand: null,
+        absoluteCommand,
         nextTurnOocBrief: undefined,
     } as any as TurnState;
 }
 
 function baseCallbacks(): TurnCallbacks {
-    // All callbacks are no-ops; the test only cares about whether
-    // runDirectorBrief was invoked. The onDone path calls
-    // capturePendingTurnSnapshot (mocked) and a few callbacks — all safe no-ops.
     const noop = () => {};
     return {
-        onCheckingNotes: noop,
-        addMessage: noop,
-        updateLastAssistant: noop,
-        updateLastMessage: noop,
-        updateLastAssistantMessage: noop,
-        updateContext: noop,
-        setArchiveIndex: noop,
-        updateNPC: noop,
-        addNPC: noop,
-        setCondensed: noop,
-        setStreaming: noop,
-        archiveNPC: noop,
-        restoreNPC: noop,
+        onCheckingNotes: noop, addMessage: noop, updateLastAssistant: noop,
+        updateLastMessage: noop, updateLastAssistantMessage: noop,
+        updateContext: noop, setArchiveIndex: noop,
+        updateNPC: noop, addNPC: noop, setCondensed: noop, setStreaming: noop,
+        archiveNPC: noop, restoreNPC: noop,
     } as any as TurnCallbacks;
 }
 
-/** Configure sendMessage to invoke onDone synchronously with a minimal final text. */
 function wireSendMessageToComplete(): void {
     sendMessageMock.mockImplementation(
         (_provider: unknown, _messages: unknown, _onChunk: unknown, onDone: any) => {
-            // Synchronous onDone — no tool call, no reasoning content.
             Promise.resolve().then(() => onDone('Final GM text.', undefined, undefined));
             return Promise.resolve();
         },
     );
 }
 
+const COMMAND = 'Elara has known him for years — stop writing her as hostile.';
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
-describe('runTurn — Director Brief tier gate (WO-04b §7)', () => {
+describe('Absolute Command v1 — runDirectorStage gate (WO §7 invariants 4 & 5)', () => {
     beforeEach(() => {
         vi.clearAllMocks();
         wireSendMessageToComplete();
     });
 
-    it('lite tier completes the pre-payload path without invoking runDirectorBrief', async () => {
-        await runTurn(baseState('lite'), baseCallbacks(), new AbortController());
-        expect(runDirectorBriefMock).not.toHaveBeenCalled();
+    it('invariant 5: max tier with absoluteCommand armed invokes runDirectorBrief ZERO times', async () => {
+        await runTurn(baseState('max', COMMAND), baseCallbacks(), new AbortController());
+        expect(runDirectorBriefMock).toHaveBeenCalledTimes(0);
     });
 
-    it('pro tier invokes runDirectorBrief exactly once', async () => {
-        await runTurn(baseState('pro'), baseCallbacks(), new AbortController());
+    it('invariant 4: max tier with absoluteCommand armed does NOT call buildWatchdogDossier', async () => {
+        await runTurn(baseState('max', COMMAND), baseCallbacks(), new AbortController());
+        expect(buildWatchdogDossierMock).toHaveBeenCalledTimes(0);
+    });
+
+    it('pro tier with absoluteCommand armed invokes runDirectorBrief ZERO times', async () => {
+        await runTurn(baseState('pro', COMMAND), baseCallbacks(), new AbortController());
+        expect(runDirectorBriefMock).toHaveBeenCalledTimes(0);
+    });
+
+    it('lite tier with absoluteCommand armed invokes runDirectorBrief ZERO times (lite has no Director anyway)', async () => {
+        await runTurn(baseState('lite', COMMAND), baseCallbacks(), new AbortController());
+        expect(runDirectorBriefMock).toHaveBeenCalledTimes(0);
+    });
+
+    it('without absoluteCommand, max tier invokes runDirectorBrief exactly once (control — proves the gate is the cause)', async () => {
+        await runTurn(baseState('max', null), baseCallbacks(), new AbortController());
         expect(runDirectorBriefMock).toHaveBeenCalledTimes(1);
     });
 
-    it('max tier invokes runDirectorBrief exactly once', async () => {
-        await runTurn(baseState('max'), baseCallbacks(), new AbortController());
+    it('without absoluteCommand, max tier calls buildWatchdogDossier once (control)', async () => {
+        await runTurn(baseState('max', null), baseCallbacks(), new AbortController());
+        expect(buildWatchdogDossierMock).toHaveBeenCalledTimes(1);
+    });
+
+    it('without absoluteCommand, pro tier invokes runDirectorBrief exactly once (control)', async () => {
+        await runTurn(baseState('pro', null), baseCallbacks(), new AbortController());
         expect(runDirectorBriefMock).toHaveBeenCalledTimes(1);
     });
 
-    it('the gate is owned by turnOrchestrator, not the service — runDirectorBrief mock returns null and the turn still completes', async () => {
-        // The mock returns null (graceful failure). The orchestrator must
-        // proceed to buildPayload + sendMessage + onDone without throwing.
-        runDirectorBriefMock.mockResolvedValueOnce(null);
-        const callbacks = baseCallbacks();
-        await runTurn(baseState('pro'), callbacks, new AbortController());
-        // buildPayload was reached (the gate didn't short-circuit the turn).
+    it('without absoluteCommand, lite tier invokes runDirectorBrief ZERO times (control — tier gate)', async () => {
+        await runTurn(baseState('lite', null), baseCallbacks(), new AbortController());
+        expect(runDirectorBriefMock).toHaveBeenCalledTimes(0);
+    });
+
+    it('with absoluteCommand armed, buildPayload receives absoluteCommand in its options', async () => {
+        await runTurn(baseState('max', COMMAND), baseCallbacks(), new AbortController());
         expect(buildPayloadMock).toHaveBeenCalledTimes(1);
-        // sendMessage was reached (the turn completed the pre-payload path).
-        expect(sendMessageMock).toHaveBeenCalledTimes(1);
+        const opts = buildPayloadMock.mock.calls[0][0] as Record<string, unknown>;
+        expect(opts.absoluteCommand).toBe(COMMAND);
     });
 
-    it('pro tier passes the expected inputs to runDirectorBrief (dossier, userMessage, campaignId, provider)', async () => {
-        await runTurn(baseState('pro'), baseCallbacks(), new AbortController());
-        const call = runDirectorBriefMock.mock.calls[0][0] as any;
-        expect(call).toBeDefined();
-        expect(call.campaignId).toBe('camp_test');
-        expect(call.userMessage).toContain('I look around.');
-        expect(call.provider).toBeDefined();
-        // The watchdog dossier is empty (mocked) — dossierText is ''.
-        expect(call.dossierText).toBe('');
-        // lastAssistantContent is mocked to return 'LAST_GM_TEXT'.
-        expect(call.lastAssistant).toBe('LAST_GM_TEXT');
+    it('without absoluteCommand, buildPayload receives absoluteCommand as undefined', async () => {
+        await runTurn(baseState('max', null), baseCallbacks(), new AbortController());
+        const opts = buildPayloadMock.mock.calls[0][0] as Record<string, unknown>;
+        expect(opts.absoluteCommand).toBeUndefined();
     });
 });

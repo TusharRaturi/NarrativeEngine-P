@@ -8,6 +8,7 @@ import { buildVolatile } from './volatile';
 import { buildHistory } from './history';
 import { buildPinnedMemoriesBlock } from './pinnedMemories';
 import { formatAskGmBrief } from '../ooc/askGmHandoff';
+import { buildAbsoluteCommandBlock } from '../turn/absoluteCommand';
 import { countTokens } from '../infrastructure/tokenizer';
 import type { ElevatedScene } from '../archive-memory/dynamicElevation';
 import type { SlottedRagSnippet } from '../archive-memory/slottedRag';
@@ -55,6 +56,11 @@ export type BuildPayloadOptions = {
      *  search hits but did NOT get elevated. Reuses WO-11's scoped search results
      *  (one search, two consumers); no second vector search. Witness-filtered. */
     slottedRagSnippets?: SlottedRagSnippet[];
+    /** Absolute Command v1: binding out-of-character player instruction for THIS turn only.
+     *  When present, GM_REMINDER and the watchdog nudge are omitted, the CoT invocation line
+     *  is swapped for a subordination line, and the command block is placed LAST — after
+     *  userMessage — for maximum recency. Never enters chat history. */
+    absoluteCommand?: string;
 };
 
 export function buildPayload(options: BuildPayloadOptions): { messages: OpenAIMessage[]; trace?: PayloadTrace[]; debugSections?: DebugSection[] } {
@@ -87,6 +93,7 @@ export function buildPayload(options: BuildPayloadOptions): { messages: OpenAIMe
         directorBrief,
         elevatedScenes,
         slottedRagSnippets,
+        absoluteCommand,
     } = options;
     const isDebug = settings.debugMode === true;
     const limit = settings.contextLimit || 8192;
@@ -157,16 +164,37 @@ export function buildPayload(options: BuildPayloadOptions): { messages: OpenAIMe
     const GM_REMINDER = '[GM REMINDER: NPCs push back when their wants/boundaries are crossed. Do not default to facilitation.]';
     const volatileBlock = [retrievedRulesContent, worldContent, volatileContent].filter(Boolean).join('\n\n');
     const askGmBrief = formatAskGmBrief(nextTurnOocBrief);
+
+    // Absolute Command v1: build the binding OOC block (or '' when absent). When
+    // present, GM_REMINDER is dropped (the standing "do not default to facilitation"
+    // instruction is the most direct opponent of an explicit player override), and
+    // the CoT invocation line is swapped for a subordination line. WRITER_COT stays
+    // in the cached stable prefix (never conditionally removed — see WO §2); only
+    // the below-boundary invocation line changes. The block itself is placed LAST
+    // in the final user message — after userMessage — for maximum recency.
+    const absoluteCommandBlock = buildAbsoluteCommandBlock(absoluteCommand);
+    const hasAbsolute = absoluteCommandBlock !== '';
+
+    const gmReminderActive = hasAbsolute ? '' : GM_REMINDER;
+
     // Per-turn CoT invocation line (thinking-mode only). Rides in the final user
     // message (below the cache boundary) — kept out of the cached stable prefix so
-    // thinking-off turns stay byte-identical to the pre-CoT payload.
-    const writerCotNudge = isThinkingEnabled(settings) ? 'Work through the [WRITER REASONING FRAMEWORK] in your reasoning before writing.' : '';
+    // thinking-off turns stay byte-identical to the pre-CoT payload. Under an
+    // absolute command, subordinates the framework instead of invoking it flatly.
+    const writerCotNudge = !isThinkingEnabled(settings)
+        ? ''
+        : hasAbsolute
+            ? 'Work through the [WRITER REASONING FRAMEWORK] only where it does not conflict with [USER ABSOLUTE COMMAND]. Where they conflict, discard the framework step and follow the command.'
+            : 'Work through the [WRITER REASONING FRAMEWORK] in your reasoning before writing.';
 
     // Director Watchdog nudge (WO-03): rides adjacent to GM_REMINDER in the final user message
     // (below the cache boundary) so it never perturbs the cached prefix. Suppressed when a
-    // Director Brief is present — the Brief supersedes the deterministic nudge (WO-04 wires
-    // the actual Brief value; WO-03 adds the param so the supersession rule is testable).
-    const watchdogNudgeActive = watchdogNudge && !directorBrief ? watchdogNudge : '';
+    // Director Brief is present — the Brief supersedes it (WO-04 wires the actual Brief value;
+    // WO-03 adds the param so the supersession rule is testable). Also suppressed under an
+    // Absolute Command (belt-and-braces — the orchestrator already leaves watchdogNudge
+    // undefined when the command is armed; buildPayload is called from three sites and must
+    // be correct standalone).
+    const watchdogNudgeActive = watchdogNudge && !directorBrief && !hasAbsolute ? watchdogNudge : '';
 
     // Director Brief (WO-04): rendered as a [DIRECTOR BRIEF] block placed BEFORE GM_REMINDER
     // in the final user message (below the cache boundary). When present, the watchdog nudge
@@ -179,7 +207,12 @@ export function buildPayload(options: BuildPayloadOptions): { messages: OpenAIMe
     // Ordering: the Brief lands BEFORE GM_REMINDER so the GM reads the audit directives
     // first, then the standing GM reminder, then the (possibly suppressed) deterministic
     // nudge. Everything upstream of this point is cache-stable.
-    const finalUserContent = [volatileBlock, writerCotNudge, directorBriefBlock, GM_REMINDER, watchdogNudgeActive, askGmBrief, userMessage].filter(Boolean).join('\n\n');
+    // Absolute Command v1: the command block is placed LAST — after userMessage — for
+    // maximum recency, explicitly outranking everything above it.
+    const finalUserContent = [
+        volatileBlock, writerCotNudge, directorBriefBlock, gmReminderActive,
+        watchdogNudgeActive, askGmBrief, userMessage, absoluteCommandBlock,
+    ].filter(Boolean).join('\n\n');
     messages.push({ role: 'user', content: finalUserContent });
 
     // Trace the watchdog so debug mode shows the dossier (source: 'Watchdog' per WO-03 §4).
@@ -210,6 +243,21 @@ export function buildPayload(options: BuildPayloadOptions): { messages: OpenAIMe
             included: true,
             position: 'user',
             preview: directorBriefBlock,
+        });
+    }
+
+    // Absolute Command v1: trace the binding OOC block so debug mode shows it.
+    // Mirrors the Director trace above. Only recorded when the block is
+    // actually present — an absent/empty command is not a payload contributor.
+    if (absoluteCommandBlock) {
+        collector.addTrace({
+            source: 'Absolute Command',
+            classification: 'world_context',
+            tokens: countTokens(absoluteCommandBlock),
+            reason: 'Binding out-of-character player instruction for this turn (supersedes GM_REMINDER, watchdog nudge, and Director Brief)',
+            included: true,
+            position: 'user',
+            preview: absoluteCommandBlock,
         });
     }
 

@@ -90,6 +90,11 @@ export type TurnState = {
     armedRoll?: import('../../types').ManualRollRequest | string | null;
     armedLoot?: import('../../types').ArmedLoot | null;
     armedOneShot?: OneShotEventId | null;
+    /** Absolute Command v1: binding OOC player instruction for THIS turn only.
+     *  Cleared before runTurn (fires exactly once). Suppresses Director Brief,
+     *  watchdog nudge, and GM_REMINDER; placed last in the prompt. Never enters
+     *  chat history (travels as a buildPayload parameter). */
+    absoluteCommand?: string | null;
     /** Confirmed Ask GM meta-guidance. Volatile only; it is never added to story history. */
     nextTurnOocBrief?: string;
     semanticFacts?: SemanticFact[];

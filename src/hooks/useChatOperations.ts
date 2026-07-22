@@ -2,7 +2,7 @@ import { useState, useRef, useEffect } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useAppStore } from '../store/useAppStore';
 import { runTurn } from '../services/turn/turnOrchestrator';
-import { commitPendingTurn } from '../services/turn/pendingCommit';
+import { commitPendingTurn, findRetryableMessage } from '../services/turn/pendingCommit';
 import { debouncedSaveCampaignState } from '../store/slices/campaignSlice';
 import type { InventoryProposal } from '../types';
 import type { useSceneContinue } from '../components/hooks/useSceneContinue';
@@ -122,9 +122,32 @@ export function useChatOperations({
         const useArmedOneShot = useAppStore.getState().armedOneShot;
         useAppStore.getState().setArmedOneShot(null);
 
+        // Absolute Command v1: capture then clear before runTurn, mirroring
+        // armedOneShot. Fires exactly once; the command block travels as a
+        // buildPayload parameter (placed after userMessage), never on
+        // historyInput so it never persists in chat history.
+        const useAbsoluteCommand = useAppStore.getState().armedAbsoluteCommand;
+        useAppStore.getState().setArmedAbsoluteCommand(null);
+
         if (!overrideText) {
             setInput('');
             resetTextareaHeight();
+        }
+
+        // Smart Retry v1: clear stale retryable/precontext flags on any older
+        // bubble before starting a new turn. A retryable bubble from a prior
+        // failed turn is no longer retryable once the user moves on — its cached
+        // precontext is orphaned by the new turn's gather. Also clears the
+        // in-memory snapshot so the orphaned payload doesn't linger.
+        const staleRetryable = findRetryableMessage(useAppStore.getState().messages);
+        if (staleRetryable) {
+            const msgs = useAppStore.getState().messages;
+            const idx = msgs.findIndex(m => m.id === staleRetryable.id);
+            if (idx !== -1) {
+                const updated = [...msgs];
+                updated[idx] = { ...updated[idx], retryable: undefined, precontext: undefined };
+                useAppStore.setState({ messages: updated });
+            }
         }
 
         abortControllerRef.current = new AbortController();
@@ -183,6 +206,7 @@ export function useChatOperations({
             armedRoll: useArmedRoll,
             armedLoot: useArmedLoot,
             armedOneShot: useArmedOneShot,
+            absoluteCommand: useAbsoluteCommand,
             getFreshAuxiliaryProvider: () => {
                 const aux = useAppStore.getState().getActiveAuxiliaryEndpoint();
                 return aux?.modelName ? aux : useAppStore.getState().getActiveStoryEndpoint();

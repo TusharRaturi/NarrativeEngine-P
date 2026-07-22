@@ -68,6 +68,11 @@ export async function saveCampaignState(campaignId: string, state: CampaignState
         messages: state.messages.map((m) => {
             const msg = { ...m };
             delete msg.debugPayload;
+            // Smart Retry v1 — ephemerals must never reach disk. A persisted
+            // `retryable` yields a Retry button that survives restart with no
+            // in-memory payload behind it (dead button → "Context lost" toast).
+            delete msg.retryable;
+            delete msg.precontext;
             return msg;
         }),
     };

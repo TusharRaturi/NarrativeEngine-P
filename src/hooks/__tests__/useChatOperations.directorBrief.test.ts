@@ -35,6 +35,7 @@ vi.mock('../../services/turn/turnOrchestrator', () => ({
 
 vi.mock('../../services/turn/pendingCommit', () => ({
     commitPendingTurn: (...args: unknown[]) => commitPendingTurnMock(...args),
+    findRetryableMessage: () => null,
 }));
 
 vi.mock('../../store/slices/campaignSlice', () => ({
@@ -83,6 +84,8 @@ vi.mock('../../store/useAppStore', () => {
         clearArmedLoot: vi.fn(),
         armedOneShot: null,
         setArmedOneShot: vi.fn(),
+        armedAbsoluteCommand: null,
+        setArmedAbsoluteCommand: vi.fn(),
         divergenceRegister: undefined,
         onStageNpcIds: [],
         pinnedExcerpts: undefined,

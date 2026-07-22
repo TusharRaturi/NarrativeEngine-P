@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { ChatMessage } from '../../types';
 import { api } from '../../services/llm/apiClient';
 import type { ArchiveManagerDeps } from '../../services/archive-memory/archiveManager';
-import { findPendingCommitMessage, clearPendingTurnSnapshot } from '../../services/turn/pendingCommit';
+import { findPendingCommitMessage, findRetryableMessage, clearPendingTurnSnapshot } from '../../services/turn/pendingCommit';
 import { useAppStore } from '../../store/useAppStore';
 import { debouncedSaveCampaignState } from '../../store/slices/campaignSlice';
 
@@ -75,6 +75,17 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
         if (msg.role === 'user') {
             const droppedSceneIds = collectDroppedSceneIds(msg.id);
             deps.rollbackArchive(msg.timestamp);
+            // Smart Retry v1 — clear the snapshot if a retryable bubble is being
+            // dropped by this edit (the user msg's rollback deletes everything
+            // from here onward, including any failed-turn assistant bubble).
+            const retryableForEdit = findRetryableMessage(deps.messages);
+            if (retryableForEdit) {
+                const retryableIdx = deps.messages.findIndex(m => m.id === retryableForEdit.id);
+                const editIdx = deps.messages.findIndex(m => m.id === msg.id);
+                if (retryableIdx !== -1 && editIdx !== -1 && retryableIdx >= editIdx) {
+                    clearPendingTurnSnapshot();
+                }
+            }
             deps.deleteMessagesFrom(msg.id);
             // WO-12.6 — purge client divergence facts for every archived scene being dropped.
             for (const sid of droppedSceneIds) deps.deleteDivergenceChapter(sid);
@@ -130,6 +141,16 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
                 clearPendingTurnSnapshot();
             }
         }
+        // Smart Retry v1 — a retryable bubble being rolled back also discards the
+        // cached precontext (the snapshot was captured pre-story-AI for retry).
+        // Same leak-prevention as the pending path above.
+        const retryable = findRetryableMessage(msgs);
+        if (retryable) {
+            const retryableIdx = msgs.findIndex(m => m.id === retryable.id);
+            if (retryableIdx !== -1 && retryableIdx >= idx) {
+                clearPendingTurnSnapshot();
+            }
+        }
 
         const prevMsgs = msgs.slice(0, idx);
         const lastUser = [...prevMsgs].reverse().find(m => m.role === 'user');
@@ -157,6 +178,27 @@ export function useMessageEditor(deps: UseMessageEditorDeps) {
         const pendingMsg = findPendingCommitMessage(deps.messages);
         if (pendingMsg?.id === id) {
             clearPendingTurnSnapshot();
+        }
+        // Smart Retry v1 — if the deleted message is retryable (story AI failed/
+        // aborted), clear the in-memory snapshot so the orphaned precontext
+        // payload doesn't linger. Also handles the case where the deleted message
+        // is a user msg whose paired assistant carries precontext (deleting the
+        // user prompt orphans the precontext — clear it from the next assistant).
+        const retryableMsg = findRetryableMessage(deps.messages);
+        if (retryableMsg?.id === id) {
+            clearPendingTurnSnapshot();
+        } else if (retryableMsg) {
+            // Maybe the deleted message is a user msg BEFORE the retryable assistant.
+            // Check if the retryable assistant would be orphaned by this delete.
+            const deleteIdx = deps.messages.findIndex(m => m.id === id);
+            const retryableIdx = deps.messages.findIndex(m => m.id === retryableMsg.id);
+            if (deleteIdx !== -1 && retryableIdx !== -1 && deleteIdx < retryableIdx) {
+                // Deleting a message before the retryable bubble — the retryable's
+                // paired user prompt may be the one being deleted. Clear the snapshot
+                // + the retryable flags so the button doesn't survive orphaned.
+                clearPendingTurnSnapshot();
+                useAppStore.getState().updateLastAssistantMessage?.({ retryable: undefined, precontext: undefined });
+            }
         }
         deps.deleteMessage(id);
         const sceneId = findSceneIdForMessage(deps.messages, id);

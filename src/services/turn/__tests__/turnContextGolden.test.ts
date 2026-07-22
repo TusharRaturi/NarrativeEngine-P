@@ -493,6 +493,7 @@ function baseState(): TurnState {
         armedRoll: null,
         armedLoot: null,
         armedOneShot: null,
+        absoluteCommand: null,
         nextTurnOocBrief: 'OOC_BRIEF_TEXT',
     } as any as TurnState;
 }
@@ -607,10 +608,15 @@ describe('WO-P1-01 — runTurn pre-payload path golden (byte-identical pre/post 
 
     it('captured snapshot references the same payload messages array (sent to sendMessage)', () => {
         return runTurn(baseState(), baseCallbacks(), new AbortController()).then(() => {
-            expect(capturePendingTurnSnapshotMock).toHaveBeenCalledTimes(1);
-            const snapshotArgs = capturePendingTurnSnapshotMock.mock.calls[0];
-            // Arg 2: the cached payload (currentPayload) — should be the same
+            // Smart Retry v1: capturePendingTurnSnapshot is now called TWICE — once
+            // early (pre-Story-AI, for the failure/retry path) and once on success
+            // (richer payload with tool history + complete ctx). The success capture
+            // overwrites the early one idempotently. Both are deliberate; see the
+            // comments in runGenerationStage.
+            expect(capturePendingTurnSnapshotMock).toHaveBeenCalledTimes(2);
+            // The success-path capture (second call) carries currentPayload — the
             // messages array the mocked buildPayload returned.
+            const snapshotArgs = capturePendingTurnSnapshotMock.mock.calls[1];
             expect(snapshotArgs[1]).toEqual([{ role: 'user', content: 'FIXED_PAYLOAD_MESSAGE' }]);
         });
     });

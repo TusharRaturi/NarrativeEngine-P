@@ -32,6 +32,7 @@ export function ChatMessageList({
     streamingStats,
     directorBriefRunning,
     onSkipDirectorBrief,
+    onRetry,
 }: {
     scrollContainerRef: RefObject<HTMLDivElement | null>;
     bottomRef: RefObject<HTMLDivElement | null>;
@@ -52,6 +53,8 @@ export function ChatMessageList({
     directorBriefRunning: boolean;
     /** WO-05: aborts the Director call only (never the whole turn). */
     onSkipDirectorBrief: () => void;
+    /** Smart Retry v1: retries the failed/aborted GM bubble with the cached precontext. */
+    onRetry?: (messageId: string) => void;
 }) {
     const [visibleCount, setVisibleCount] = useState(10);
     const [loadStep, setLoadStep] = useState(10);
@@ -118,6 +121,7 @@ export function ChatMessageList({
                     sceneContinueLoading={sceneContinue.continueLoading}
                     swipeGenLoading={swipe.swipeGenLoading}
                     globalIsStreaming={isStreaming}
+                    onRetry={onRetry}
                 />
             ))}
 

@@ -61,6 +61,12 @@ export type UISlice = {
     // armedRoll/armedLoot — fires once, never persists in chat history.
     armedOneShot: OneShotEventId | null;
     setArmedOneShot: (id: OneShotEventId | null) => void;
+    // Absolute Command v1: armed binding OOC instruction for this turn only.
+    // Mirrors armedOneShot — cleared before runTurn so it fires exactly once,
+    // never persists in chat history. Suppresses Director Brief, watchdog nudge,
+    // and GM_REMINDER; placed last in the prompt for maximum recency.
+    armedAbsoluteCommand: string | null;
+    setArmedAbsoluteCommand: (text: string | null) => void;
     troubleModalOpen: boolean;
     troubleLoading: boolean;
     troubleOptions: string[];
@@ -124,6 +130,8 @@ export const createUISlice: StateCreator<UISlice, [], [], UISlice> = (set) => ({
     closeLootRollModal: () => set({ lootRollModalOpen: false }),
     armedOneShot: null,
     setArmedOneShot: (id) => set({ armedOneShot: id }),
+    armedAbsoluteCommand: null,
+    setArmedAbsoluteCommand: (text) => set({ armedAbsoluteCommand: text }),
     troubleModalOpen: false,
     troubleLoading: false,
     troubleOptions: [],

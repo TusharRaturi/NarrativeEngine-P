@@ -46,6 +46,12 @@ export type ChatMessage = {
     pendingCommit?: boolean;
     /** Swipe Generation v1 — the index of the currently-visible variant in swipeSet. */
     swipeActiveIndex?: number;
+    /** Smart Retry v1 — ephemeral, never persisted. Story AI failed/aborted; Retry is offered.
+     *  The in-memory `PendingTurnSnapshot` captured before the Story AI run backs the Retry
+     *  button so it can re-enter generation without regathering. */
+    retryable?: boolean;
+    /** Smart Retry v1 — ephemeral. Collapsed summary of the gathered precontext. */
+    precontext?: { summary: string; capturedPayloadRef?: string };
 };
 
 export type Campaign = {

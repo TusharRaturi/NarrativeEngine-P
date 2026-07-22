@@ -50,6 +50,12 @@
   --color-grain: rgba(0, 0, 0, 0.012);
   /* Subtle grain tint                */
 
+  /* Absolute Command v1 — red-on-off-white in light mode. Label colour is
+     split from the accent colour for WCAG AA on the small strip text. */
+  --color-command-fill:   #EDEDEA;  /* off-white; = light-mode --color-void-lighter */
+  --color-command-label:  #B91C1C;  /* label text — 5.5:1 on the fill (WCAG AA)     */
+  --color-command-accent: #E01B1B;  /* border + icon + ARMED segment fill           */
+
   --font-mono: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
 }
 
@@ -84,6 +90,13 @@
 
   --color-overlay: rgba(0, 0, 0, 0.60);
   --color-grain: rgba(255, 255, 255, 0.010);
+
+  /* Absolute Command v1 — obsidian & gold in dark mode. The fill is darker
+     than the page (#0A0A0B vs #161618) by design — the gold border draws
+     the shape, the way inlay does. Do not "fix" it by lightening the fill. */
+  --color-command-fill:   #0A0A0B;  /* near-black; the gold border defines the shape */
+  --color-command-label:  #D9B44A;  /* label text — 9.2:1 on the fill                */
+  --color-command-accent: #E8C25A;  /* border + icon + ARMED segment fill            */
 }
 
 @layer base {

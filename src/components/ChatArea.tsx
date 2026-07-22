@@ -13,6 +13,7 @@ import { ChatNavFabs } from './chat/ChatNavFabs';
 import { ChatMessageList } from './chat/ChatMessageList';
 import { useSwipeVariants } from './hooks/useSwipeVariants';
 import { useSceneContinue } from './hooks/useSceneContinue';
+import { useRetryStoryAI } from './hooks/useRetryStoryAI';
 import { rollbackArchiveFrom } from '../services/archive-memory/archiveManager';
 import { useCondenser } from './hooks/useCondenser';
 import { useChapterSealing } from './hooks/useChapterSealing';
@@ -88,6 +89,7 @@ export function ChatArea() {
 
     const swipe = useSwipeVariants(pendingMessageId);
     const sceneContinue = useSceneContinue(pendingMessageId);
+    const retry = useRetryStoryAI();
     const [swipeSheetMessageId, setSwipeSheetMessageId] = useState<string | null>(null);
 
     const deepArmed = useAppStore(s => s.deepArmed);
@@ -214,6 +216,7 @@ export function ChatArea() {
                 directorBriefRunning={directorBriefRunning}
                 onSkipDirectorBrief={handleSkipDirectorBrief}
                 onOpenSwipeSheet={setSwipeSheetMessageId}
+                onRetry={retry.retryStoryAI}
             />
 
             <ChatActionStrip

@@ -36,9 +36,49 @@ import { capturePendingTurnSnapshot } from './pendingCommit';
 import { buildWatchdogDossier } from './directorWatchdog';
 import { runDirectorBrief, lastAssistantContent } from './directorBrief';
 import type { TurnContext } from './turnContext';
+import type { GatheredContext } from './contextGatherer';
 import type { TurnState, TurnCallbacks } from './turnOrchestrator';
 
 const MAX_TOOL_CALLS_PER_TURN = 5;
+
+// ── Smart Retry v1 helpers ──────────────────────────────────────────────
+// Build the collapsed-box summary for the `precontext` field on a retryable
+// bubble. Kept short and non-technical — the user taps to expand for details
+// (v2). Mirrors mobile's buildPrecontextSummary but against desktop's richer
+// GatheredContext shape (semanticArchiveIds/semanticLoreIds instead of
+// semanticArchiveHits; relevantRules is LoreChunk[] on both).
+function buildPrecontextSummary(gathered: GatheredContext | undefined): string {
+    if (!gathered) return 'Context gathered';
+    const parts: string[] = [];
+    if (gathered.relevantLore?.length) parts.push(`Lore×${gathered.relevantLore.length}`);
+    if (gathered.relevantRules?.length) parts.push(`Rules×${gathered.relevantRules.length}`);
+    if (gathered.archiveRecall?.length) parts.push(`Archive×${gathered.archiveRecall.length}`);
+    if (gathered.semanticArchiveIds?.length) parts.push(`Hits×${gathered.semanticArchiveIds.length}`);
+    if (gathered.recommendedNPCNames?.length) parts.push(`NPCs×${gathered.recommendedNPCNames.length}`);
+    if (gathered.deepContextSummary) parts.push('DeepScan');
+    return parts.length ? parts.join(' · ') : 'Context gathered';
+}
+
+// Smart Retry v1: stamp the terminal assistant bubble as retryable + attach
+// the precontext summary. Called ONLY from the terminal exit branches (user
+// abort + retry-exhausted) — NOT the intermediate retry branches (apiRetryCount
+// 0 and 1 are still in flight). Targets the bubble by `assistantMsgId` via
+// `updateLastAssistantMessage` (scans back to the last assistant), NEVER
+// `updateLastMessage` (literal last message): after a tool call the literal
+// last message is a tool message (desktop reuses one assistant id across
+// iterations), so `updateLastMessage` would stamp the tool message and the
+// Retry button would never render. See the warning at pendingCommit.ts.
+function stampRetryable(
+    callbacks: TurnCallbacks,
+    assistantMsgId: string,
+    gathered: GatheredContext | undefined,
+): void {
+    callbacks.updateLastAssistantMessage({
+        retryable: true,
+        precontext: { summary: buildPrecontextSummary(gathered) },
+    });
+    void assistantMsgId;
+}
 
 // ── Stage 1: resolveEngineRolls ──────────────────────────────────────────
 // Pre-rolls the dice pool; resolves armed dice/loot/oneshot injectors.
@@ -104,6 +144,15 @@ export function resolveEngineRolls(
             ctx.finalInput += directive;
             ctx.displayInputFinal += `\n\n⚡ Event injected (${armedOneShot})`;
         }
+    }
+
+    // Absolute Command v1: player-facing reveal only. The command block itself
+    // travels as a buildPayload parameter (placed AFTER userMessage for maximum
+    // recency) so it is NOT appended to ctx.finalInput — that keeps it out of
+    // ctx.historyInput and therefore out of durable chat history. Mirrors the
+    // one-shot reveal line above.
+    if (state.absoluteCommand) {
+        ctx.displayInputFinal += `\n\n⛔ Absolute command issued`;
     }
 }
 
@@ -188,6 +237,18 @@ export async function runDirectorStage(
 
     callbacks.setPipelinePhase?.('building-prompt');
     callbacks.setLoadingStatus?.('Architecting AI Prompt...');
+
+    // Absolute Command v1: the player has issued a binding OOC instruction for this
+    // turn. Skip the Director entirely — both the blocking LLM call and the
+    // deterministic watchdog nudge exist to steer the GM, which is precisely what the
+    // player is overriding. Leaves ctx.watchdogNudge / ctx.directorBrief undefined, so
+    // buildPayload emits neither block. Also saves one blocking LLM call. The gate
+    // goes BEFORE buildWatchdogDossier so the dossier is not computed either. The
+    // tierAllows check below is untouched — Absolute Command works on every tier,
+    // including `lite` (which has no Director anyway).
+    if (state.absoluteCommand) {
+        return;
+    }
 
     // Director Watchdog (WO-03): compute the deterministic dossier at payload-build time from
     // the SAME inputs the payload is about to consume (history, npcLedger, onStageNpcIds).
@@ -294,6 +355,7 @@ export function buildTurnPayload(
         nextTurnOocBrief: state.nextTurnOocBrief,
         watchdogNudge: ctx.watchdogNudge,
         directorBrief: ctx.directorBrief,
+        absoluteCommand: state.absoluteCommand ?? undefined,
         elevatedScenes: ctx.gathered.elevatedScenes,
         slottedRagSnippets: ctx.gathered.slottedRagSnippets,
     });
@@ -354,6 +416,18 @@ export async function runGenerationStage(
     const providerSafe = provider!;
     const payload = ctx.payload!;
     const sceneNumber = ctx.gathered.sceneNumber;
+
+    // Smart Retry v1: capture the precontext snapshot BEFORE the Story AI runs.
+    // The success-path capture at the end of `executeTurn`'s onDone (below) re-
+    // captures with tool-call history + the fully-populated `ctx` bus — that
+    // overwrite is idempotent by design and is what swipes 2–5 + the importance
+    // rater depend on. DO NOT remove or "dedupe" that later capture: it carries
+    // strictly richer state (tool history, complete ctx) than this early one.
+    // This early capture is intentionally poorer — it exists ONLY so the
+    // failure/abort path has something to retry from without regathering. The
+    // 4th arg (ctx bus) is desktop-only; mobile's signature has no bus. The
+    // failure path never commits, and success re-captures with the complete bus.
+    capturePendingTurnSnapshot(state, payload, state.displayInput, ctx);
 
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const abortListener = () => {
@@ -555,6 +629,13 @@ export async function runGenerationStage(
                 // the snapshot. The post-turn pipeline reads bus fields from it instead
                 // of reaching into getState() (thread-only — does NOT rewrite what
                 // post-turn computes; that's Project 4's memory port).
+                //
+                // Smart Retry v1: this is the SECOND capture — there is an earlier,
+                // deliberately poorer one at the top of runGenerationStage (pre-Story-AI)
+                // that exists only so the failure path can retry without regathering.
+                // This call overwrites it with the richer payload (tool-call history +
+                // complete ctx). DO NOT remove either capture — the two are redundant by
+                // design. See the comment at the early capture site for the full rationale.
                 capturePendingTurnSnapshot(state, currentPayload, state.displayInput, ctx);
 
                 callbacks.setPipelinePhase?.('idle');
@@ -567,6 +648,11 @@ export async function runGenerationStage(
                     || (typeof err === 'string' && err.includes('abort'));
 
                 if (isUserAbort) {
+                    // Smart Retry v1: user pressed Stop. Stamp the (partial) terminal
+                    // assistant bubble as retryable so the Retry button renders. The
+                    // early-captured snapshot (pre-Story-AI) is still in memory and
+                    // can re-enter executeTurn without regathering.
+                    stampRetryable(callbacks, assistantMsgId, ctx.gathered);
                     callbacks.setStreaming(false);
                     callbacks.onCheckingNotes(false);
                     callbacks.setLoadingStatus?.(null);
@@ -602,6 +688,11 @@ export async function runGenerationStage(
                         callbacks.updateLastAssistant(`⚠️ Error: ${err}`);
                     }
                     toast.error('LLM request failed after retries');
+                    // Smart Retry v1: final retry exhaustion — stamp retryable so the
+                    // user can retry from the cached precontext without regathering.
+                    // Do NOT stamp on the intermediate retry branches (apiRetryCount 0
+                    // and 1) — those are still in flight.
+                    stampRetryable(callbacks, assistantMsgId, ctx.gathered);
                     callbacks.setStreaming(false);
                     callbacks.onCheckingNotes(false);
                     callbacks.setLoadingStatus?.(null);
