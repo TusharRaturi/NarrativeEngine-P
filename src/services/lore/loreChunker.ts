@@ -196,7 +196,7 @@ function generateSummary(_header: string, content: string): string | undefined {
 }
 
 function extractEntityName(header: string): string {
-    let name = header.replace(/\[CHUNK:\s*[A-Z_]+[—\-\s]*\]/i, '').trim();
+    const name = header.replace(/\[CHUNK:\s*[A-Z_]+[—\-\s]*\]/i, '').trim();
     // Strip TYPE -- Name or TYPE — Name
     const prefixMatch = name.match(/^[A-Z][A-Z_\s]*(?:--|[—–])\s*(.+)/);
     if (prefixMatch) {
