@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 
 const __fileDir = path.dirname(fileURLToPath(import.meta.url));
-const __projectRoot = path.join(__fileDir, '../../..');
+const __projectRoot = path.join(__fileDir, '../../../..');
 
 export const DATA_DIR = process.env.DATA_DIR || path.join(__projectRoot, 'data');
 export const CAMPAIGNS_DIR = path.join(DATA_DIR, 'campaigns');

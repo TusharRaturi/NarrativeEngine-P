@@ -8,7 +8,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev --workspaces --if-present",
+    "dev": "npx concurrently \"npm run dev --workspace=@narrative/server\" \"npm run dev --workspace=@narrative/web\"",
     "build": "npm run build --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
     "test:e2e": "playwright test",
