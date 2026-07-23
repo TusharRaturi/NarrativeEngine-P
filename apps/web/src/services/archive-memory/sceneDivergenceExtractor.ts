@@ -7,10 +7,9 @@ import type { ExtractedDivergences } from '../campaign-state/divergenceRegister'
 import { uid } from '../../utils/uid';
 import { extractContextEntities } from '../retrieval/semanticMemory';
 
-export async function extractTurnDivergences(
+export async function extractSceneDivergences(
     provider: ProviderConfig | EndpointConfig,
-    userText: string,
-    gmText: string,
+    sceneText: string,
     sceneId: string,
     chapterId: string,
     npcLedger: { id: string; name: string; aliases: string }[],
@@ -32,7 +31,7 @@ export async function extractTurnDivergences(
         }
     }
 
-    const entities = extractContextEntities(userText + '\n' + gmText, [], npcLedger.map(n => ({ id: n.id, name: n.name, aliases: n.aliases, tags: [], summary: '' })) as unknown as import('../../types').NPCEntry[]);
+    const entities = extractContextEntities(sceneText, [], npcLedger.map(n => ({ id: n.id, name: n.name, aliases: n.aliases, tags: [], summary: '' })) as unknown as import('../../types').NPCEntry[]);
     const scoredDivergences = activeDivergences.map(div => {
         let score = 0;
         const textLower = div.text.toLowerCase();
@@ -57,8 +56,13 @@ export async function extractTurnDivergences(
 
     const prompt = `You are a TTRPG campaign archivist. Extract established facts from the latest scene that would BREAK A FUTURE SCENE if the AI contradicted them.
 
+CRITICAL FACT COMPRESSION RULE:
+You are extracting facts based on the ENTIRE SCENE'S events. As scenes conclude, multiple intermediate actions or minor changes may occur. You MUST aggressively compress and consolidate these into their final outcomes.
+If intermediate actions led to a single final state (e.g., combat started, someone was injured, and then someone died), DO NOT extract the intermediate states. ONLY extract the final result.
+If the scene contradicts, resolves, or updates one of the CURRENT RELEVANT FACTS provided below, you MUST extract it as an updated_fact or invalidated_fact. Supersede old/intermediate facts in favor of the new final outcome.
+
 Extract NEW facts only if their narrative importance is ${importanceGate} or higher on a 1-10 scale (where 1 is trivial and 10 is world-changing).
-However, if an event in the scene contradicts, resolves, or updates one of the CURRENT RELEVANT FACTS provided below, you MUST extract it as an updated_fact or invalidated_fact, regardless of its standalone importance.
+However, if an event in the scene contradicts, resolves, or updates one of the CURRENT RELEVANT FACTS, you MUST extract it as an updated_fact or invalidated_fact, regardless of its standalone importance.
 
 SCENE ID: ${sceneId}
 
@@ -69,8 +73,7 @@ CURRENT RELEVANT FACTS:
 ${relevantFactsText}
 
 LATEST SCENE CONTENT:
-User: ${userText}
-GM: ${gmText}
+${sceneText}
 
 OUTPUT FORMAT — a single JSON object with three keys: new_facts, updated_facts, and invalidated_facts.
 {
@@ -109,20 +112,20 @@ DIVERGENCE EXTRACTION RULES:
 - items: list specific, named objects or artifacts mentioned (e.g. "amulet_of_fire"). Empty array if none.
 - theme: provide exactly ONE descriptive lowercase word categorizing the fact (e.g. "combat", "betrayal", "discovery").
 - DO NOT include NPC names in the 'locations', 'items', or 'theme' fields.
-- Focus on: permanent changes, new information, relationship shifts, acquisitions, losses, oaths, regime changes.
+- Focus on: permanent changes, new information, relationship shifts, acquisitions, losses, oaths, regime changes. ONLY final outcomes of the scene.
 - Skip transient details, emotional narration, momentary states, and anything the archive would already surface.
 - If a slot is empty, output [] for that slot.
 
 Respond with valid JSON only.`;
 
-    const raw = await llmCall(provider, prompt, { priority: 'low', trackingLabel: 'turn-divergence-extract', timeoutMs: AI_CALL_TIMEOUT_MS });
+    const raw = await llmCall(provider, prompt, { priority: 'low', trackingLabel: 'scene-divergence-extract', timeoutMs: AI_CALL_TIMEOUT_MS });
     const cleaned = extractJson(raw);
     
     let parsed: Record<string, unknown>;
     try {
         parsed = JSON.parse(cleaned);
     } catch {
-        console.warn('[TurnDivergenceExtractor] JSON parse failed', cleaned);
+        console.warn('[SceneDivergenceExtractor] JSON parse failed', cleaned);
         return { newEntries: [], updates: [], invalidations: [] };
     }
 

@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // Absolute Command v1 — orchestrator stage tests (WO §7 invariants 4 & 5).
 //
 // Asserts the contract in `turnStages.ts`:
@@ -18,15 +17,15 @@ import type { TurnState, TurnCallbacks } from '../turnOrchestrator';
 
 // ── Mocks (hoisted by vitest) ────────────────────────────────────────────────
 
-const runDirectorBriefMock = vi.fn<(...args: any[]) => Promise<string | null>>(async () => null);
-const lastAssistantContentMock = vi.fn<(...args: any[]) => string>(() => 'LAST_GM_TEXT');
+const runDirectorBriefMock = vi.fn<(...args: unknown[]) => Promise<string | null>>(async () => null);
+const lastAssistantContentMock = vi.fn<(...args: unknown[]) => string>(() => 'LAST_GM_TEXT');
 vi.mock('../directorBrief', () => ({
     runDirectorBrief: (...args: unknown[]) => runDirectorBriefMock(...args),
     lastAssistantContent: (...args: unknown[]) => lastAssistantContentMock(...args),
     clearDirectorBriefCache: vi.fn(),
 }));
 
-const buildWatchdogDossierMock = vi.fn<(...args: any[]) => any>(() => ({ signals: [], dossierText: '', nudgeText: null }));
+const buildWatchdogDossierMock = vi.fn<(...args: unknown[]) => unknown>(() => ({ signals: [], dossierText: '', nudgeText: null }));
 vi.mock('../directorWatchdog', () => ({
     buildWatchdogDossier: (...args: unknown[]) => buildWatchdogDossierMock(...args),
 }));
@@ -51,11 +50,14 @@ vi.mock('../contextGatherer', () => ({
     })),
 }));
 
-const buildPayloadMock = vi.fn((_opts?: unknown) => ({
-    messages: [{ role: 'user', content: 'hello' }],
-    trace: [],
-    debugSections: [],
-}));
+const buildPayloadMock = vi.fn((opts?: unknown) => {
+    void opts;
+    return {
+        messages: [{ role: 'user', content: 'hello' }],
+        trace: [],
+        debugSections: [],
+    };
+});
 const sendMessageMock = vi.fn();
 vi.mock('../../chatEngine', () => ({
     buildPayload: (opts: unknown) => buildPayloadMock(opts),
@@ -96,7 +98,7 @@ vi.mock('../../../store/useAppStore', () => ({
         getState: () => ({
             locationLedger: [],
             getActiveAuxiliaryEndpoint: () => undefined,
-            getActiveStoryEndpoint: () => ({ endpoint: 'http://test', modelName: 'story' } as any),
+            getActiveStoryEndpoint: () => ({ endpoint: 'http://test', modelName: 'story' } as unknown as EndpointConfig),
         }),
     },
 }));
@@ -113,7 +115,7 @@ function baseSettings(aiTier: 'lite' | 'pro' | 'max'): AppSettings {
         debugMode: false,
         matureMode: false,
         rulesBudgetPct: 10,
-    } as any as AppSettings;
+    } as unknown as AppSettings;
 }
 
 function baseContext(): GameContext {
@@ -136,7 +138,7 @@ function baseContext(): GameContext {
         encounterConfig: { initialDC: 198, dcReduction: 2, types: [], tones: [] },
         worldEventConfig: { initialDC: 498, dcReduction: 2, who: [], where: [], why: [], what: [] },
         notebook: [],
-    } as any as GameContext;
+    } as unknown as GameContext;
 }
 
 function baseState(aiTier: 'lite' | 'pro' | 'max', absoluteCommand: string | null): TurnState {
@@ -146,14 +148,14 @@ function baseState(aiTier: 'lite' | 'pro' | 'max', absoluteCommand: string | nul
         settings: baseSettings(aiTier),
         context: baseContext(),
         messages: [] as ChatMessage[],
-        condenser: { condensedUpToIndex: -1 } as any as CondenserState,
+        condenser: { condensedUpToIndex: -1 } as unknown as CondenserState,
         loreChunks: [],
         npcLedger: [] as NPCEntry[],
         archiveIndex: [] as ArchiveIndexEntry[],
         activeCampaignId: 'camp_test',
-        provider: { endpoint: 'http://test', modelName: 'story' } as any as EndpointConfig,
+        provider: { endpoint: 'http://test', modelName: 'story' } as unknown as EndpointConfig,
         getMessages: () => [] as ChatMessage[],
-        getFreshProvider: () => ({ endpoint: 'http://test', modelName: 'story' } as any),
+        getFreshProvider: () => ({ endpoint: 'http://test', modelName: 'story' } as unknown as EndpointConfig),
         getUtilityEndpoint: () => undefined,
         getFreshAuxiliaryProvider: () => undefined,
         onStageNpcIds: [],
@@ -174,7 +176,7 @@ function baseState(aiTier: 'lite' | 'pro' | 'max', absoluteCommand: string | nul
         armedOneShot: null,
         absoluteCommand,
         nextTurnOocBrief: undefined,
-    } as any as TurnState;
+    } as unknown as TurnState;
 }
 
 function baseCallbacks(): TurnCallbacks {
@@ -185,12 +187,12 @@ function baseCallbacks(): TurnCallbacks {
         updateContext: noop, setArchiveIndex: noop,
         updateNPC: noop, addNPC: noop, setCondensed: noop, setStreaming: noop,
         archiveNPC: noop, restoreNPC: noop,
-    } as any as TurnCallbacks;
+    } as unknown as TurnCallbacks;
 }
 
 function wireSendMessageToComplete(): void {
     sendMessageMock.mockImplementation(
-        (_provider: unknown, _messages: unknown, _onChunk: unknown, onDone: any) => {
+        (_provider: unknown, _messages: unknown, _onChunk: unknown, onDone: CallableFunction) => {
             Promise.resolve().then(() => onDone('Final GM text.', undefined, undefined));
             return Promise.resolve();
         },

@@ -3,7 +3,7 @@ import { Edit2, Check, Pin, PinOff, ChevronDown, ChevronUp, Trash2, Sparkles, Lo
 import { useAppStore } from '../../../store/useAppStore';
 import type { DivergenceCategory, DivergenceEntry, NPCEntry } from '../../../types';
 import { EMPTY_REGISTER, CATEGORY_LABELS, mergeSealEntries } from '../../../services/campaign-state/divergenceRegister';
-import { extractTurnDivergences } from '../../../services/archive-memory/turnDivergenceExtractor';
+import { extractSceneDivergences } from '../../../services/archive-memory/sceneDivergenceExtractor';
 import { api } from '../../../services/llm/apiClient';
 import { runFactClustering, assignSubjectTokens, type ClusteringCancelled } from '../../../services/campaign-state/factClusterer';
 import { runFactDedup, type DedupResult, type DedupCancelled } from '../../../services/campaign-state/factDeduper';
@@ -311,9 +311,8 @@ export function FactsView() {
                     setExtractProgress({ msg: `Extracting scene ${scene.sceneId}...`, done: count, total: missing.length });
                     
                     const activeDivergences = currentRegister.entries.filter(e => e.isActive !== false);
-                    const extracted = await extractTurnDivergences(
+                    const extracted = await extractSceneDivergences(
                         auxProvider,
-                        '', 
                         scene.content,
                         scene.sceneId,
                         openChapter?.chapterId || 'unknown',
@@ -341,9 +340,9 @@ export function FactsView() {
                     }
                     
                     currentRegister = mergeSealEntries(currentRegister, extracted, scene.sceneId);
+                    setDivergenceRegister(currentRegister);
                     count++;
                 }
-                setDivergenceRegister(currentRegister);
             }
             
             setExtractProgress({ msg: `Extraction complete. Processed ${count} scenes.`, done: count, total: missing.length });
@@ -574,6 +573,32 @@ export function FactsView() {
         return <span className="inline-flex flex-wrap gap-1 ml-1.5 align-middle">{badges}</span>;
     };
 
+    const FactContent = ({ e, showCategory = false, isLatest = false }: { e: DivergenceEntry, showCategory?: boolean, isLatest?: boolean }) => {
+        const isInactive = e.isActive === false;
+        const isSuperseded = !!e.supersededBy;
+        const badge = isInactive ? (isSuperseded ? 'UPDATED' : 'INVALIDATED') : null;
+        const chapterTitle = chapterTitleMap.get(e.chapterId) ?? e.chapterId;
+        const msgIdShort = e.messageId ? e.messageId.slice(-4) : '?';
+        
+        return (
+            <span className={`min-w-0 flex-1 ${isInactive ? 'text-text-dim/50 line-through' : ''}`}>
+                {showCategory && <span className={`${CATEGORY_COLORS[e.category]} text-[9px] uppercase no-underline inline-block mr-1`}>{CATEGORY_LABELS[e.category]}</span>}
+                {badge && (
+                    <span className="text-[8px] font-bold px-1 rounded bg-amber-500/10 text-amber-400 mr-1 uppercase no-underline inline-block align-middle">
+                        {badge}
+                    </span>
+                )}
+                {e.text}
+                <span className="text-text-dim/40 text-[9px] no-underline inline-block ml-1"> [Ch: {chapterTitle} | Sc: {e.sceneRef} | Msg: {msgIdShort}]{e.source === 'manual' ? ' ⚡' : ''}</span>
+                {isLatest && (
+                    <span className="ml-1 text-[8px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1 rounded no-underline inline-block align-middle">latest</span>
+                )}
+                {knownBySuffix(e)}
+                {factBadges(e)}
+            </span>
+        );
+    };
+
     return (
         <>
             <div className="flex items-center gap-1 flex-wrap">
@@ -748,20 +773,14 @@ export function FactsView() {
                                                             onClose={() => setKnownByEditingId(null)}
                                                         />
                                                     ) : (
-                                                        <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
+                                                        <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false && e.isActive !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
                                                             <input
                                                                 type="checkbox"
                                                                 checked={e.enabled !== false}
                                                                 onChange={() => toggleDivergenceFact(e.id)}
                                                                 className="w-2.5 h-2.5 mt-0.5 accent-terminal shrink-0"
                                                             />
-                                                            <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
-                                                            <span className="min-w-0 flex-1">
-                                                                {e.text}
-                                                                <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
-                                                                {knownBySuffix(e)}
-                                                                {factBadges(e)}
-                                                            </span>
+                                                            <FactContent e={e} />
                                                             {rowActions(e)}
                                                         </div>
                                                     )
@@ -784,15 +803,9 @@ export function FactsView() {
                                 <Pin size={9} /> Pinned
                             </div>
                             {pinnedEntries.map(e => (
-                                <div key={e.id} className="flex items-start gap-1 text-[11px] text-text-primary">
+                                <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false && e.isActive !== false ? 'text-text-primary' : 'text-text-dim/50 line-through'}`}>
                                     <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
-                                    <span className="min-w-0 flex-1">
-                                        <span className={`${CATEGORY_COLORS[e.category]} text-[9px] uppercase`}>{CATEGORY_LABELS[e.category]}</span>
-                                        {' '}{e.text}
-                                        <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
-                                        {knownBySuffix(e)}
-                                        {factBadges(e)}
-                                    </span>
+                                    <FactContent e={e} showCategory={true} />
                                 </div>
                             ))}
                         </div>
@@ -830,17 +843,9 @@ export function FactsView() {
                                                     onClose={() => setKnownByEditingId(null)}
                                                 />
                                             ) : (
-                                                <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
+                                                <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false && e.isActive !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
                                                     <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
-                                                    <span className="min-w-0 flex-1">
-                                                        <span className="text-text-dim/50 text-[9px]">[#{e.sceneRef}]</span>{' '}
-                                                        {e.text}
-                                                        {isLatest && group.entries.length > 1 && (
-                                                            <span className="ml-1 text-[8px] uppercase font-bold text-emerald-400 bg-emerald-500/10 px-1 rounded">latest</span>
-                                                        )}
-                                                        {knownBySuffix(e)}
-                                                        {factBadges(e)}
-                                                    </span>
+                                                        <FactContent e={e} isLatest={isLatest && group.entries.length > 1} />
                                                     {rowActions(e)}
                                                 </div>
                                             );
@@ -872,15 +877,9 @@ export function FactsView() {
                                 <Pin size={9} /> Pinned
                             </div>
                             {pinnedEntries.map(e => (
-                                <div key={e.id} className="flex items-start gap-1 text-[11px] text-text-primary">
+                                <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false && e.isActive !== false ? 'text-text-primary' : 'text-text-dim/50 line-through'}`}>
                                     <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
-                                    <span className="min-w-0 flex-1">
-                                        <span className={`${CATEGORY_COLORS[e.category]} text-[9px] uppercase`}>{CATEGORY_LABELS[e.category]}</span>
-                                        {' '}{e.text}
-                                        <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
-                                        {knownBySuffix(e)}
-                                        {factBadges(e)}
-                                    </span>
+                                    <FactContent e={e} showCategory={true} />
                                     <span className="flex items-center gap-0.5 shrink-0">
                                         <button onClick={() => pinDivergenceFact(e.id)} className="text-amber-400 p-0.5" title="Unpin">
                                             <PinOff size={9} />
@@ -981,7 +980,7 @@ export function FactsView() {
                                                                 onClose={() => setKnownByEditingId(null)}
                                                             />
                                                         ) : (
-                                                            <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
+                                                            <div key={e.id} className={`flex items-start gap-1 text-[11px] ${e.enabled !== false && e.isActive !== false ? 'text-text-secondary' : 'text-text-dim/50 line-through'}`}>
                                                                 <input
                                                                     type="checkbox"
                                                                     checked={e.enabled !== false}
@@ -989,12 +988,7 @@ export function FactsView() {
                                                                     className="w-2.5 h-2.5 mt-0.5 accent-terminal shrink-0"
                                                                 />
                                                                 <span className={`shrink-0 mt-0.5 w-1.5 h-1.5 rounded-full ${CATEGORY_DOTS[e.category]}`} />
-                                                                <span className="min-w-0 flex-1">
-                                                                    {e.text}
-                                                                    <span className="text-text-dim/40 text-[9px]"> [#{e.sceneRef}]{e.source === 'manual' ? ' ⚡' : ''}</span>
-                                                                    {knownBySuffix(e)}
-                                                                    {factBadges(e)}
-                                                                </span>
+                                                                <FactContent e={e} />
                                                                 {rowActions(e)}
                                                             </div>
                                                         )

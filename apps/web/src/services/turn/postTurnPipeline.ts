@@ -7,7 +7,7 @@ import { rateImportance } from '../archive-memory/importanceRater';
 import { sealChapterCombined } from '../saveFileEngine';
 import { backgroundQueue } from '../infrastructure/backgroundQueue';
 import { extractSceneEvents } from '../archive-memory/sceneEventExtractor';
-import { extractTurnDivergences } from '../archive-memory/turnDivergenceExtractor';
+import { extractSceneDivergences } from '../archive-memory/sceneDivergenceExtractor';
 import { scanPressure, buildPressurePatch, shouldArchiveNPC, findArchivedToRestore } from '../npc/npcPressureTracker';
 import { scanCharacterProfile } from '../characterProfileParser';
 import { scanCharacterTraits } from '../characterTraitParser';
@@ -376,10 +376,9 @@ async function runArchiveTrack(
                         const npcLedger = storeState.npcLedger || [];
                         const activeDivergences = storeState.divergenceRegister?.entries.filter(e => e.isActive !== false) || [];
 
-                        const extracted = await extractTurnDivergences(
+                        const extracted = await extractSceneDivergences(
                             auxProvider,
-                            textToExtractUser,
-                            textToExtractGm,
+                            textToExtractUser + '\n\n' + textToExtractGm,
                             extractArchiveId,
                             chapterId,
                             npcLedger,

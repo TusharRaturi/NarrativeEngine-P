@@ -153,6 +153,7 @@ export function renderRegisterForPayload(
         // cache-safe: the cached block stays byte-identical when only the cast changes.
         if (publicOnly && e.knownBy !== undefined) return false;
         if (e.enabled === false) return false;
+        if (e.isActive === false) return false;
         if (e.pinned) return true;
         const chapterOn = register.chapterToggles[e.chapterId] !== false;
         if (!chapterOn) return false;

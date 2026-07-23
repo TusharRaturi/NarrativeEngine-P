@@ -61,11 +61,14 @@ vi.mock('../contextGatherer', () => ({
 
 // chatEngine mock — buildPayload returns a one-message payload; sendMessage
 // invokes the onDone callback synchronously so `runTurn` resolves cleanly.
-const buildPayloadMock = vi.fn((_opts?: unknown) => ({
-    messages: [{ role: 'user', content: 'hello' }],
-    trace: [],
-    debugSections: [],
-}));
+const buildPayloadMock = vi.fn((opts?: unknown) => {
+    void opts;
+    return {
+        messages: [{ role: 'user', content: 'hello' }],
+        trace: [],
+        debugSections: [],
+    };
+});
 const sendMessageMock = vi.fn();
 vi.mock('../../chatEngine', () => ({
     buildPayload: (opts: unknown) => buildPayloadMock(opts),

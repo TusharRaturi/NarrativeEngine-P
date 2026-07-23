@@ -27,7 +27,8 @@ import { useChatKeyboard } from '../hooks/useChatKeyboard';
 import { InventoryStagingBar } from './inventory/InventoryStagingBar';
 import { IndexingBanner } from './IndexingBanner';
 import { AskGmPanel } from './ooc/AskGmPanel';
-import { extractTurnDivergences } from '../services/archive-memory/turnDivergenceExtractor';
+import { extractSceneDivergences } from '../services/archive-memory/sceneDivergenceExtractor';
+import { buildSceneMap } from '../services/campaign-state/divergenceRegister';
 import { mergeSealEntries } from '../services/campaign-state/divergenceRegister';
 import { ArmedAskGmNote } from './ooc/ArmedAskGmNote';
 
@@ -186,16 +187,23 @@ export function ChatArea() {
         resizeToContent();
     };
 
-    const handleExtractTurnFacts = async (messageId: string) => {
+    const handleExtractSceneFacts = async (messageId: string) => {
         const msgIndex = messages.findIndex(m => m.id === messageId);
         if (msgIndex === -1) return;
-        const msg = messages[msgIndex];
 
-        const prevMsgs = messages.slice(0, msgIndex);
-        const lastUser = [...prevMsgs].reverse().find(m => m.role === 'user');
-        const userText = lastUser?.content || '';
-        const gmText = msg.content;
-        const sceneId = msg.sceneId || useAppStore.getState().archiveIndex[useAppStore.getState().archiveIndex.length - 1]?.sceneId || '000';
+        const archiveIndex = useAppStore.getState().archiveIndex;
+        const { sceneIdsByMessageId } = buildSceneMap(archiveIndex, messages);
+        const sceneId = messages[msgIndex].sceneId || sceneIdsByMessageId[messageId] || useAppStore.getState().archiveIndex[useAppStore.getState().archiveIndex.length - 1]?.sceneId || '000';
+
+        // Gather all messages that share this sceneId
+        const sceneMessages = messages.filter(m => 
+            (m.sceneId === sceneId) || 
+            (sceneIdsByMessageId[m.id] === sceneId) || 
+            // Fallback: if it's the exact message we clicked and hasn't been mapped yet
+            (m.id === messageId)
+        );
+
+        const sceneText = sceneMessages.map(m => `${m.role === 'user' ? 'User' : 'GM'}: ${m.content}`).join('\n\n');
 
         const state = useAppStore.getState();
         const provider = state.getActiveAuxiliaryEndpoint() || state.getActiveStoryEndpoint();
@@ -208,12 +216,11 @@ export function ChatArea() {
         const importanceGate = settings.divergenceImportanceGate ?? 7;
         const chapterId = useAppStore.getState().chapters.find(c => !c.sealedAt)?.chapterId || 'unknown';
 
-        toast.info('Extracting turn facts...');
+        const toastId = toast.loading('Extracting scene facts...');
         try {
-            const newEntries = await extractTurnDivergences(
+            const newEntries = await extractSceneDivergences(
                 provider,
-                userText,
-                gmText,
+                sceneText,
                 sceneId,
                 chapterId,
                 npcLedger,
@@ -233,8 +240,10 @@ export function ChatArea() {
                 toast.info('No facts met the importance gate for extraction.');
             }
         } catch (err) {
-            console.error('[Extract Turn Facts]', err);
+            console.error('[Extract Scene Facts]', err);
             toast.error('Failed to extract facts.');
+        } finally {
+            toast.dismiss(toastId);
         }
     };
 
@@ -276,7 +285,7 @@ export function ChatArea() {
                 onSkipDirectorBrief={handleSkipDirectorBrief}
                 onOpenSwipeSheet={setSwipeSheetMessageId}
                 onRetry={retry.retryStoryAI}
-                onExtractFacts={handleExtractTurnFacts}
+                onExtractFacts={handleExtractSceneFacts}
             />
 
             <ChatActionStrip

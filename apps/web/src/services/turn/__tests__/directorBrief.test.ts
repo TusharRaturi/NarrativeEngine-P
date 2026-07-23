@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('../../../utils/llmCall', () => ({
@@ -40,7 +39,7 @@ function endpoint(name = 'test-model'): EndpointConfig {
     return {
         endpoint: 'http://localhost',
         modelName: name,
-    } as any;
+    } as unknown as EndpointConfig;
 }
 
 function npcEntry(over: Partial<NPCEntry> = {}): NPCEntry {
@@ -206,7 +205,7 @@ describe('runDirectorBrief', () => {
 
         it('falls back to story provider when auxiliary has no modelName', async () => {
             mockLlmCall.mockResolvedValueOnce(VALID_BRIEF);
-            const auxNoModel = { endpoint: 'http://localhost' } as any;
+            const auxNoModel = { endpoint: 'http://localhost' } as unknown as EndpointConfig;
             await runDirectorBrief(baseInput({
                 provider: endpoint('story-model'),
                 getAuxiliaryProvider: () => auxNoModel,
@@ -232,7 +231,7 @@ describe('runDirectorBrief', () => {
         it('passes trackingLabel and priority to llmCall (no own thinkingEffort — WO-04b §3)', async () => {
             mockLlmCall.mockResolvedValueOnce(VALID_BRIEF);
             await runDirectorBrief(baseInput());
-            const opts = mockLlmCall.mock.calls[0][2] as any;
+            const opts = mockLlmCall.mock.calls[0][2] as Record<string, unknown>;
             expect(opts.trackingLabel).toBe('director-brief');
             expect(opts.priority).toBe('low');
             expect(opts.timeoutMs).toBe(120_000);
@@ -246,7 +245,7 @@ describe('runDirectorBrief', () => {
             mockLlmCall.mockResolvedValueOnce(VALID_BRIEF);
             const controller = new AbortController();
             await runDirectorBrief(baseInput({ signal: controller.signal }));
-            const opts = mockLlmCall.mock.calls[0][2] as any;
+            const opts = mockLlmCall.mock.calls[0][2] as Record<string, unknown>;
             expect(opts.signal).toBe(controller.signal);
         });
     });
@@ -378,7 +377,7 @@ describe('runDirectorBrief', () => {
         });
 
         it('returns null when no provider resolves (story undefined, auxiliary has no modelName)', async () => {
-            const auxNoModel = { endpoint: 'http://localhost' } as any;
+            const auxNoModel = { endpoint: 'http://localhost' } as unknown as EndpointConfig;
             const brief = await runDirectorBrief(baseInput({ provider: undefined, getAuxiliaryProvider: () => auxNoModel }));
             expect(brief).toBeNull();
             expect(mockLlmCall).not.toHaveBeenCalled();
@@ -412,7 +411,7 @@ describe('runDirectorBrief', () => {
         it('returns null when getAuxiliaryProvider throws; the promise must not reject', async () => {
             const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
             const throwing = () => { throw new Error('aux resolver exploded'); };
-            const brief = await runDirectorBrief(baseInput({ getAuxiliaryProvider: throwing as any }));
+            const brief = await runDirectorBrief(baseInput({ getAuxiliaryProvider: throwing as unknown as () => EndpointConfig }));
             expect(brief).toBeNull();
             // The catch path logs a warning (not an abort, not a timeout).
             expect(warnSpy).toHaveBeenCalledWith('[DirectorBrief] failed:', expect.any(Error));
@@ -424,7 +423,7 @@ describe('runDirectorBrief', () => {
         it('returns null when getAuxiliaryProvider throws AND storyProvider is undefined', async () => {
             const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
             const throwing = () => { throw new Error('aux resolver exploded'); };
-            const brief = await runDirectorBrief(baseInput({ provider: undefined, getAuxiliaryProvider: throwing as any }));
+            const brief = await runDirectorBrief(baseInput({ provider: undefined, getAuxiliaryProvider: throwing as unknown as () => EndpointConfig }));
             expect(brief).toBeNull();
             expect(mockLlmCall).not.toHaveBeenCalled();
             warnSpy.mockRestore();
@@ -433,7 +432,7 @@ describe('runDirectorBrief', () => {
         it('does NOT cache when getAuxiliaryProvider throws (retry may succeed)', async () => {
             const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
             const throwing = () => { throw new Error('aux resolver exploded'); };
-            const input = baseInput({ getAuxiliaryProvider: throwing as any });
+            const input = baseInput({ getAuxiliaryProvider: throwing as unknown as () => EndpointConfig });
             const first = await runDirectorBrief(input);
             expect(first).toBeNull();
             // The cache must NOT hold the null — a retry with a non-throwing
@@ -458,7 +457,7 @@ describe('runDirectorBrief', () => {
             const poisonedLedger: NPCEntry[] = [{
                 ...npcEntry(),
                 get archived() { throw new Error('poisoned archived getter'); },
-            } as any];
+            } as unknown as NPCEntry];
             const brief = await runDirectorBrief(baseInput({ npcLedger: poisonedLedger }));
             expect(brief).toBeNull();
             expect(mockLlmCall).not.toHaveBeenCalled();
@@ -505,8 +504,8 @@ describe('runDirectorBrief', () => {
             // `.replace` throws. `parseDirectorBrief` first checks `if (!raw)`
             // (truthy pass), then calls `raw.replace(...)` → throws.
             const throwingRaw = new String('WRITER BRIEF\n- [MANDATORY] X') as unknown as { replace: () => never };
-            (throwingRaw as any).replace = () => { throw new Error('poisoned replace'); };
-            mockLlmCall.mockResolvedValueOnce(throwingRaw as any);
+            (throwingRaw as unknown as { replace: unknown }).replace = () => { throw new Error('poisoned replace'); };
+            mockLlmCall.mockResolvedValueOnce(throwingRaw as unknown as string);
             const brief = await runDirectorBrief(baseInput());
             expect(brief).toBeNull();
             // Thrown parser exception logs once as a normal Director failure.
@@ -520,8 +519,8 @@ describe('runDirectorBrief', () => {
             const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});
             // First call: llmCall resolves to a throwing string double.
             const throwingRaw = new String('WRITER BRIEF\n- [MANDATORY] X') as unknown as { replace: () => never };
-            (throwingRaw as any).replace = () => { throw new Error('poisoned replace'); };
-            mockLlmCall.mockResolvedValueOnce(throwingRaw as any);
+            (throwingRaw as unknown as { replace: unknown }).replace = () => { throw new Error('poisoned replace'); };
+            mockLlmCall.mockResolvedValueOnce(throwingRaw as unknown as string);
             // Second call: llmCall resolves to a valid brief string.
             mockLlmCall.mockResolvedValueOnce(VALID_BRIEF);
             const input = baseInput();
@@ -573,7 +572,7 @@ describe('buildNpcSummary', () => {
     });
 
     it('omits the relation band when both pcRelation and affinity are missing', () => {
-        const ingrid = npcEntry({ pcRelation: undefined, affinity: undefined as any });
+        const ingrid = npcEntry({ pcRelation: undefined, affinity: undefined as unknown as number });
         const summary = buildNpcSummary([ingrid], ['npc_ingrid']);
         expect(summary).not.toContain('PC relation');
     });
@@ -751,7 +750,7 @@ describe('resolveDirectorProvider', () => {
 
     it('falls back to story provider when auxiliary has no modelName', () => {
         const story = endpoint('story');
-        const auxNoModel = { endpoint: 'http://x' } as any;
+        const auxNoModel = { endpoint: 'http://x' } as unknown as EndpointConfig;
         expect(resolveDirectorProvider(story, () => auxNoModel)).toBe(story);
     });
 

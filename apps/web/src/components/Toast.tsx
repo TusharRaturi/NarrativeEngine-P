@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { useEffect } from 'react';
-import { X, AlertTriangle, CheckCircle, Info, AlertCircle } from 'lucide-react';
+import { X, AlertTriangle, CheckCircle, Info, AlertCircle, Loader2 } from 'lucide-react';
 
 /* ── Toast types & store ── */
 
-type ToastType = 'success' | 'error' | 'warning' | 'info';
+type ToastType = 'success' | 'error' | 'warning' | 'info' | 'loading';
 
 interface ToastItem {
   id: string;
@@ -15,7 +15,7 @@ interface ToastItem {
 
 interface ToastStore {
   toasts: ToastItem[];
-  add: (type: ToastType, message: string) => void;
+  add: (type: ToastType, message: string) => string;
   dismiss: (id: string) => void;
   _prune: () => void;
 }
@@ -36,6 +36,7 @@ export const useToastStore = create<ToastStore>((set, get) => ({
     }));
 
     setTimeout(() => get()._prune(), ttl + 50);
+    return id;
   },
 
   dismiss(id) {
@@ -55,6 +56,8 @@ export const toast = {
   error: (msg: string) => useToastStore.getState().add('error', msg),
   warning: (msg: string) => useToastStore.getState().add('warning', msg),
   info: (msg: string) => useToastStore.getState().add('info', msg),
+  loading: (msg: string) => useToastStore.getState().add('loading', msg),
+  dismiss: (id: string) => useToastStore.getState().dismiss(id),
 };
 
 /* ── Icon + color config ── */
@@ -64,6 +67,7 @@ const cfg: Record<ToastType, { icon: typeof Info; border: string; bg: string; te
   error:   { icon: AlertCircle, border: 'border-danger', bg: 'bg-danger/15', text: 'text-danger' },
   warning: { icon: AlertTriangle, border: 'border-terminal', bg: 'bg-terminal/15', text: 'text-terminal' },
   info:    { icon: Info, border: 'border-ice', bg: 'bg-ice/15', text: 'text-ice' },
+  loading: { icon: Loader2, border: 'border-purple-400', bg: 'bg-purple-900/30', text: 'text-purple-400' },
 };
 
 /* ── Component ── */
@@ -93,7 +97,7 @@ export function ToastContainer() {
                          rounded shadow-lg backdrop-blur-sm max-w-[360px] font-mono text-xs
                          animate-[toast-in_0.25s_ease-out]`}
           >
-            <Icon size={14} className={`${c.text} shrink-0 mt-0.5`} />
+            <Icon size={14} className={`${c.text} shrink-0 mt-0.5 ${t.type === 'loading' ? 'animate-spin' : ''}`} />
             <span className="text-text-primary leading-snug break-words">{t.message}</span>
             <button
               onClick={() => dismiss(t.id)}

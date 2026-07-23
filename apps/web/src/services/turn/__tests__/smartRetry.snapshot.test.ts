@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // Smart Retry v1 — Phase 1 invariant tests.
 //
 // Invariant being frozen: "an orphan early snapshot (captured pre-Story-AI) with
@@ -12,6 +11,8 @@
 // singleton), and that the early capture passes the bus.
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { ChatMessage } from '../../../types';
+import type { OpenAIMessage } from '../../llm/llmService';
+import type { TurnState } from '../turnOrchestrator';
 
 // ── Module under test (real, not mocked — we want the real singleton) ──
 import * as pendingCommit from '../pendingCommit';
@@ -140,8 +141,8 @@ describe('Smart Retry v1 — Phase 1 snapshot lifecycle invariant', () => {
     it('an orphan early snapshot + no pendingCommit message ⇒ commitPendingTurn no-ops and keeps the snapshot (retry stays armed)', async () => {
         // Capture an early snapshot (simulating the pre-Story-AI capture).
         capturePendingTurnSnapshot(
-            { activeCampaignId: 'camp1', getMessages: () => storeState.messages } as any,
-            [{ role: 'user', content: 'payload' }] as any,
+            { activeCampaignId: 'camp1', getMessages: () => storeState.messages } as unknown as TurnState,
+            [{ role: 'user', content: 'payload' }] as OpenAIMessage[],
             'displayInput',
         );
         expect(getPendingTurnSnapshot()).not.toBeNull();
@@ -167,8 +168,8 @@ describe('Smart Retry v1 — Phase 1 snapshot lifecycle invariant', () => {
         ];
         // Put a stale snapshot in place to prove the clear fires.
         capturePendingTurnSnapshot(
-            { activeCampaignId: 'camp1', getMessages: () => storeState.messages } as any,
-            [{ role: 'user', content: 'stale' }] as any,
+            { activeCampaignId: 'camp1', getMessages: () => storeState.messages } as unknown as TurnState,
+            [{ role: 'user', content: 'stale' }] as OpenAIMessage[],
             'stale',
         );
         expect(getPendingTurnSnapshot()).not.toBeNull();
@@ -182,8 +183,8 @@ describe('Smart Retry v1 — Phase 1 snapshot lifecycle invariant', () => {
 
     it('the early capture and success capture are idempotent (second overwrites the first)', () => {
         capturePendingTurnSnapshot(
-            { activeCampaignId: 'camp1', getMessages: () => storeState.messages } as any,
-            [{ role: 'user', content: 'early-payload' }] as any,
+            { activeCampaignId: 'camp1', getMessages: () => storeState.messages } as unknown as TurnState,
+            [{ role: 'user', content: 'early-payload' }] as OpenAIMessage[],
             'early-display',
         );
         const early = getPendingTurnSnapshot();
@@ -191,8 +192,8 @@ describe('Smart Retry v1 — Phase 1 snapshot lifecycle invariant', () => {
 
         // Success-path re-capture with the richer payload (tool history).
         capturePendingTurnSnapshot(
-            { activeCampaignId: 'camp1', getMessages: () => storeState.messages } as any,
-            [{ role: 'user', content: 'rich-payload' }, { role: 'assistant', content: 'tool text' }] as any,
+            { activeCampaignId: 'camp1', getMessages: () => storeState.messages } as unknown as TurnState,
+            [{ role: 'user', content: 'rich-payload' }, { role: 'assistant', content: 'tool text' }] as OpenAIMessage[],
             'early-display',
         );
         const after = getPendingTurnSnapshot();

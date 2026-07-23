@@ -74,7 +74,17 @@ export async function runFactDedup(
 
     // Phase 1: Fetch embeddings
     onProgress('Generating semantic embeddings for facts...', 0, 100);
-    const textsToEmbed = finalEligible.map(e => `${e.category}: ${e.text}`);
+    const textsToEmbed = finalEligible.map(e => {
+        const parts = [`Category: ${e.category}`];
+        if (e.theme) parts.push(`Theme: ${e.theme}`);
+        if (e.locations && e.locations.length > 0) parts.push(`Locations: ${e.locations.join(', ')}`);
+        if (e.npcIds && e.npcIds.length > 0) {
+            const names = e.npcIds.map(id => npcNameMap.get(id) || id);
+            parts.push(`NPCs: ${names.join(', ')}`);
+        }
+        parts.push(`Fact: ${e.text}`);
+        return parts.join(' | ');
+    });
     const embedRes = await api.embedding.batchCompute(textsToEmbed);
     
     if (cancel.cancelled) throw new Error('Dedup cancelled.');
@@ -112,7 +122,7 @@ export async function runFactDedup(
             if (eA.locations?.some(l => eB.locations?.includes(l))) entityOverlap = true;
             if (eA.items?.some(it => eB.items?.includes(it))) entityOverlap = true;
             
-            const threshold = entityOverlap ? 0.70 : 0.82;
+            const threshold = entityOverlap ? 0.80 : 0.88;
             
             if (sim >= threshold) {
                 cluster.push(eB);
@@ -151,11 +161,17 @@ DO NOT GROUP:
 
 ONLY GROUP:
 - Restatements of one event ("X rescued a civilian" + "X saved a bystander")
-- Same state in different words ("X has the amulet" + "X carries the amulet")\n\n`;
+- Same state in different words ("X has the amulet" + "X carries the amulet")
+
+`;
 
         for (let b = 0; b < batch.length; b++) {
             promptText += `---\nCLUSTER ${b + 1}:\n`;
-            promptText += batch[b].map(e => `${e.id} | #${e.sceneRef} | ${e.text}`).join('\n') + '\n\n';
+            promptText += batch[b].map(e => {
+                const names = e.npcIds && e.npcIds.length > 0 ? e.npcIds.map(id => npcNameMap.get(id) || id).join(', ') : 'none';
+                const locs = e.locations && e.locations.length > 0 ? e.locations.join(', ') : 'none';
+                return `${e.id} | #${e.sceneRef} | [Locs: ${locs}] [NPCs: ${names}] [Theme: ${e.theme || 'none'}] | ${e.text}`;
+            }).join('\n') + '\n\n';
         }
 
         promptText += `Return ONLY a JSON object with this exact schema:

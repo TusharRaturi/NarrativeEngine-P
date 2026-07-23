@@ -1,5 +1,4 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
-// Smart Retry v1 — Phase 2 stamping tests.
+// Smart Retry v1 — Phase 1 formatting stamp tests.
 //
 // Asserts stampRetryable fires on the two terminal exit branches (user abort +
 // retry-exhausted) and does NOT fire on the intermediate retry branches
@@ -9,7 +8,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { runTurn } from '../turnOrchestrator';
 import type { TurnState, TurnCallbacks } from '../turnOrchestrator';
-import type { ChatMessage } from '../../../types';
+import type { ChatMessage, AppSettings, GameContext, EndpointConfig } from '../../../types';
 
 // ── Mocks ──
 const capturePendingTurnSnapshotMock = vi.fn();
@@ -107,19 +106,19 @@ function baseState(): TurnState {
     return {
         input: 'hi',
         displayInput: 'hi',
-        settings: { debugMode: false, aiTier: 'lite', contextLimit: 8192 } as any,
-        context: { diceFairnessActive: false, diceSystem: { catastrophe: 2, failure: 6, success: 15, triumph: 19, crit: 20 } } as any,
+        settings: { debugMode: false, aiTier: 'lite', contextLimit: 8192 } as unknown as AppSettings,
+        context: { diceFairnessActive: false, diceSystem: { catastrophe: 2, failure: 6, success: 15, triumph: 19, crit: 20 } } as unknown as GameContext,
         messages: [],
         condenser: { condensedUpToIndex: -1 },
         loreChunks: [],
         npcLedger: [],
         archiveIndex: [],
         activeCampaignId: 'camp1',
-        provider: { endpoint: 'http://x', modelName: 'm' } as any,
+        provider: { endpoint: 'http://x', modelName: 'm' } as unknown as EndpointConfig,
         getMessages: () => [] as ChatMessage[],
-        getFreshProvider: () => ({ endpoint: 'http://x', modelName: 'm' } as any),
+        getFreshProvider: () => ({ endpoint: 'http://x', modelName: 'm' } as unknown as EndpointConfig),
         getUtilityEndpoint: () => undefined,
-        getFreshAuxiliaryProvider: () => ({ endpoint: 'http://aux', modelName: 'aux' } as any),
+        getFreshAuxiliaryProvider: () => ({ endpoint: 'http://aux', modelName: 'aux' } as unknown as EndpointConfig),
         onStageNpcIds: [],
         timeline: [],
         chapters: [],
@@ -129,14 +128,14 @@ function baseState(): TurnState {
         incrementBookkeepingTurnCounter: () => 0,
         resetBookkeepingTurnCounter: () => {},
         autoBookkeepingInterval: 5,
-        getFreshContext: () => ({}) as any,
+        getFreshContext: () => ({}) as unknown as GameContext,
         sampling: undefined,
         deepSearchThisTurn: false,
         armedRoll: null,
         armedLoot: null,
         armedOneShot: null,
         absoluteCommand: null,
-    } as any as TurnState;
+    } as unknown as TurnState;
 }
 
 function baseCallbacks(): TurnCallbacks {
@@ -156,7 +155,7 @@ function baseCallbacks(): TurnCallbacks {
         setPipelinePhase: (...args: unknown[]) => setPipelinePhaseMock(...args),
         archiveNPC: noop,
         restoreNPC: noop,
-    } as any as TurnCallbacks;
+    } as unknown as TurnCallbacks;
 }
 
 /** Drive sendMessage's error callback as a user abort (error string contains 'abort'). */

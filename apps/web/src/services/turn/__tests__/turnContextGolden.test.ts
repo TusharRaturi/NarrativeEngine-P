@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 // WO-P1-01 §5: characterization golden tests for the TurnContext data-bus refactor.
 //
 // These tests freeze the CURRENT behaviour of `buildPayload` (positional-arg form)
@@ -368,13 +367,16 @@ describe('WO-P1-01 — buildPayload golden snapshot (byte-identical pre/post ref
 // produce the same payload + same snapshot.
 
 const sendMessageMock = vi.fn();
-const buildPayloadMock = vi.fn((_opts?: unknown) => ({
-    messages: [{ role: 'user', content: 'FIXED_PAYLOAD_MESSAGE' }] as OpenAIMessage[],
-    trace: [],
-    debugSections: [],
-}));
-const capturePendingTurnSnapshotMock = vi.fn<(...args: any[]) => any>();
-const gatherContextMock = vi.fn<(...args: any[]) => Promise<any>>(async () => ({
+const buildPayloadMock = vi.fn((opts?: unknown) => {
+    void opts;
+    return {
+        messages: [{ role: 'user', content: 'FIXED_PAYLOAD_MESSAGE' }] as OpenAIMessage[],
+        trace: [],
+        debugSections: [],
+    };
+});
+const capturePendingTurnSnapshotMock = vi.fn<(...args: unknown[]) => unknown>();
+const gatherContextMock = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
     sceneNumber: '042',
     archiveRecall: ARCHIVE_RECALL,
     recommendedNPCNames: ['Aldric'],
@@ -399,11 +401,11 @@ vi.mock('../../chatEngine', () => ({
 }));
 
 vi.mock('../pendingCommit', () => ({
-    capturePendingTurnSnapshot: (...args: any[]) => capturePendingTurnSnapshotMock(...args),
+    capturePendingTurnSnapshot: (...args: unknown[]) => capturePendingTurnSnapshotMock(...args),
 }));
 
 vi.mock('../contextGatherer', () => ({
-    gatherContext: (...args: any[]) => gatherContextMock(...args),
+    gatherContext: (...args: unknown[]) => gatherContextMock(...args),
 }));
 
 vi.mock('../directorWatchdog', () => ({
@@ -448,8 +450,8 @@ vi.mock('../../oneshot/oneShotEvents', () => ({ buildOneShotDirective: vi.fn(() 
 // baseline is meaningful.
 const getStateMock = vi.fn(() => ({
     locationLedger: LOCATION_LEDGER,
-    getActiveAuxiliaryEndpoint: () => ({ endpoint: 'http://aux', modelName: 'aux' } as any as EndpointConfig),
-    getActiveStoryEndpoint: () => ({ endpoint: 'http://story', modelName: 'story' } as any as EndpointConfig),
+    getActiveAuxiliaryEndpoint: () => ({ endpoint: 'http://aux', modelName: 'aux' } as unknown as EndpointConfig),
+    getActiveStoryEndpoint: () => ({ endpoint: 'http://story', modelName: 'story' } as unknown as EndpointConfig),
 }));
 vi.mock('../../../store/useAppStore', () => ({
     useAppStore: { getState: () => getStateMock() },
@@ -466,16 +468,16 @@ function baseState(): TurnState {
         settings: baseSettings(),
         context: baseContext(),
         messages: HISTORY,
-        condenser: { condensedUpToIndex: 2 } as any as CondenserState,
+        condenser: { condensedUpToIndex: 2 } as unknown as CondenserState,
         loreChunks: LORE,
         npcLedger: NPCS,
         archiveIndex: ARCHIVE_INDEX,
         activeCampaignId: 'camp_test',
-        provider: { endpoint: 'http://story', modelName: 'story' } as any as EndpointConfig,
+        provider: { endpoint: 'http://story', modelName: 'story' } as unknown as EndpointConfig,
         getMessages: () => HISTORY,
-        getFreshProvider: () => ({ endpoint: 'http://story', modelName: 'story' } as any),
+        getFreshProvider: () => ({ endpoint: 'http://story', modelName: 'story' } as unknown as EndpointConfig),
         getUtilityEndpoint: () => undefined,
-        getFreshAuxiliaryProvider: () => ({ endpoint: 'http://aux', modelName: 'aux' } as any),
+        getFreshAuxiliaryProvider: () => ({ endpoint: 'http://aux', modelName: 'aux' } as unknown as EndpointConfig),
         onStageNpcIds: ['npc_a'],
         timeline: TIMELINE,
         chapters: CHAPTERS,
@@ -495,7 +497,7 @@ function baseState(): TurnState {
         armedOneShot: null,
         absoluteCommand: null,
         nextTurnOocBrief: 'OOC_BRIEF_TEXT',
-    } as any as TurnState;
+    } as unknown as TurnState;
 }
 
 function baseCallbacks(): TurnCallbacks {
@@ -506,12 +508,12 @@ function baseCallbacks(): TurnCallbacks {
         updateContext: noop, setArchiveIndex: noop,
         updateNPC: noop, addNPC: noop, setCondensed: noop, setStreaming: noop,
         archiveNPC: noop, restoreNPC: noop,
-    } as any as TurnCallbacks;
+    } as unknown as TurnCallbacks;
 }
 
 function wireSendMessageToComplete(): void {
     sendMessageMock.mockImplementation(
-        (_provider: unknown, _messages: unknown, _onChunk: unknown, onDone: any) => {
+        (_provider: unknown, _messages: unknown, _onChunk: unknown, onDone: CallableFunction) => {
             Promise.resolve().then(() => onDone('Final GM text.', undefined, undefined));
             return Promise.resolve();
         },
